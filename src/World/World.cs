@@ -34,7 +34,7 @@ public partial class World : Node3D
 
         // Create timer for chunk updates
         _chunkUpdateTimer = new Timer();
-        _chunkUpdateTimer.WaitTime = 0.5f; // Update chunks every half second
+        _chunkUpdateTimer.WaitTime = 0.2f; // Update chunks more frequently
         _chunkUpdateTimer.Timeout += OnChunkUpdateTimerTimeout;
         AddChild(_chunkUpdateTimer);
         _chunkUpdateTimer.Start();
@@ -67,6 +67,9 @@ public partial class World : Node3D
         {
             // Update chunks around player
             _chunkManager.UpdateChunksAroundPlayer(_player.Position, ViewDistance);
+
+            // Uncomment for debugging chunk loading
+            // GD.Print($"Player position: {_player.Position}, Active chunks: {_chunkManager.ActiveChunkCount}");
         }
     }
 }

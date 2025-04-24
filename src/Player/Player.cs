@@ -41,8 +41,8 @@ public partial class Player : CharacterBody3D
         // Mouse look
         if (@event is InputEventMouseMotion mouseMotion)
         {
-            // Rotate player (left/right)
-            RotateY(-mouseMotion.Relative.X * MouseSensitivity);
+            // Rotate camera mount (left/right)
+            _cameraMount.RotateY(-mouseMotion.Relative.X * MouseSensitivity);
 
             // Adjust camera height (up/down) with limits
             _cameraRotation -= mouseMotion.Relative.Y * MouseSensitivity * CameraRotationSpeed;
@@ -68,11 +68,8 @@ public partial class Player : CharacterBody3D
         float height = CameraHeight + _cameraRotation * 4.0f; // Adjust height based on rotation
         float distance = CameraDistance - _cameraRotation * 2.0f; // Adjust distance based on rotation
 
-        // Set camera transform
-        _camera.Transform = new Transform3D(
-            Basis.Identity,
-            new Vector3(0, height, distance)
-        );
+        // Set camera transform - position only, keep the rotation from camera mount
+        _camera.Position = new Vector3(0, height, distance);
 
         // Make camera look at player's head
         _camera.LookAt(_head.GlobalPosition);
@@ -134,29 +131,7 @@ public partial class Player : CharacterBody3D
                 velocity.Z = Mathf.Lerp(velocity.Z, targetVelocity.Z, Acceleration * 0.5f);
             }
 
-            // Only manually rotate player when there's significant input
-            if (inputMagnitude > 0.1f)
-            {
-                // Calculate the target angle based on input direction, not the resulting velocity
-                // This is more stable and prevents unwanted rotation
-                float targetAngle = Mathf.Atan2(-inputDir.X, -inputDir.Y);
-
-                // Add the camera's rotation to get the correct world orientation
-                targetAngle += _cameraMount.GlobalRotation.Y;
-
-                // Get current angle
-                float currentAngle = Rotation.Y;
-
-                // Use a very gentle rotation speed to prevent spinning
-                float rotationSpeed = 2.0f;
-
-                // Interpolate rotation for smooth turning
-                Rotation = new Vector3(
-                    Rotation.X,
-                    Mathf.LerpAngle(currentAngle, targetAngle, (float)delta * rotationSpeed),
-                    Rotation.Z
-                );
-            }
+            // No player rotation - movement is purely relative to camera direction
         }
         else if (IsOnFloor())
         {

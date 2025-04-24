@@ -18,6 +18,7 @@ Seed = 12345
 WorldSize = Vector2i(32, 32)
 ChunkSize = 16
 ChunkHeight = 128
+VoxelScale = 1.5
 
 [node name="ChunkManager" type="Node3D" parent="WorldGenerator"]
 script = ExtResource("3_yvnqm")

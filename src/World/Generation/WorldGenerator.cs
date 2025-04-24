@@ -7,6 +7,7 @@ public partial class WorldGenerator : Node3D
     [Export] public Vector2I WorldSize { get; set; } = new Vector2I(16, 16); // Size in chunks
     [Export] public int ChunkSize { get; set; } = 16; // Size of each chunk in voxels
     [Export] public int ChunkHeight { get; set; } = 128; // Maximum height of the world
+    [Export] public float VoxelScale { get; set; } = 1.0f; // Scale of each voxel
 
     private FastNoiseLite _terrainNoise;
     private FastNoiseLite _biomeNoise;
@@ -71,7 +72,7 @@ public partial class WorldGenerator : Node3D
         if (_chunkManager == null) return;
 
         // Create chunk data
-        VoxelChunk chunk = new VoxelChunk(ChunkSize, ChunkHeight, chunkPos);
+        VoxelChunk chunk = new VoxelChunk(ChunkSize, ChunkHeight, chunkPos, VoxelScale);
 
         // Generate terrain for the chunk
         for (int x = 0; x < ChunkSize; x++)

@@ -183,43 +183,43 @@ public partial class ChunkMesh : Node3D
         // Top face (Y+)
         if (y == chunk.Height - 1 || !chunk.IsVoxelSolid(x, y + 1, z))
         {
-            AddFace(FaceDirection.Top, new Vector3(x, y, z), voxelType, vertices, normals, uvs, indices);
+            AddFace(FaceDirection.Top, new Vector3(x, y, z), voxelType, vertices, normals, uvs, indices, chunk);
         }
 
         // Bottom face (Y-)
         if (y == 0 || !chunk.IsVoxelSolid(x, y - 1, z))
         {
-            AddFace(FaceDirection.Bottom, new Vector3(x, y, z), voxelType, vertices, normals, uvs, indices);
+            AddFace(FaceDirection.Bottom, new Vector3(x, y, z), voxelType, vertices, normals, uvs, indices, chunk);
         }
 
         // Front face (Z+)
         if (z == chunk.Size - 1 || !chunk.IsVoxelSolid(x, y, z + 1))
         {
-            AddFace(FaceDirection.Front, new Vector3(x, y, z), voxelType, vertices, normals, uvs, indices);
+            AddFace(FaceDirection.Front, new Vector3(x, y, z), voxelType, vertices, normals, uvs, indices, chunk);
         }
 
         // Back face (Z-)
         if (z == 0 || !chunk.IsVoxelSolid(x, y, z - 1))
         {
-            AddFace(FaceDirection.Back, new Vector3(x, y, z), voxelType, vertices, normals, uvs, indices);
+            AddFace(FaceDirection.Back, new Vector3(x, y, z), voxelType, vertices, normals, uvs, indices, chunk);
         }
 
         // Right face (X+)
         if (x == chunk.Size - 1 || !chunk.IsVoxelSolid(x + 1, y, z))
         {
-            AddFace(FaceDirection.Right, new Vector3(x, y, z), voxelType, vertices, normals, uvs, indices);
+            AddFace(FaceDirection.Right, new Vector3(x, y, z), voxelType, vertices, normals, uvs, indices, chunk);
         }
 
         // Left face (X-)
         if (x == 0 || !chunk.IsVoxelSolid(x - 1, y, z))
         {
-            AddFace(FaceDirection.Left, new Vector3(x, y, z), voxelType, vertices, normals, uvs, indices);
+            AddFace(FaceDirection.Left, new Vector3(x, y, z), voxelType, vertices, normals, uvs, indices, chunk);
         }
     }
 
     private void AddFace(FaceDirection direction, Vector3 position, VoxelType voxelType,
                         List<Vector3> vertices, List<Vector3> normals,
-                        List<Vector2> uvs, List<int> indices)
+                        List<Vector2> uvs, List<int> indices, VoxelChunk chunk)
     {
         // Get current vertex count
         int vertexCount = vertices.Count;
@@ -228,53 +228,56 @@ public partial class ChunkMesh : Node3D
         Vector2[] faceUVs = GetUVsForVoxelType(voxelType, direction);
 
         // Add vertices, normals, and UVs based on face direction
+        // Get scale from the chunk
+        float scale = chunk.Scale;
+
         switch (direction)
         {
             case FaceDirection.Top:
-                vertices.Add(new Vector3(0, 1, 0) + position);
-                vertices.Add(new Vector3(1, 1, 0) + position);
-                vertices.Add(new Vector3(1, 1, 1) + position);
-                vertices.Add(new Vector3(0, 1, 1) + position);
+                vertices.Add(new Vector3(0, 1, 0) * scale + position * scale);
+                vertices.Add(new Vector3(1, 1, 0) * scale + position * scale);
+                vertices.Add(new Vector3(1, 1, 1) * scale + position * scale);
+                vertices.Add(new Vector3(0, 1, 1) * scale + position * scale);
                 for (int i = 0; i < 4; i++) normals.Add(Vector3.Up);
                 break;
 
             case FaceDirection.Bottom:
-                vertices.Add(new Vector3(0, 0, 0) + position);
-                vertices.Add(new Vector3(0, 0, 1) + position);
-                vertices.Add(new Vector3(1, 0, 1) + position);
-                vertices.Add(new Vector3(1, 0, 0) + position);
+                vertices.Add(new Vector3(0, 0, 0) * scale + position * scale);
+                vertices.Add(new Vector3(0, 0, 1) * scale + position * scale);
+                vertices.Add(new Vector3(1, 0, 1) * scale + position * scale);
+                vertices.Add(new Vector3(1, 0, 0) * scale + position * scale);
                 for (int i = 0; i < 4; i++) normals.Add(Vector3.Down);
                 break;
 
             case FaceDirection.Front:
-                vertices.Add(new Vector3(0, 0, 1) + position);
-                vertices.Add(new Vector3(0, 1, 1) + position);
-                vertices.Add(new Vector3(1, 1, 1) + position);
-                vertices.Add(new Vector3(1, 0, 1) + position);
+                vertices.Add(new Vector3(0, 0, 1) * scale + position * scale);
+                vertices.Add(new Vector3(0, 1, 1) * scale + position * scale);
+                vertices.Add(new Vector3(1, 1, 1) * scale + position * scale);
+                vertices.Add(new Vector3(1, 0, 1) * scale + position * scale);
                 for (int i = 0; i < 4; i++) normals.Add(Vector3.Forward);
                 break;
 
             case FaceDirection.Back:
-                vertices.Add(new Vector3(0, 0, 0) + position);
-                vertices.Add(new Vector3(1, 0, 0) + position);
-                vertices.Add(new Vector3(1, 1, 0) + position);
-                vertices.Add(new Vector3(0, 1, 0) + position);
+                vertices.Add(new Vector3(0, 0, 0) * scale + position * scale);
+                vertices.Add(new Vector3(1, 0, 0) * scale + position * scale);
+                vertices.Add(new Vector3(1, 1, 0) * scale + position * scale);
+                vertices.Add(new Vector3(0, 1, 0) * scale + position * scale);
                 for (int i = 0; i < 4; i++) normals.Add(Vector3.Back);
                 break;
 
             case FaceDirection.Right:
-                vertices.Add(new Vector3(1, 0, 0) + position);
-                vertices.Add(new Vector3(1, 0, 1) + position);
-                vertices.Add(new Vector3(1, 1, 1) + position);
-                vertices.Add(new Vector3(1, 1, 0) + position);
+                vertices.Add(new Vector3(1, 0, 0) * scale + position * scale);
+                vertices.Add(new Vector3(1, 0, 1) * scale + position * scale);
+                vertices.Add(new Vector3(1, 1, 1) * scale + position * scale);
+                vertices.Add(new Vector3(1, 1, 0) * scale + position * scale);
                 for (int i = 0; i < 4; i++) normals.Add(Vector3.Right);
                 break;
 
             case FaceDirection.Left:
-                vertices.Add(new Vector3(0, 0, 0) + position);
-                vertices.Add(new Vector3(0, 1, 0) + position);
-                vertices.Add(new Vector3(0, 1, 1) + position);
-                vertices.Add(new Vector3(0, 0, 1) + position);
+                vertices.Add(new Vector3(0, 0, 0) * scale + position * scale);
+                vertices.Add(new Vector3(0, 1, 0) * scale + position * scale);
+                vertices.Add(new Vector3(0, 1, 1) * scale + position * scale);
+                vertices.Add(new Vector3(0, 0, 1) * scale + position * scale);
                 for (int i = 0; i < 4; i++) normals.Add(Vector3.Left);
                 break;
         }

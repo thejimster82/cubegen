@@ -46,7 +46,7 @@ public partial class World : Node3D
         AddChild(_player);
 
         // Position player above the terrain at spawn point
-        Vector3 spawnPosition = new Vector3(0, 100, 0); // Start high and let gravity pull down
+        Vector3 spawnPosition = new Vector3(0, 120, 0); // Start high and let gravity pull down (higher for larger player)
         _player.Position = spawnPosition;
 
         GD.Print("Player spawned at position: " + spawnPosition);

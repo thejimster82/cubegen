@@ -1,0 +1,326 @@
+using Godot;
+using System;
+using System.Collections.Generic;
+
+public partial class ChunkMesh : Node3D
+{
+    private MeshInstance3D _meshInstance;
+    private StaticBody3D _staticBody;
+    private CollisionShape3D _collisionShape;
+
+    // Material for different voxel types
+    [Export] public Material DefaultMaterial { get; set; }
+
+    // Dictionary to store materials for different voxel types
+    private Dictionary<VoxelType, Material> _materials = new Dictionary<VoxelType, Material>();
+
+    public override void _Ready()
+    {
+        // Create mesh instance
+        _meshInstance = new MeshInstance3D();
+        AddChild(_meshInstance);
+
+        // Create static body for collision
+        _staticBody = new StaticBody3D();
+        AddChild(_staticBody);
+
+        // Create collision shape
+        _collisionShape = new CollisionShape3D();
+        _staticBody.AddChild(_collisionShape);
+
+        // Load materials (in a real implementation, you'd load these from resources)
+        // For now, we'll just use the default material
+        foreach (VoxelType type in Enum.GetValues(typeof(VoxelType)))
+        {
+            if (DefaultMaterial == null)
+            {
+                // Create a default material if none is provided
+                StandardMaterial3D material = new StandardMaterial3D();
+                material.VertexColorUseAsAlbedo = true;
+
+                // Set different colors for different voxel types
+                switch (type)
+                {
+                    case VoxelType.Grass:
+                        material.AlbedoColor = new Color(0.2f, 0.8f, 0.2f); // Green
+                        break;
+                    case VoxelType.Dirt:
+                        material.AlbedoColor = new Color(0.6f, 0.4f, 0.2f); // Brown
+                        break;
+                    case VoxelType.Stone:
+                        material.AlbedoColor = new Color(0.5f, 0.5f, 0.5f); // Gray
+                        break;
+                    case VoxelType.Sand:
+                        material.AlbedoColor = new Color(0.9f, 0.8f, 0.5f); // Sand color
+                        break;
+                    case VoxelType.Wood:
+                        material.AlbedoColor = new Color(0.6f, 0.3f, 0.1f); // Brown
+                        break;
+                    case VoxelType.Leaves:
+                        material.AlbedoColor = new Color(0.1f, 0.7f, 0.1f); // Dark green
+                        break;
+                    case VoxelType.Water:
+                        material.AlbedoColor = new Color(0.1f, 0.3f, 0.8f); // Blue
+                        material.Roughness = 0.1f;
+                        break;
+                    case VoxelType.Snow:
+                        material.AlbedoColor = new Color(0.9f, 0.9f, 0.95f); // White
+                        break;
+                    case VoxelType.Bedrock:
+                        material.AlbedoColor = new Color(0.2f, 0.2f, 0.2f); // Dark gray
+                        break;
+                    default:
+                        material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // White
+                        break;
+                }
+
+                _materials[type] = material;
+            }
+            else
+            {
+                _materials[type] = DefaultMaterial;
+            }
+        }
+
+        GD.Print("ChunkMesh initialized");
+    }
+
+    public void GenerateMesh(VoxelChunk chunk)
+    {
+        // Create arrays for mesh data
+        List<Vector3> vertices = new List<Vector3>();
+        List<Vector3> normals = new List<Vector3>();
+        List<Vector2> uvs = new List<Vector2>();
+        List<int> indices = new List<int>();
+
+        // Generate mesh data
+        for (int x = 0; x < chunk.Size; x++)
+        {
+            for (int y = 0; y < chunk.Height; y++)
+            {
+                for (int z = 0; z < chunk.Size; z++)
+                {
+                    VoxelType voxelType = chunk.GetVoxel(x, y, z);
+
+                    // Skip air voxels
+                    if (voxelType == VoxelType.Air)
+                        continue;
+
+                    // Check each face
+                    AddVoxelFaces(chunk, x, y, z, voxelType, vertices, normals, uvs, indices);
+                }
+            }
+        }
+
+        // Create mesh
+        ArrayMesh mesh = new ArrayMesh();
+
+        if (vertices.Count > 0)
+        {
+            // Create surface arrays
+            Godot.Collections.Array arrays = new Godot.Collections.Array();
+            arrays.Resize((int)Mesh.ArrayType.Max);
+            arrays[(int)Mesh.ArrayType.Vertex] = vertices.ToArray();
+            arrays[(int)Mesh.ArrayType.Normal] = normals.ToArray();
+            arrays[(int)Mesh.ArrayType.TexUV] = uvs.ToArray();
+            arrays[(int)Mesh.ArrayType.Index] = indices.ToArray();
+
+            // Create surface
+            mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+
+            // Set material - use the first non-air voxel type's material
+            VoxelType firstType = VoxelType.Grass; // Default
+            for (int x = 0; x < chunk.Size; x++)
+            {
+                for (int y = 0; y < chunk.Height; y++)
+                {
+                    for (int z = 0; z < chunk.Size; z++)
+                    {
+                        VoxelType type = chunk.GetVoxel(x, y, z);
+                        if (type != VoxelType.Air)
+                        {
+                            firstType = type;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            mesh.SurfaceSetMaterial(0, _materials[firstType]);
+
+            // Set mesh
+            _meshInstance.Mesh = mesh;
+
+            // Create collision shape
+            ConcavePolygonShape3D collisionShape = new ConcavePolygonShape3D();
+            List<Vector3> faces = new List<Vector3>();
+
+            // Convert indices to faces
+            for (int i = 0; i < indices.Count; i += 3)
+            {
+                faces.Add(vertices[indices[i]]);
+                faces.Add(vertices[indices[i + 1]]);
+                faces.Add(vertices[indices[i + 2]]);
+            }
+
+            collisionShape.Data = faces.ToArray();
+            _collisionShape.Shape = collisionShape;
+        }
+        else
+        {
+            // No voxels to render
+            _meshInstance.Mesh = null;
+            _collisionShape.Shape = null;
+        }
+    }
+
+    private void AddVoxelFaces(VoxelChunk chunk, int x, int y, int z, VoxelType voxelType,
+                              List<Vector3> vertices, List<Vector3> normals,
+                              List<Vector2> uvs, List<int> indices)
+    {
+        // Check each of the 6 faces
+
+        // Top face (Y+)
+        if (y == chunk.Height - 1 || !chunk.IsVoxelSolid(x, y + 1, z))
+        {
+            AddFace(FaceDirection.Top, new Vector3(x, y, z), voxelType, vertices, normals, uvs, indices);
+        }
+
+        // Bottom face (Y-)
+        if (y == 0 || !chunk.IsVoxelSolid(x, y - 1, z))
+        {
+            AddFace(FaceDirection.Bottom, new Vector3(x, y, z), voxelType, vertices, normals, uvs, indices);
+        }
+
+        // Front face (Z+)
+        if (z == chunk.Size - 1 || !chunk.IsVoxelSolid(x, y, z + 1))
+        {
+            AddFace(FaceDirection.Front, new Vector3(x, y, z), voxelType, vertices, normals, uvs, indices);
+        }
+
+        // Back face (Z-)
+        if (z == 0 || !chunk.IsVoxelSolid(x, y, z - 1))
+        {
+            AddFace(FaceDirection.Back, new Vector3(x, y, z), voxelType, vertices, normals, uvs, indices);
+        }
+
+        // Right face (X+)
+        if (x == chunk.Size - 1 || !chunk.IsVoxelSolid(x + 1, y, z))
+        {
+            AddFace(FaceDirection.Right, new Vector3(x, y, z), voxelType, vertices, normals, uvs, indices);
+        }
+
+        // Left face (X-)
+        if (x == 0 || !chunk.IsVoxelSolid(x - 1, y, z))
+        {
+            AddFace(FaceDirection.Left, new Vector3(x, y, z), voxelType, vertices, normals, uvs, indices);
+        }
+    }
+
+    private void AddFace(FaceDirection direction, Vector3 position, VoxelType voxelType,
+                        List<Vector3> vertices, List<Vector3> normals,
+                        List<Vector2> uvs, List<int> indices)
+    {
+        // Get current vertex count
+        int vertexCount = vertices.Count;
+
+        // Get UV coordinates based on voxel type
+        Vector2[] faceUVs = GetUVsForVoxelType(voxelType, direction);
+
+        // Add vertices, normals, and UVs based on face direction
+        switch (direction)
+        {
+            case FaceDirection.Top:
+                vertices.Add(new Vector3(0, 1, 0) + position);
+                vertices.Add(new Vector3(1, 1, 0) + position);
+                vertices.Add(new Vector3(1, 1, 1) + position);
+                vertices.Add(new Vector3(0, 1, 1) + position);
+                for (int i = 0; i < 4; i++) normals.Add(Vector3.Up);
+                break;
+
+            case FaceDirection.Bottom:
+                vertices.Add(new Vector3(0, 0, 0) + position);
+                vertices.Add(new Vector3(0, 0, 1) + position);
+                vertices.Add(new Vector3(1, 0, 1) + position);
+                vertices.Add(new Vector3(1, 0, 0) + position);
+                for (int i = 0; i < 4; i++) normals.Add(Vector3.Down);
+                break;
+
+            case FaceDirection.Front:
+                vertices.Add(new Vector3(0, 0, 1) + position);
+                vertices.Add(new Vector3(0, 1, 1) + position);
+                vertices.Add(new Vector3(1, 1, 1) + position);
+                vertices.Add(new Vector3(1, 0, 1) + position);
+                for (int i = 0; i < 4; i++) normals.Add(Vector3.Forward);
+                break;
+
+            case FaceDirection.Back:
+                vertices.Add(new Vector3(0, 0, 0) + position);
+                vertices.Add(new Vector3(1, 0, 0) + position);
+                vertices.Add(new Vector3(1, 1, 0) + position);
+                vertices.Add(new Vector3(0, 1, 0) + position);
+                for (int i = 0; i < 4; i++) normals.Add(Vector3.Back);
+                break;
+
+            case FaceDirection.Right:
+                vertices.Add(new Vector3(1, 0, 0) + position);
+                vertices.Add(new Vector3(1, 0, 1) + position);
+                vertices.Add(new Vector3(1, 1, 1) + position);
+                vertices.Add(new Vector3(1, 1, 0) + position);
+                for (int i = 0; i < 4; i++) normals.Add(Vector3.Right);
+                break;
+
+            case FaceDirection.Left:
+                vertices.Add(new Vector3(0, 0, 0) + position);
+                vertices.Add(new Vector3(0, 1, 0) + position);
+                vertices.Add(new Vector3(0, 1, 1) + position);
+                vertices.Add(new Vector3(0, 0, 1) + position);
+                for (int i = 0; i < 4; i++) normals.Add(Vector3.Left);
+                break;
+        }
+
+        // Add UVs
+        for (int i = 0; i < 4; i++)
+        {
+            uvs.Add(faceUVs[i]);
+        }
+
+        // Add indices (two triangles to form a quad)
+        indices.Add(vertexCount);
+        indices.Add(vertexCount + 1);
+        indices.Add(vertexCount + 2);
+
+        indices.Add(vertexCount);
+        indices.Add(vertexCount + 2);
+        indices.Add(vertexCount + 3);
+    }
+
+    private Vector2[] GetUVsForVoxelType(VoxelType type, FaceDirection direction)
+    {
+        // In a real implementation, you'd have a texture atlas and return UVs based on voxel type and face
+        // For now, we'll just return basic UVs
+        return new Vector2[]
+        {
+            new Vector2(0, 0),
+            new Vector2(0, 1),
+            new Vector2(1, 1),
+            new Vector2(1, 0)
+        };
+    }
+
+    public void UpdateMesh(VoxelChunk chunk)
+    {
+        // Regenerate mesh
+        GenerateMesh(chunk);
+    }
+
+    private enum FaceDirection
+    {
+        Top,
+        Bottom,
+        Front,
+        Back,
+        Right,
+        Left
+    }
+}

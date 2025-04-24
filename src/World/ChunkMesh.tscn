@@ -1,0 +1,11 @@
+[gd_scene load_steps=3 format=3 uid="uid://c8yvxw0vf4yd8"]
+
+[ext_resource type="Script" path="res://src/World/Chunks/ChunkMesh.cs" id="1_yvnqm"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_jkr2v"]
+vertex_color_use_as_albedo = true
+roughness = 0.7
+
+[node name="ChunkMesh" type="Node3D"]
+script = ExtResource("1_yvnqm")
+DefaultMaterial = SubResource("StandardMaterial3D_jkr2v")

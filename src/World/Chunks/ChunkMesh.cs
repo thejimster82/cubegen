@@ -28,70 +28,33 @@ public partial class ChunkMesh : Node3D
         _collisionShape = new CollisionShape3D();
         _staticBody.AddChild(_collisionShape);
 
-        // Load materials (in a real implementation, you'd load these from resources)
-        // For now, we'll just use the default material
+        // Initialize biome materials
+        BiomeMaterials.Initialize();
+
+        // Initialize default materials dictionary
         foreach (VoxelType type in Enum.GetValues(typeof(VoxelType)))
         {
-            if (DefaultMaterial == null)
+            if (type != VoxelType.Air)
             {
-                // Create a default material if none is provided
-                StandardMaterial3D material = new StandardMaterial3D();
-                material.VertexColorUseAsAlbedo = true;
-
-                // Set different colors for different voxel types
-                switch (type)
+                if (DefaultMaterial != null)
                 {
-                    case VoxelType.Grass:
-                        material.AlbedoColor = new Color(0.2f, 0.8f, 0.2f); // Green
-                        break;
-                    case VoxelType.Dirt:
-                        material.AlbedoColor = new Color(0.6f, 0.4f, 0.2f); // Brown
-                        break;
-                    case VoxelType.Stone:
-                        material.AlbedoColor = new Color(0.5f, 0.5f, 0.5f); // Gray
-                        break;
-                    case VoxelType.Sand:
-                        material.AlbedoColor = new Color(0.9f, 0.8f, 0.5f); // Sand color
-                        break;
-                    case VoxelType.Wood:
-                        material.AlbedoColor = new Color(0.6f, 0.3f, 0.1f); // Brown
-                        break;
-                    case VoxelType.Leaves:
-                        material.AlbedoColor = new Color(0.1f, 0.7f, 0.1f); // Dark green
-                        break;
-                    case VoxelType.Water:
-                        material.AlbedoColor = new Color(0.1f, 0.3f, 0.8f); // Blue
-                        material.Roughness = 0.1f;
-                        break;
-                    case VoxelType.Snow:
-                        material.AlbedoColor = new Color(0.9f, 0.9f, 0.95f); // White
-                        break;
-                    case VoxelType.Bedrock:
-                        material.AlbedoColor = new Color(0.2f, 0.2f, 0.2f); // Dark gray
-                        break;
-                    default:
-                        material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // White
-                        break;
+                    _materials[type] = DefaultMaterial;
                 }
-
-                _materials[type] = material;
-            }
-            else
-            {
-                _materials[type] = DefaultMaterial;
+                else
+                {
+                    // Use the Plains biome as default if no material is provided
+                    _materials[type] = BiomeMaterials.GetMaterial(BiomeType.Plains, type);
+                }
             }
         }
 
-        GD.Print("ChunkMesh initialized");
+        GD.Print("ChunkMesh initialized with biome materials");
     }
 
     public void GenerateMesh(VoxelChunk chunk)
     {
-        // Create arrays for mesh data
-        List<Vector3> vertices = new List<Vector3>();
-        List<Vector3> normals = new List<Vector3>();
-        List<Vector2> uvs = new List<Vector2>();
-        List<int> indices = new List<int>();
+        // Create a dictionary to group vertices by biome and voxel type
+        Dictionary<BiomeType, Dictionary<VoxelType, List<MeshData>>> meshDataByBiomeAndType = new Dictionary<BiomeType, Dictionary<VoxelType, List<MeshData>>>();
 
         // Generate mesh data
         for (int x = 0; x < chunk.Size; x++)
@@ -106,65 +69,143 @@ public partial class ChunkMesh : Node3D
                     if (voxelType == VoxelType.Air)
                         continue;
 
-                    // Check each face
-                    AddVoxelFaces(chunk, x, y, z, voxelType, vertices, normals, uvs, indices);
+                    // Get biome type for this position
+                    int worldX = chunk.Position.X * chunk.Size + x;
+                    int worldZ = chunk.Position.Y * chunk.Size + z;
+                    BiomeType biomeType = WorldGenerator.GetBiomeType(worldX, worldZ);
+
+                    // Initialize dictionaries if needed
+                    if (!meshDataByBiomeAndType.ContainsKey(biomeType))
+                    {
+                        meshDataByBiomeAndType[biomeType] = new Dictionary<VoxelType, List<MeshData>>();
+                    }
+
+                    if (!meshDataByBiomeAndType[biomeType].ContainsKey(voxelType))
+                    {
+                        meshDataByBiomeAndType[biomeType][voxelType] = new List<MeshData>();
+                    }
+
+                    // Create mesh data for this voxel
+                    MeshData meshData = new MeshData();
+
+                    // Check each face and add to mesh data
+                    AddVoxelFaces(chunk, x, y, z, voxelType, meshData.Vertices, meshData.Normals, meshData.UVs, meshData.Indices);
+
+                    // Add mesh data to the appropriate list if it has any vertices
+                    if (meshData.Vertices.Count > 0)
+                    {
+                        meshDataByBiomeAndType[biomeType][voxelType].Add(meshData);
+                    }
                 }
             }
         }
 
-        // Create mesh
+        // Create a new ArrayMesh
         ArrayMesh mesh = new ArrayMesh();
 
-        if (vertices.Count > 0)
+        // Create surfaces for each biome and voxel type
+        int surfaceIndex = 0;
+
+        // Variables for collision shape
+        List<Vector3> allVertices = new List<Vector3>();
+        List<int> allIndices = new List<int>();
+        int globalVertexOffset = 0;
+
+        foreach (var biomeEntry in meshDataByBiomeAndType)
         {
-            // Create surface arrays
-            Godot.Collections.Array arrays = new Godot.Collections.Array();
-            arrays.Resize((int)Mesh.ArrayType.Max);
-            arrays[(int)Mesh.ArrayType.Vertex] = vertices.ToArray();
-            arrays[(int)Mesh.ArrayType.Normal] = normals.ToArray();
-            arrays[(int)Mesh.ArrayType.TexUV] = uvs.ToArray();
-            arrays[(int)Mesh.ArrayType.Index] = indices.ToArray();
+            BiomeType biomeType = biomeEntry.Key;
 
-            // Create surface
-            mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
-
-            // Set material - use the first non-air voxel type's material
-            VoxelType firstType = VoxelType.Grass; // Default
-            for (int x = 0; x < chunk.Size; x++)
+            foreach (var typeEntry in biomeEntry.Value)
             {
-                for (int y = 0; y < chunk.Height; y++)
+                VoxelType voxelType = typeEntry.Key;
+                List<MeshData> meshDataList = typeEntry.Value;
+
+                if (meshDataList.Count == 0)
+                    continue;
+
+                // Combine all mesh data for this biome and voxel type
+                List<Vector3> vertices = new List<Vector3>();
+                List<Vector3> normals = new List<Vector3>();
+                List<Vector2> uvs = new List<Vector2>();
+                List<int> indices = new List<int>();
+
+                int vertexOffset = 0;
+                foreach (MeshData meshData in meshDataList)
                 {
-                    for (int z = 0; z < chunk.Size; z++)
+                    vertices.AddRange(meshData.Vertices);
+                    normals.AddRange(meshData.Normals);
+                    uvs.AddRange(meshData.UVs);
+
+                    // Adjust indices to account for vertex offset
+                    foreach (int index in meshData.Indices)
                     {
-                        VoxelType type = chunk.GetVoxel(x, y, z);
-                        if (type != VoxelType.Air)
-                        {
-                            firstType = type;
-                            break;
-                        }
+                        indices.Add(index + vertexOffset);
                     }
+
+                    vertexOffset += meshData.Vertices.Count;
                 }
+
+                // Create surface arrays
+                Godot.Collections.Array arrays = new Godot.Collections.Array();
+                arrays.Resize((int)Mesh.ArrayType.Max);
+                arrays[(int)Mesh.ArrayType.Vertex] = vertices.ToArray();
+                arrays[(int)Mesh.ArrayType.Normal] = normals.ToArray();
+                arrays[(int)Mesh.ArrayType.TexUV] = uvs.ToArray();
+                arrays[(int)Mesh.ArrayType.Index] = indices.ToArray();
+
+                // Create surface
+                mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+
+                // Set material based on biome and voxel type
+                Material material = BiomeMaterials.GetMaterial(biomeType, voxelType);
+                mesh.SurfaceSetMaterial(surfaceIndex, material);
+
+                // Add vertices and indices to collision data
+                allVertices.AddRange(vertices);
+
+                // Adjust indices for global vertex offset
+                foreach (int index in indices)
+                {
+                    allIndices.Add(index + globalVertexOffset);
+                }
+
+                globalVertexOffset += vertices.Count;
+                surfaceIndex++;
             }
+        }
 
-            mesh.SurfaceSetMaterial(0, _materials[firstType]);
+        // Set mesh
+        _meshInstance.Mesh = mesh;
 
-            // Set mesh
-            _meshInstance.Mesh = mesh;
-
-            // Create collision shape
+        // Create collision shape if we have vertices
+        if (allVertices.Count > 0)
+        {
             ConcavePolygonShape3D collisionShape = new ConcavePolygonShape3D();
             List<Vector3> faces = new List<Vector3>();
 
             // Convert indices to faces
-            for (int i = 0; i < indices.Count; i += 3)
+            for (int i = 0; i < allIndices.Count; i += 3)
             {
-                faces.Add(vertices[indices[i]]);
-                faces.Add(vertices[indices[i + 1]]);
-                faces.Add(vertices[indices[i + 2]]);
+                if (i + 2 < allIndices.Count &&
+                    allIndices[i] < allVertices.Count &&
+                    allIndices[i + 1] < allVertices.Count &&
+                    allIndices[i + 2] < allVertices.Count)
+                {
+                    faces.Add(allVertices[allIndices[i]]);
+                    faces.Add(allVertices[allIndices[i + 1]]);
+                    faces.Add(allVertices[allIndices[i + 2]]);
+                }
             }
 
-            collisionShape.Data = faces.ToArray();
-            _collisionShape.Shape = collisionShape;
+            if (faces.Count > 0)
+            {
+                collisionShape.Data = faces.ToArray();
+                _collisionShape.Shape = collisionShape;
+            }
+            else
+            {
+                _collisionShape.Shape = null;
+            }
         }
         else
         {
@@ -325,5 +366,13 @@ public partial class ChunkMesh : Node3D
         Back,
         Right,
         Left
+    }
+
+    private class MeshData
+    {
+        public List<Vector3> Vertices { get; set; } = new List<Vector3>();
+        public List<Vector3> Normals { get; set; } = new List<Vector3>();
+        public List<Vector2> UVs { get; set; } = new List<Vector2>();
+        public List<int> Indices { get; set; } = new List<int>();
     }
 }

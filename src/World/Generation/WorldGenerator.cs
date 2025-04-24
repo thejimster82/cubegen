@@ -45,6 +45,9 @@ public partial class WorldGenerator : Node3D
         _biomeNoise.Seed = Seed + 1000; // Different seed for biome variation
         _biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
         _biomeNoise.Frequency = 0.005f; // Larger scale for biomes
+
+        // Initialize static noise for use by other classes
+        InitializeStaticNoise(Seed);
     }
 
     private void GenerateInitialChunks()
@@ -84,7 +87,7 @@ public partial class WorldGenerator : Node3D
                 int worldZ = chunkPos.Y * ChunkSize + z;
 
                 // Get biome type based on noise
-                BiomeType biomeType = GetBiomeType(worldX, worldZ);
+                BiomeType biomeType = GetBiomeTypeForChunk(worldX, worldZ);
 
                 // Generate terrain height based on noise
                 int terrainHeight = GenerateTerrainHeight(worldX, worldZ, biomeType);
@@ -105,10 +108,44 @@ public partial class WorldGenerator : Node3D
         _chunkManager.AddChunk(chunk);
     }
 
-    private BiomeType GetBiomeType(int worldX, int worldZ)
+    // Static biome noise for use by other classes
+    private static FastNoiseLite _staticBiomeNoise;
+
+    // Initialize static noise
+    private static void InitializeStaticNoise(int seed)
+    {
+        if (_staticBiomeNoise == null)
+        {
+            _staticBiomeNoise = new FastNoiseLite();
+            _staticBiomeNoise.Seed = seed + 1000; // Different seed for biome variation
+            _staticBiomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+            _staticBiomeNoise.Frequency = 0.005f; // Larger scale for biomes
+        }
+    }
+
+    // Get biome type for a world position - instance method
+    private BiomeType GetBiomeTypeForChunk(int worldX, int worldZ)
     {
         float biomeValue = _biomeNoise.GetNoise2D(worldX, worldZ);
+        return GetBiomeTypeFromNoise(biomeValue);
+    }
 
+    // Get biome type for a world position - static method for use by other classes
+    public static BiomeType GetBiomeType(int worldX, int worldZ)
+    {
+        if (_staticBiomeNoise == null)
+        {
+            // Use a default seed if not initialized
+            InitializeStaticNoise(0);
+        }
+
+        float biomeValue = _staticBiomeNoise.GetNoise2D(worldX, worldZ);
+        return GetBiomeTypeFromNoise(biomeValue);
+    }
+
+    // Helper method to convert noise value to biome type
+    private static BiomeType GetBiomeTypeFromNoise(float biomeValue)
+    {
         // Simple biome distribution based on noise value
         if (biomeValue < -0.5f)
             return BiomeType.Desert;

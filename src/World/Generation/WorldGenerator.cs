@@ -53,7 +53,7 @@ public partial class WorldGenerator : Node3D
     private void GenerateInitialChunks()
     {
         // Generate chunks around origin
-        int viewDistance = 6; // Number of chunks to generate in each direction
+        int viewDistance = 12; // Number of chunks to generate in each direction
 
         GD.Print($"Generating initial chunks with view distance: {viewDistance}");
 

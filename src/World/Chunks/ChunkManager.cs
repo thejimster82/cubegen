@@ -17,7 +17,7 @@ public partial class ChunkManager : Node3D
     private Vector2I _lastPlayerChunk = new Vector2I(int.MaxValue, int.MaxValue);
 
     // Unloading distance should be greater than view distance to prevent frequent loading/unloading
-    [Export] public int UnloadDistance { get; set; } = 12;
+    [Export] public int UnloadDistance { get; set; } = 20;
 
     // Minimum time between chunk updates to prevent too frequent updates
     [Export] public float ChunkUpdateCooldown { get; set; } = 0.5f;

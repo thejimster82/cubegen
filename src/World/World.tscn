@@ -10,7 +10,7 @@
 [node name="World" type="Node3D"]
 script = ExtResource("1_yvnqm")
 PlayerScene = ExtResource("5_yvnqm")
-ViewDistance = 8
+ViewDistance = 16
 Seed = 12345
 
 [node name="WorldGenerator" type="Node3D" parent="."]

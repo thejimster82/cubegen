@@ -32,19 +32,19 @@ public partial class WorldGenerator : Node3D
 
     private void InitializeNoise()
     {
-        // Initialize terrain noise
+        // Initialize terrain noise with flatter settings
         _terrainNoise = new FastNoiseLite();
         _terrainNoise.Seed = Seed;
         _terrainNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
         _terrainNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-        _terrainNoise.Frequency = 0.01f;
-        _terrainNoise.FractalOctaves = 4;
+        _terrainNoise.Frequency = 0.005f; // Lower frequency for smoother, more gradual changes
+        _terrainNoise.FractalOctaves = 2; // Fewer octaves for less detail and flatter terrain
 
         // Initialize biome noise (different settings for variety)
         _biomeNoise = new FastNoiseLite();
         _biomeNoise.Seed = Seed + 1000; // Different seed for biome variation
         _biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-        _biomeNoise.Frequency = 0.005f; // Larger scale for biomes
+        _biomeNoise.Frequency = 0.003f; // Even larger scale for biomes (more gradual transitions)
 
         // Initialize static noise for use by other classes
         InitializeStaticNoise(Seed);
@@ -126,7 +126,7 @@ public partial class WorldGenerator : Node3D
             _staticBiomeNoise = new FastNoiseLite();
             _staticBiomeNoise.Seed = seed + 1000; // Different seed for biome variation
             _staticBiomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-            _staticBiomeNoise.Frequency = 0.005f; // Larger scale for biomes
+            _staticBiomeNoise.Frequency = 0.003f; // Even larger scale for biomes (more gradual transitions)
         }
     }
 
@@ -174,28 +174,39 @@ public partial class WorldGenerator : Node3D
         // Convert noise from [-1, 1] to [0, 1]
         heightNoise = (heightNoise + 1f) * 0.5f;
 
-        // Apply biome-specific height modifications
+        // Apply biome-specific height modifications - much flatter for all biomes
+        // Add a consistent base height to ensure terrain is at a predictable level
+        float baseHeight = 0.3f; // Consistent base height for all terrain
+
         switch (biomeType)
         {
             case BiomeType.Desert:
-                heightNoise = heightNoise * 0.3f + 0.2f; // Flatter, lower
+                heightNoise = heightNoise * 0.1f + baseHeight; // Very flat, low
                 break;
             case BiomeType.Plains:
-                heightNoise = heightNoise * 0.4f + 0.3f; // Relatively flat
+                heightNoise = heightNoise * 0.15f + baseHeight; // Very flat
                 break;
             case BiomeType.Forest:
-                heightNoise = heightNoise * 0.5f + 0.35f; // Moderate hills
+                heightNoise = heightNoise * 0.2f + baseHeight; // Slightly more varied but still flat
                 break;
             case BiomeType.Mountains:
-                heightNoise = heightNoise * 0.8f + 0.4f; // Tall, varied
+                heightNoise = heightNoise * 0.3f + baseHeight; // Less mountainous, more like hills
                 break;
             case BiomeType.Tundra:
-                heightNoise = heightNoise * 0.45f + 0.4f; // Moderate height, some hills
+                heightNoise = heightNoise * 0.15f + baseHeight; // Very flat
                 break;
         }
 
         // Convert to actual height value
-        return Mathf.FloorToInt(heightNoise * ChunkHeight);
+        int height = Mathf.FloorToInt(heightNoise * ChunkHeight);
+
+        // Debug output for the first chunk to help understand terrain height
+        if (worldX == 0 && worldZ == 0)
+        {
+            GD.Print($"Terrain height at origin: {height}");
+        }
+
+        return height;
     }
 
     private VoxelType DetermineVoxelType(int y, int terrainHeight, BiomeType biomeType)

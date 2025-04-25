@@ -1,11 +1,11 @@
-[gd_scene load_steps=6 format=3 uid="uid://c8yvxw0vf4yd8"]
+[gd_scene load_steps=7 format=3 uid="uid://c7yvxw0vf4yd9"]
 
-[ext_resource type="Script" path="res://src/World/World.cs" id="1_yvnqm"]
-[ext_resource type="Script" path="res://src/World/Generation/WorldGenerator.cs" id="2_yvnqm"]
-[ext_resource type="Script" path="res://src/World/Chunks/ChunkManager.cs" id="3_yvnqm"]
-[ext_resource type="PackedScene" path="res://src/World/ChunkMesh.tscn" id="4_yvnqm"]
-[ext_resource type="PackedScene" path="res://src/Player/Player.tscn" id="5_yvnqm"]
-[ext_resource type="Environment" path="res://src/World/Environment/WorldEnvironment.tres" id="6_yvnqm"]
+[ext_resource type="Script" uid="uid://bna5ynpu1elev" path="res://src/World/World.cs" id="1_yvnqm"]
+[ext_resource type="Script" uid="uid://cjlr7mfi4phey" path="res://src/World/Generation/WorldGenerator.cs" id="2_yvnqm"]
+[ext_resource type="Script" uid="uid://f86vp5v3wafj" path="res://src/World/Chunks/ChunkManager.cs" id="3_yvnqm"]
+[ext_resource type="PackedScene" uid="uid://dxnqpj5l2ykbw" path="res://src/World/ChunkMesh.tscn" id="4_yvnqm"]
+[ext_resource type="PackedScene" uid="uid://bqnvlj8jx8g7y" path="res://src/Player/Player.tscn" id="5_yvnqm"]
+[ext_resource type="Environment" uid="uid://b4e3ckxsxo8gq" path="res://src/World/Environment/WorldEnvironment.tres" id="6_yvnqm"]
 
 [node name="World" type="Node3D"]
 script = ExtResource("1_yvnqm")
@@ -17,9 +17,7 @@ Seed = 12345
 script = ExtResource("2_yvnqm")
 Seed = 12345
 WorldSize = Vector2i(32, 32)
-ChunkSize = 16
-ChunkHeight = 128
-VoxelScale = 1.5
+VoxelScale = 0.75
 
 [node name="ChunkManager" type="Node3D" parent="WorldGenerator"]
 script = ExtResource("3_yvnqm")

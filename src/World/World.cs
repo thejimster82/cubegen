@@ -3,73 +3,73 @@ using System;
 
 public partial class World : Node3D
 {
-    [Export] public PackedScene PlayerScene { get; set; }
-    [Export] public int ViewDistance { get; set; } = 5;
-    [Export] public int Seed { get; set; } = 0;
+	[Export] public PackedScene PlayerScene { get; set; }
+	[Export] public int ViewDistance { get; set; } = 5;
+	[Export] public int Seed { get; set; } = 0;
 
-    private WorldGenerator _worldGenerator;
-    private ChunkManager _chunkManager;
-    private Player _player;
-    private Timer _chunkUpdateTimer;
+	private WorldGenerator _worldGenerator;
+	private ChunkManager _chunkManager;
+	private Player _player;
+	private Timer _chunkUpdateTimer;
 
-    public override void _Ready()
-    {
-        _worldGenerator = GetNode<WorldGenerator>("WorldGenerator");
-        _chunkManager = GetNode<ChunkManager>("WorldGenerator/ChunkManager");
+	public override void _Ready()
+	{
+		_worldGenerator = GetNode<WorldGenerator>("WorldGenerator");
+		_chunkManager = GetNode<ChunkManager>("WorldGenerator/ChunkManager");
 
-        // Set seed
-        if (Seed == 0)
-        {
-            // Random seed if not specified
-            Random random = new Random();
-            Seed = random.Next();
-        }
-        _worldGenerator.Seed = Seed;
+		// Set seed
+		if (Seed == 0)
+		{
+			// Random seed if not specified
+			Random random = new Random();
+			Seed = random.Next();
+		}
+		_worldGenerator.Seed = Seed;
 
-        // Connect chunk requested signal
-        _chunkManager.ChunkRequested += OnChunkRequested;
+		// Connect chunk requested signal
+		_chunkManager.ChunkRequested += OnChunkRequested;
 
-        // Create player
-        SpawnPlayer();
+		// Create player
+		SpawnPlayer();
 
-        // Create timer for chunk updates
-        _chunkUpdateTimer = new Timer();
-        _chunkUpdateTimer.WaitTime = 0.2f; // Update chunks more frequently
-        _chunkUpdateTimer.Timeout += OnChunkUpdateTimerTimeout;
-        AddChild(_chunkUpdateTimer);
-        _chunkUpdateTimer.Start();
-    }
+		// Create timer for chunk updates
+		_chunkUpdateTimer = new Timer();
+		_chunkUpdateTimer.WaitTime = 0.2f; // Update chunks more frequently
+		_chunkUpdateTimer.Timeout += OnChunkUpdateTimerTimeout;
+		AddChild(_chunkUpdateTimer);
+		_chunkUpdateTimer.Start();
+	}
 
-    private void SpawnPlayer()
-    {
-        _player = PlayerScene.Instantiate<Player>();
-        AddChild(_player);
+	private void SpawnPlayer()
+	{
+		_player = PlayerScene.Instantiate<Player>();
+		AddChild(_player);
 
-        // Position player above the terrain at spawn point
-        Vector3 spawnPosition = new Vector3(0, 120, 0); // Start high and let gravity pull down (higher for larger player)
-        _player.Position = spawnPosition;
+		// Position player above the terrain at spawn point
+		Vector3 spawnPosition = new Vector3(0, 100, 0); // Further increased height for larger player
+		_player.Position = spawnPosition;
 
-        GD.Print("Player spawned at position: " + spawnPosition);
-    }
+		GD.Print("Player spawned at position: " + spawnPosition);
+	}
 
-    private void OnChunkRequested(Vector2I chunkPosition)
-    {
-        // Generate the requested chunk
-        _worldGenerator.GenerateChunk(chunkPosition);
+	private void OnChunkRequested(Vector2I chunkPosition)
+	{
+		// Generate the requested chunk
+		_worldGenerator.GenerateChunk(chunkPosition);
 
-        // Debug output to confirm chunk generation
-        GD.Print($"Generated chunk at position: {chunkPosition}");
-    }
+		// Debug output to confirm chunk generation
+		GD.Print($"Generated chunk at position: {chunkPosition}");
+	}
 
-    private void OnChunkUpdateTimerTimeout()
-    {
-        if (_player != null && _chunkManager != null)
-        {
-            // Update chunks around player
-            _chunkManager.UpdateChunksAroundPlayer(_player.Position, ViewDistance);
+	private void OnChunkUpdateTimerTimeout()
+	{
+		if (_player != null && _chunkManager != null)
+		{
+			// Update chunks around player
+			_chunkManager.UpdateChunksAroundPlayer(_player.Position, ViewDistance);
 
-            // Uncomment for debugging chunk loading
-            // GD.Print($"Player position: {_player.Position}, Active chunks: {_chunkManager.ActiveChunkCount}");
-        }
-    }
+			// Uncomment for debugging chunk loading
+			// GD.Print($"Player position: {_player.Position}, Active chunks: {_chunkManager.ActiveChunkCount}");
+		}
+	}
 }

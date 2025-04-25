@@ -3,14 +3,15 @@ using System;
 
 public partial class Player : CharacterBody3D
 {
-    [Export] public float Speed { get; set; } = 15.0f; // Increased speed for larger player
-    [Export] public float JumpVelocity { get; set; } = 12.0f; // Increased jump for larger player
+    [Export] public float Speed { get; set; } = 5.4f; // Increased by 35% from 4.0
+    [Export] public float JumpVelocity { get; set; } = 7.0f; // Adjusted for half-height player
     [Export] public float MouseSensitivity { get; set; } = 0.002f;
     [Export] public float CameraRotationSpeed { get; set; } = 3.0f;
-    [Export] public float CameraDistance { get; set; } = 8.0f;
-    [Export] public float CameraHeight { get; set; } = 4.0f;
+    [Export] public float CameraDistance { get; set; } = 3.0f; // Adjusted for half-height player
+    [Export] public float CameraHeight { get; set; } = 0.75f; // Adjusted for half-height player
     [Export] public float Friction { get; set; } = 0.1f; // Ground friction
     [Export] public float Acceleration { get; set; } = 0.25f; // Movement acceleration
+    [Export] public float MaxStepHeight { get; set; } = 0.625f; // Adjusted for half-height player
 
     private Node3D _head;
     private Node3D _cameraMount;
@@ -30,10 +31,19 @@ public partial class Player : CharacterBody3D
         // Capture mouse
         Input.MouseMode = Input.MouseModeEnum.Captured;
 
-        // Set up physics properties
+        // Set up physics properties for better movement
         FloorStopOnSlope = true;
-        FloorMaxAngle = 0.8f; // About 45 degrees
-        FloorSnapLength = 0.5f;
+        FloorMaxAngle = 1.0f; // About 60 degrees - even steeper angle for better climbing
+        FloorSnapLength = 1.0f; // Adjusted snap length for new player scale
+
+        // Set up step climbing properties
+        UpDirection = Vector3.Up;
+        FloorConstantSpeed = true; // Maintain constant speed on slopes
+        FloorBlockOnWall = false; // Allow sliding along walls
+
+        // Additional physics properties
+        WallMinSlideAngle = 0.1f; // Allow sliding on very slight walls
+        MaxSlides = 10; // Increase maximum slides for better movement around obstacles
     }
 
     public override void _Input(InputEvent @event)
@@ -65,8 +75,8 @@ public partial class Player : CharacterBody3D
     private void UpdateCameraPosition()
     {
         // Calculate camera position based on rotation and distance
-        float height = CameraHeight + _cameraRotation * 4.0f; // Adjust height based on rotation
-        float distance = CameraDistance - _cameraRotation * 2.0f; // Adjust distance based on rotation
+        float height = CameraHeight + _cameraRotation * 2.0f; // Adjust height based on rotation (reduced multiplier)
+        float distance = CameraDistance - _cameraRotation * 1.0f; // Adjust distance based on rotation (reduced multiplier)
 
         // Set camera transform - position only, keep the rotation from camera mount
         _camera.Position = new Vector3(0, height, distance);
@@ -86,6 +96,9 @@ public partial class Player : CharacterBody3D
         // Handle jump
         if (Input.IsActionJustPressed("ui_accept") && IsOnFloor())
             velocity.Y = JumpVelocity;
+
+        // Store the original Y velocity for stair stepping
+        float originalY = velocity.Y;
 
         // Get movement input
         Vector2 inputDir = Input.GetVector("ui_left", "ui_right", "ui_up", "ui_down");
@@ -142,5 +155,89 @@ public partial class Player : CharacterBody3D
 
         Velocity = velocity;
         MoveAndSlide();
+
+        // Enhanced stair stepping implementation
+        if (IsOnFloor() && inputDir.Length() > 0.1f)
+        {
+            // Get the horizontal velocity (movement direction)
+            Vector3 horizontalVelocity = new Vector3(Velocity.X, 0, Velocity.Z);
+
+            if (horizontalVelocity.Length() > 0.1f)
+            {
+                // Normalize and scale to check ahead (slightly longer distance)
+                Vector3 stepCheckDirection = horizontalVelocity.Normalized() * 0.25f; // Reduced check distance for half-height player
+
+                // Store current position for potential rollback
+                Vector3 originalPosition = Position;
+
+                // First, check if there's an obstacle in front of us
+                PhysicsRayQueryParameters3D query = PhysicsRayQueryParameters3D.Create(
+                    Position + new Vector3(0, 0.05f, 0), // Start slightly above the floor (reduced for half-height player)
+                    Position + new Vector3(0, 0.05f, 0) + stepCheckDirection, // Check in movement direction
+                    1, // Collision mask (adjust as needed)
+                    new Godot.Collections.Array<Godot.Rid>() // Exclude nothing
+                );
+
+                // Cast the ray
+                var result = GetWorld3D().DirectSpaceState.IntersectRay(query);
+
+                // If we hit something, it might be a step
+                if (result.Count > 0)
+                {
+                    // Get the collision point
+                    Vector3 collisionPoint = (Vector3)result["position"];
+
+                    // Calculate how far we need to check above the collision
+                    float checkHeight = MaxStepHeight + 0.1f; // Add a small buffer (reduced for half-height player)
+
+                    // Check if there's space above the obstacle (for the player's height)
+                    for (float h = 0.125f; h <= checkHeight; h += 0.125f) // Smaller step increments for half-height player
+                    {
+                        // Cast a ray from above the obstacle
+                        query = PhysicsRayQueryParameters3D.Create(
+                            new Vector3(collisionPoint.X, Position.Y + h, collisionPoint.Z), // Start above the collision
+                            new Vector3(collisionPoint.X, Position.Y + h, collisionPoint.Z) + stepCheckDirection * 0.25f, // Reduced check distance
+                            1, // Collision mask
+                            new Godot.Collections.Array<Godot.Rid>() // Exclude nothing
+                        );
+
+                        var upperResult = GetWorld3D().DirectSpaceState.IntersectRay(query);
+
+                        // If there's nothing blocking at this height, we can try to step up
+                        if (upperResult.Count == 0)
+                        {
+                            // Try to move the player up to this height
+                            Position = new Vector3(Position.X, Position.Y + h - 0.025f, Position.Z); // Reduced offset for half-height player
+
+                            // Apply a small forward impulse to help get over the step
+                            velocity = horizontalVelocity.Normalized() * Speed * 1.1f; // Reduced impulse for half-height player
+                            velocity.Y = 0; // Don't apply gravity during the step
+
+                            Velocity = velocity;
+                            MoveAndSlide();
+
+                            // Check if we successfully moved forward
+                            Vector3 newHorizontalPos = new Vector3(Position.X, 0, Position.Z);
+                            Vector3 oldHorizontalPos = new Vector3(originalPosition.X, 0, originalPosition.Z);
+
+                            if ((newHorizontalPos - oldHorizontalPos).Length() < 0.1f)
+                            {
+                                // We didn't move forward enough, try a higher step
+                                continue;
+                            }
+
+                            // We successfully stepped up
+                            GD.Print("Successfully stepped up by " + h + " units");
+                            return;
+                        }
+                    }
+
+                    // If we get here, we couldn't step up, so restore original position
+                    Position = originalPosition;
+                    velocity.Y = originalY; // Restore original Y velocity
+                    Velocity = velocity;
+                }
+            }
+        }
     }
 }

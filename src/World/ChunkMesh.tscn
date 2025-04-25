@@ -1,4 +1,4 @@
-[gd_scene load_steps=3 format=3 uid="uid://c8yvxw0vf4yd8"]
+[gd_scene load_steps=3 format=3 uid="uid://dxnqpj5l2ykbw"]
 
 [ext_resource type="Script" path="res://src/World/Chunks/ChunkMesh.cs" id="1_yvnqm"]
 

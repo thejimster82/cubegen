@@ -7,7 +7,7 @@ public partial class WorldGenerator : Node3D
     [Export] public Vector2I WorldSize { get; set; } = new Vector2I(16, 16); // Size in chunks
     [Export] public int ChunkSize { get; set; } = 16; // Size of each chunk in voxels
     [Export] public int ChunkHeight { get; set; } = 128; // Maximum height of the world
-    [Export] public float VoxelScale { get; set; } = 1.0f; // Scale of each voxel
+    [Export] public float VoxelScale { get; set; } = 0.5f; // Scale of each voxel (0.5 = double resolution)
 
     private FastNoiseLite _terrainNoise;
     private FastNoiseLite _biomeNoise;
@@ -37,14 +37,14 @@ public partial class WorldGenerator : Node3D
         _terrainNoise.Seed = Seed;
         _terrainNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
         _terrainNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-        _terrainNoise.Frequency = 0.005f; // Lower frequency for smoother, more gradual changes
+        _terrainNoise.Frequency = 0.01f; // Doubled frequency for higher resolution (was 0.005f)
         _terrainNoise.FractalOctaves = 2; // Fewer octaves for less detail and flatter terrain
 
         // Initialize biome noise (different settings for variety)
         _biomeNoise = new FastNoiseLite();
         _biomeNoise.Seed = Seed + 1000; // Different seed for biome variation
         _biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-        _biomeNoise.Frequency = 0.003f; // Even larger scale for biomes (more gradual transitions)
+        _biomeNoise.Frequency = 0.006f; // Doubled frequency for higher resolution (was 0.003f)
 
         // Initialize static noise for use by other classes
         InitializeStaticNoise(Seed);
@@ -126,7 +126,7 @@ public partial class WorldGenerator : Node3D
             _staticBiomeNoise = new FastNoiseLite();
             _staticBiomeNoise.Seed = seed + 1000; // Different seed for biome variation
             _staticBiomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-            _staticBiomeNoise.Frequency = 0.003f; // Even larger scale for biomes (more gradual transitions)
+            _staticBiomeNoise.Frequency = 0.006f; // Doubled frequency for higher resolution (was 0.003f)
         }
     }
 
@@ -290,10 +290,10 @@ public partial class WorldGenerator : Node3D
 
     private static void GenerateDetailedTree(VoxelChunk chunk, int x, int z, int surfaceHeight, Random random)
     {
-        // Tree parameters
-        int trunkHeight = random.Next(6, 10); // Taller trunks
-        int leafRadius = random.Next(2, 4);   // Radius of leaf canopy
-        int leafHeight = random.Next(4, 6);   // Height of leaf canopy
+        // Tree parameters - doubled for higher resolution
+        int trunkHeight = random.Next(12, 20); // Doubled height for higher resolution (was 6-10)
+        int leafRadius = random.Next(4, 8);    // Doubled radius for higher resolution (was 2-4)
+        int leafHeight = random.Next(8, 12);   // Doubled height for higher resolution (was 4-6)
 
         // Generate trunk with more detail
         // Make the trunk thicker at the base (2x2 for first few blocks)

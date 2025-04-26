@@ -3,15 +3,15 @@ using System;
 
 public partial class Player : CharacterBody3D
 {
-    [Export] public float Speed { get; set; } = 5.4f; // Increased by 35% from 4.0
-    [Export] public float JumpVelocity { get; set; } = 7.0f; // Adjusted for half-height player
+    [Export] public float Speed { get; set; } = 2.7f; // Halved for higher resolution voxels (was 5.4f)
+    [Export] public float JumpVelocity { get; set; } = 3.5f; // Halved for higher resolution voxels (was 7.0f)
     [Export] public float MouseSensitivity { get; set; } = 0.002f;
     [Export] public float CameraRotationSpeed { get; set; } = 3.0f;
-    [Export] public float CameraDistance { get; set; } = 3.0f; // Adjusted for half-height player
-    [Export] public float CameraHeight { get; set; } = 0.75f; // Adjusted for half-height player
+    [Export] public float CameraDistance { get; set; } = 1.5f; // Halved for higher resolution voxels (was 3.0f)
+    [Export] public float CameraHeight { get; set; } = 0.375f; // Halved for higher resolution voxels (was 0.75f)
     [Export] public float Friction { get; set; } = 0.1f; // Ground friction
     [Export] public float Acceleration { get; set; } = 0.25f; // Movement acceleration
-    [Export] public float MaxStepHeight { get; set; } = 0.625f; // Adjusted for half-height player
+    [Export] public float MaxStepHeight { get; set; } = 0.3125f; // Halved for higher resolution voxels (was 0.625f)
 
     private Node3D _head;
     private Node3D _cameraMount;
@@ -34,7 +34,7 @@ public partial class Player : CharacterBody3D
         // Set up physics properties for better movement
         FloorStopOnSlope = true;
         FloorMaxAngle = 1.0f; // About 60 degrees - even steeper angle for better climbing
-        FloorSnapLength = 1.0f; // Adjusted snap length for new player scale
+        FloorSnapLength = 0.5f; // Halved for higher resolution voxels (was 1.0f)
 
         // Set up step climbing properties
         UpDirection = Vector3.Up;
@@ -165,15 +165,15 @@ public partial class Player : CharacterBody3D
             if (horizontalVelocity.Length() > 0.1f)
             {
                 // Normalize and scale to check ahead (slightly longer distance)
-                Vector3 stepCheckDirection = horizontalVelocity.Normalized() * 0.25f; // Reduced check distance for half-height player
+                Vector3 stepCheckDirection = horizontalVelocity.Normalized() * 0.125f; // Halved for higher resolution voxels (was 0.25f)
 
                 // Store current position for potential rollback
                 Vector3 originalPosition = Position;
 
                 // First, check if there's an obstacle in front of us
                 PhysicsRayQueryParameters3D query = PhysicsRayQueryParameters3D.Create(
-                    Position + new Vector3(0, 0.05f, 0), // Start slightly above the floor (reduced for half-height player)
-                    Position + new Vector3(0, 0.05f, 0) + stepCheckDirection, // Check in movement direction
+                    Position + new Vector3(0, 0.025f, 0), // Halved for higher resolution voxels (was 0.05f)
+                    Position + new Vector3(0, 0.025f, 0) + stepCheckDirection, // Check in movement direction
                     1, // Collision mask (adjust as needed)
                     new Godot.Collections.Array<Godot.Rid>() // Exclude nothing
                 );
@@ -188,15 +188,15 @@ public partial class Player : CharacterBody3D
                     Vector3 collisionPoint = (Vector3)result["position"];
 
                     // Calculate how far we need to check above the collision
-                    float checkHeight = MaxStepHeight + 0.1f; // Add a small buffer (reduced for half-height player)
+                    float checkHeight = MaxStepHeight + 0.05f; // Halved for higher resolution voxels (was 0.1f)
 
                     // Check if there's space above the obstacle (for the player's height)
-                    for (float h = 0.125f; h <= checkHeight; h += 0.125f) // Smaller step increments for half-height player
+                    for (float h = 0.0625f; h <= checkHeight; h += 0.0625f) // Halved for higher resolution voxels (was 0.125f)
                     {
                         // Cast a ray from above the obstacle
                         query = PhysicsRayQueryParameters3D.Create(
                             new Vector3(collisionPoint.X, Position.Y + h, collisionPoint.Z), // Start above the collision
-                            new Vector3(collisionPoint.X, Position.Y + h, collisionPoint.Z) + stepCheckDirection * 0.25f, // Reduced check distance
+                            new Vector3(collisionPoint.X, Position.Y + h, collisionPoint.Z) + stepCheckDirection * 0.125f, // Halved for higher resolution voxels (was 0.25f)
                             1, // Collision mask
                             new Godot.Collections.Array<Godot.Rid>() // Exclude nothing
                         );
@@ -207,10 +207,10 @@ public partial class Player : CharacterBody3D
                         if (upperResult.Count == 0)
                         {
                             // Try to move the player up to this height
-                            Position = new Vector3(Position.X, Position.Y + h - 0.025f, Position.Z); // Reduced offset for half-height player
+                            Position = new Vector3(Position.X, Position.Y + h - 0.0125f, Position.Z); // Halved for higher resolution voxels (was 0.025f)
 
                             // Apply a small forward impulse to help get over the step
-                            velocity = horizontalVelocity.Normalized() * Speed * 1.1f; // Reduced impulse for half-height player
+                            velocity = horizontalVelocity.Normalized() * Speed * 1.1f; // Keep the same impulse multiplier
                             velocity.Y = 0; // Don't apply gravity during the step
 
                             Velocity = velocity;

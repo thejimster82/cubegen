@@ -1,16 +1,32 @@
 using Godot;
 using System;
+using System.Collections.Generic;
 
 public partial class World : Node3D
 {
 	[Export] public PackedScene PlayerScene { get; set; }
 	[Export] public int ViewDistance { get; set; } = 5;
 	[Export] public int Seed { get; set; } = 0;
+	[Export] public float MapHeight { get; set; } = 500.0f;
+	[Export] public float MapMoveSpeed { get; set; } = 200.0f; // Increased from 50.0f for faster panning
+	[Export] public float MapMoveSpeedFast { get; set; } = 500.0f; // Even faster speed when holding Shift
+	[Export] public int MapSize { get; set; } = 200;
+	[Export] public float MapTileSize { get; set; } = 5.0f;
+	[Export] public float ZoomSpeed { get; set; } = 20.0f; // Base zoom speed
+	[Export] public float ZoomSpeedFast { get; set; } = 50.0f; // Fast zoom speed when holding Shift
+	[Export] public float MinZoom { get; set; } = 20.0f; // Minimum zoom level (more zoomed in)
+	[Export] public float MaxZoom { get; set; } = 1000.0f; // Maximum zoom level (more zoomed out)
 
 	private WorldGenerator _worldGenerator;
 	private ChunkManager _chunkManager;
 	private Player _player;
 	private Timer _chunkUpdateTimer;
+	private Camera3D _mapCamera;
+	private Node3D _mapVisualizer;
+	private Control _mapUI;
+	private Label _biomeLabel;
+	private Label _controlsLabel;
+	private bool _isMapMode = false;
 
 	public override void _Ready()
 	{
@@ -38,6 +54,460 @@ public partial class World : Node3D
 		_chunkUpdateTimer.Timeout += OnChunkUpdateTimerTimeout;
 		AddChild(_chunkUpdateTimer);
 		_chunkUpdateTimer.Start();
+	}
+
+	public override void _Input(InputEvent @event)
+	{
+		// Toggle map mode when M is pressed
+		if (@event is InputEventKey keyEvent && keyEvent.Pressed && Input.IsActionJustPressed("toggle_map"))
+		{
+			ToggleMapMode();
+		}
+
+		// Handle map input when in map mode
+		if (_isMapMode)
+		{
+			// Handle zooming with mouse wheel
+			if (@event is InputEventMouseButton mouseEvent && _mapCamera != null)
+			{
+				// Determine zoom speed based on whether Shift is held
+				float currentZoomSpeed = Input.IsKeyPressed(Key.Shift) ? ZoomSpeedFast : ZoomSpeed;
+
+				// Get current distance from camera to target
+				Vector3 lookTarget = new Vector3(_mapCamera.Position.X, 0, _mapCamera.Position.Z);
+				float currentDistance = _mapCamera.Position.DistanceTo(lookTarget);
+
+				if (mouseEvent.ButtonIndex == MouseButton.WheelUp)
+				{
+					// Zoom in - move camera closer to target
+					float zoomFactor = 0.9f; // Zoom in by 10%
+
+					// Calculate new position (move closer to target)
+					Vector3 direction = (_mapCamera.Position - lookTarget).Normalized();
+					float newDistance = Mathf.Max(currentDistance * zoomFactor, MinZoom);
+					Vector3 newPosition = lookTarget + direction * newDistance;
+
+					// Maintain height ratio
+					float heightRatio = _mapCamera.Position.Y / currentDistance;
+					newPosition.Y = lookTarget.Y + newDistance * heightRatio;
+
+					// Update camera position
+					_mapCamera.Position = newPosition;
+					_mapCamera.LookAt(lookTarget, Vector3.Up);
+				}
+				else if (mouseEvent.ButtonIndex == MouseButton.WheelDown)
+				{
+					// Zoom out - move camera away from target
+					float zoomFactor = 1.1f; // Zoom out by 10%
+
+					// Calculate new position (move away from target)
+					Vector3 direction = (_mapCamera.Position - lookTarget).Normalized();
+					float newDistance = Mathf.Min(currentDistance * zoomFactor, MaxZoom);
+					Vector3 newPosition = lookTarget + direction * newDistance;
+
+					// Maintain height ratio
+					float heightRatio = _mapCamera.Position.Y / currentDistance;
+					newPosition.Y = lookTarget.Y + newDistance * heightRatio;
+
+					// Update camera position
+					_mapCamera.Position = newPosition;
+					_mapCamera.LookAt(lookTarget, Vector3.Up);
+				}
+
+				// Update the controls label to show current distance
+				if (_controlsLabel != null)
+				{
+					_controlsLabel.Text = $"WASD: Move | Shift: Fast Move | Mouse Wheel: Zoom | M: Exit Map | Distance: {currentDistance:F0}";
+				}
+			}
+		}
+	}
+
+	public override void _Process(double delta)
+	{
+		// Handle map movement when in map mode
+		if (_isMapMode && _mapCamera != null)
+		{
+			// Handle movement
+			Vector3 moveDirection = Vector3.Zero;
+
+			// Get camera's forward and right vectors for movement relative to camera view
+			Vector3 forward = -_mapCamera.GlobalTransform.Basis.Z;
+			forward.Y = 0; // Keep movement on the XZ plane
+			forward = forward.Normalized();
+
+			Vector3 right = _mapCamera.GlobalTransform.Basis.X;
+			right.Y = 0; // Keep movement on the XZ plane
+			right = right.Normalized();
+
+			// Calculate movement direction based on input
+			if (Input.IsActionPressed("ui_up"))
+				moveDirection += forward;
+			if (Input.IsActionPressed("ui_down"))
+				moveDirection -= forward;
+			if (Input.IsActionPressed("ui_left"))
+				moveDirection -= right;
+			if (Input.IsActionPressed("ui_right"))
+				moveDirection += right;
+
+			if (moveDirection != Vector3.Zero)
+			{
+				moveDirection = moveDirection.Normalized();
+
+				// Use faster speed when Shift is held
+				float currentSpeed = Input.IsKeyPressed(Key.Shift) ? MapMoveSpeedFast : MapMoveSpeed;
+
+				// For perspective camera, we don't need to adjust speed based on zoom
+				// Instead, move at a consistent speed
+
+				// Move the camera
+				Vector3 newPosition = _mapCamera.Position + moveDirection * currentSpeed * (float)delta;
+
+				// Update camera position and keep it looking at the center point
+				_mapCamera.Position = newPosition;
+
+				// Calculate the point to look at (ground point below camera)
+				Vector3 lookTarget = new Vector3(newPosition.X, 0, newPosition.Z);
+				_mapCamera.LookAt(lookTarget, Vector3.Up);
+			}
+
+			// Update biome label
+			if (_biomeLabel != null)
+			{
+				// Use the point the camera is looking at for biome determination
+				Vector3 lookPoint = -_mapCamera.GlobalTransform.Basis.Z * 100 + _mapCamera.Position;
+				int worldX = (int)lookPoint.X;
+				int worldZ = (int)lookPoint.Z;
+				BiomeType biomeType = WorldGenerator.GetBiomeType(worldX, worldZ);
+				_biomeLabel.Text = $"Biome: {biomeType} | Position: ({worldX}, {worldZ})";
+			}
+		}
+	}
+
+	private void ToggleMapMode()
+	{
+		_isMapMode = !_isMapMode;
+
+		if (_isMapMode)
+		{
+			// Switch to map mode
+			EnableMapMode();
+		}
+		else
+		{
+			// Switch back to normal mode
+			DisableMapMode();
+		}
+	}
+
+	private void EnableMapMode()
+	{
+		// Create map camera if it doesn't exist
+		if (_mapCamera == null)
+		{
+			CreateMapCamera();
+		}
+
+		// Create map visualizer if it doesn't exist
+		if (_mapVisualizer == null)
+		{
+			CreateMapVisualizer();
+		}
+
+		// Create map UI if it doesn't exist
+		if (_mapUI == null)
+		{
+			CreateMapUI();
+		}
+
+		// Show map components
+		if (_mapCamera != null)
+		{
+			_mapCamera.Visible = true;
+			_mapCamera.Current = true;
+		}
+
+		if (_mapVisualizer != null)
+		{
+			_mapVisualizer.Visible = true;
+		}
+
+		if (_mapUI != null)
+		{
+			_mapUI.Visible = true;
+		}
+
+		// Disable player input
+		if (_player != null)
+		{
+			_player.SetProcessInput(false);
+			_player.SetPhysicsProcess(false);
+		}
+	}
+
+	private void DisableMapMode()
+	{
+		// Hide map components
+		if (_mapCamera != null)
+		{
+			_mapCamera.Visible = false;
+		}
+
+		if (_mapVisualizer != null)
+		{
+			_mapVisualizer.Visible = false;
+		}
+
+		if (_mapUI != null)
+		{
+			_mapUI.Visible = false;
+		}
+
+		// Re-enable player camera
+		if (_player != null)
+		{
+			Camera3D playerCamera = _player.GetNode<Camera3D>("CameraMount/Camera3D");
+			if (playerCamera != null)
+			{
+				playerCamera.Current = true;
+			}
+
+			// Re-enable player input
+			_player.SetProcessInput(true);
+			_player.SetPhysicsProcess(true);
+		}
+	}
+
+	private void CreateMapCamera()
+	{
+		// Create a new camera for the map view
+		_mapCamera = new Camera3D();
+		_mapCamera.Name = "MapCamera";
+
+		// Set up camera properties for angled view
+		// Position the camera at an angle to see terrain better
+		_mapCamera.Position = new Vector3(-MapHeight * 0.8f, MapHeight * 0.7f, MapHeight * 0.8f);
+
+		// Look at the center of the map
+		_mapCamera.LookAt(Vector3.Zero, Vector3.Up);
+
+		// Use perspective projection for better 3D view
+		_mapCamera.Projection = Camera3D.ProjectionType.Perspective;
+		_mapCamera.Fov = 40.0f; // Narrower FOV for less distortion
+		_mapCamera.Far = 2000.0f; // Increased far clipping plane for better visibility
+		_mapCamera.Current = false;
+		_mapCamera.Visible = false;
+
+		// Add to scene
+		AddChild(_mapCamera);
+	}
+
+	private void CreateMapVisualizer()
+	{
+		// Create a new node for the map visualizer
+		_mapVisualizer = new Node3D();
+		_mapVisualizer.Name = "MapVisualizer";
+		_mapVisualizer.Visible = false;
+
+		// Create a mesh for the map
+		CreateMapMesh();
+
+		// Add a directional light for better terrain visualization
+		DirectionalLight3D light = new DirectionalLight3D();
+		light.LightEnergy = 1.5f;
+		light.LightColor = new Color(1.0f, 0.98f, 0.9f); // Slightly warm light
+		light.ShadowEnabled = true;
+
+		// Position the light to cast shadows that highlight terrain features
+		light.RotationDegrees = new Vector3(50, -30, 0);
+
+		_mapVisualizer.AddChild(light);
+
+		// Add to scene
+		AddChild(_mapVisualizer);
+	}
+
+	private void CreateMapMesh()
+	{
+		// Create a new ArrayMesh
+		ArrayMesh mesh = new ArrayMesh();
+
+		// Create surface arrays
+		Godot.Collections.Array arrays = new Godot.Collections.Array();
+		arrays.Resize((int)Mesh.ArrayType.Max);
+
+		// Create vertices, colors, indices, and normals
+		List<Vector3> vertices = new List<Vector3>();
+		List<Color> colors = new List<Color>();
+		List<int> indices = new List<int>();
+		List<Vector3> normals = new List<Vector3>();
+
+		// Initialize biome colors
+		Dictionary<BiomeType, Color> biomeColors = new Dictionary<BiomeType, Color>
+		{
+			{ BiomeType.Plains, new Color(0.4f, 0.83f, 0.3f) },
+			{ BiomeType.Forest, new Color(0.2f, 0.6f, 0.2f) },
+			{ BiomeType.Desert, new Color(0.95f, 0.85f, 0.5f) },
+			{ BiomeType.Mountains, new Color(0.5f, 0.5f, 0.6f) },
+			{ BiomeType.Tundra, new Color(0.95f, 0.97f, 1.0f) }
+		};
+
+		// Calculate half size for centering
+		float halfSize = MapSize * MapTileSize / 2.0f;
+
+		// Height scale factor for the map (to make terrain features visible but not too extreme)
+		float heightScale = 0.5f;
+
+		// Create a grid of quads
+		for (int x = 0; x < MapSize; x++)
+		{
+			for (int z = 0; z < MapSize; z++)
+			{
+				// Calculate world position
+				float worldX = x * MapTileSize - halfSize;
+				float worldZ = z * MapTileSize - halfSize;
+
+				// Get biome type for this position
+				int sampleX = (int)(worldX);
+				int sampleZ = (int)(worldZ);
+				BiomeType biomeType = WorldGenerator.GetBiomeType(sampleX, sampleZ);
+
+				// Get terrain height for each corner of the quad
+				float heightNW = GetTerrainHeight(sampleX, sampleZ, biomeType) * heightScale;
+				float heightNE = GetTerrainHeight(sampleX + (int)MapTileSize, sampleZ, biomeType) * heightScale;
+				float heightSE = GetTerrainHeight(sampleX + (int)MapTileSize, sampleZ + (int)MapTileSize, biomeType) * heightScale;
+				float heightSW = GetTerrainHeight(sampleX, sampleZ + (int)MapTileSize, biomeType) * heightScale;
+
+				// Get color for this biome
+				Color biomeColor = biomeColors[biomeType];
+
+				// Add vertices for a quad with height information
+				int baseIndex = vertices.Count;
+
+				vertices.Add(new Vector3(worldX, heightNW, worldZ));                           // NW
+				vertices.Add(new Vector3(worldX + MapTileSize, heightNE, worldZ));             // NE
+				vertices.Add(new Vector3(worldX + MapTileSize, heightSE, worldZ + MapTileSize)); // SE
+				vertices.Add(new Vector3(worldX, heightSW, worldZ + MapTileSize));             // SW
+
+				// Calculate normal for this quad (for proper lighting)
+				Vector3 edge1 = vertices[baseIndex + 1] - vertices[baseIndex];     // NE - NW
+				Vector3 edge2 = vertices[baseIndex + 3] - vertices[baseIndex];     // SW - NW
+				Vector3 normal = edge1.Cross(edge2).Normalized();
+
+				// Add normals for each vertex
+				normals.Add(normal);
+				normals.Add(normal);
+				normals.Add(normal);
+				normals.Add(normal);
+
+				// Add colors for each vertex
+				colors.Add(biomeColor);
+				colors.Add(biomeColor);
+				colors.Add(biomeColor);
+				colors.Add(biomeColor);
+
+				// Add indices for two triangles to form a quad
+				indices.Add(baseIndex);
+				indices.Add(baseIndex + 1);
+				indices.Add(baseIndex + 2);
+
+				indices.Add(baseIndex);
+				indices.Add(baseIndex + 2);
+				indices.Add(baseIndex + 3);
+			}
+		}
+
+		// Set arrays
+		arrays[(int)Mesh.ArrayType.Vertex] = vertices.ToArray();
+		arrays[(int)Mesh.ArrayType.Normal] = normals.ToArray();
+		arrays[(int)Mesh.ArrayType.Color] = colors.ToArray();
+		arrays[(int)Mesh.ArrayType.Index] = indices.ToArray();
+
+		// Create surface
+		mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+
+		// Create mesh instance
+		MeshInstance3D mapMesh = new MeshInstance3D();
+		mapMesh.Mesh = mesh;
+
+		// Create material
+		StandardMaterial3D material = new StandardMaterial3D();
+		material.VertexColorUseAsAlbedo = true;
+		material.ShadingMode = BaseMaterial3D.ShadingModeEnum.PerPixel; // Use per-pixel shading for better terrain features
+		material.CullMode = BaseMaterial3D.CullModeEnum.Back; // Cull back faces
+
+		// Set material
+		mapMesh.MaterialOverride = material;
+
+		// Add to visualizer
+		_mapVisualizer.AddChild(mapMesh);
+	}
+
+	// Helper method to get terrain height for map visualization
+	private float GetTerrainHeight(int worldX, int worldZ, BiomeType biomeType)
+	{
+		// Use the same noise and settings as the world generator
+		FastNoiseLite terrainNoise = new FastNoiseLite();
+		terrainNoise.Seed = Seed;
+		terrainNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+		terrainNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
+		terrainNoise.Frequency = 0.005f;
+		terrainNoise.FractalOctaves = 2;
+
+		// Base terrain height from noise
+		float heightNoise = terrainNoise.GetNoise2D(worldX, worldZ);
+
+		// Convert noise from [-1, 1] to [0, 1]
+		heightNoise = (heightNoise + 1f) * 0.5f;
+
+		// Apply biome-specific height modifications
+		float baseHeight = 0.3f; // Consistent base height for all terrain
+
+		switch (biomeType)
+		{
+			case BiomeType.Desert:
+				heightNoise = heightNoise * 0.1f + baseHeight; // Very flat, low
+				break;
+			case BiomeType.Plains:
+				heightNoise = heightNoise * 0.15f + baseHeight; // Very flat
+				break;
+			case BiomeType.Forest:
+				heightNoise = heightNoise * 0.2f + baseHeight; // Slightly more varied but still flat
+				break;
+			case BiomeType.Mountains:
+				heightNoise = heightNoise * 0.3f + baseHeight; // Less mountainous, more like hills
+				break;
+			case BiomeType.Tundra:
+				heightNoise = heightNoise * 0.15f + baseHeight; // Very flat
+				break;
+		}
+
+		// Return height value (0-1 range)
+		return heightNoise * 100.0f; // Scale to a reasonable height for visualization
+	}
+
+	private void CreateMapUI()
+	{
+		// Create a Control node for UI
+		_mapUI = new Control();
+		_mapUI.AnchorRight = 1.0f;
+		_mapUI.AnchorBottom = 1.0f;
+		_mapUI.Visible = false;
+
+		// Create biome label
+		_biomeLabel = new Label();
+		_biomeLabel.Position = new Vector2(20, 20);
+		_biomeLabel.Text = "Biome: Unknown";
+		_mapUI.AddChild(_biomeLabel);
+
+		// Create controls label
+		_controlsLabel = new Label();
+		_controlsLabel.Position = new Vector2(20, 50);
+		_controlsLabel.Text = "WASD: Move | Shift: Fast Move | Mouse Wheel: Zoom | M: Exit Map | Zoom: 200";
+		_mapUI.AddChild(_controlsLabel);
+
+		// Add to scene
+		AddChild(_mapUI);
 	}
 
 	private void SpawnPlayer()

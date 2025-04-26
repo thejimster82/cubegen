@@ -386,5 +386,6 @@ public enum VoxelType
     Leaves,
     Water,
     Snow,
-    Bedrock
+    Bedrock,
+    Cloud
 }

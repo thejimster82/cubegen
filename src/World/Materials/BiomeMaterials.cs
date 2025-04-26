@@ -84,6 +84,11 @@ public static class BiomeMaterials
             case VoxelType.Bedrock:
                 material.AlbedoColor = new Color(0.2f, 0.2f, 0.2f); // Dark gray
                 break;
+            case VoxelType.Cloud:
+                material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // Pure white
+                material.Roughness = 0.9f; // Soft, diffuse appearance
+                material.Metallic = 0.0f; // Non-metallic
+                break;
             default:
                 material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // White
                 break;
@@ -121,6 +126,11 @@ public static class BiomeMaterials
                 break;
             case VoxelType.Bedrock:
                 material.AlbedoColor = new Color(0.2f, 0.2f, 0.2f); // Dark gray
+                break;
+            case VoxelType.Cloud:
+                material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // Pure white
+                material.Roughness = 0.9f; // Soft, diffuse appearance
+                material.Metallic = 0.0f; // Non-metallic
                 break;
             default:
                 material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // White
@@ -160,6 +170,11 @@ public static class BiomeMaterials
             case VoxelType.Bedrock:
                 material.AlbedoColor = new Color(0.4f, 0.3f, 0.2f); // Dark tan
                 break;
+            case VoxelType.Cloud:
+                material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // Pure white
+                material.Roughness = 0.9f; // Soft, diffuse appearance
+                material.Metallic = 0.0f; // Non-metallic
+                break;
             default:
                 material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // White
                 break;
@@ -198,6 +213,11 @@ public static class BiomeMaterials
             case VoxelType.Bedrock:
                 material.AlbedoColor = new Color(0.15f, 0.15f, 0.15f); // Very dark gray
                 break;
+            case VoxelType.Cloud:
+                material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // Pure white
+                material.Roughness = 0.9f; // Soft, diffuse appearance
+                material.Metallic = 0.0f; // Non-metallic
+                break;
             default:
                 material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // White
                 break;
@@ -235,6 +255,11 @@ public static class BiomeMaterials
                 break;
             case VoxelType.Bedrock:
                 material.AlbedoColor = new Color(0.3f, 0.3f, 0.35f); // Dark bluish gray
+                break;
+            case VoxelType.Cloud:
+                material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // Pure white
+                material.Roughness = 0.9f; // Soft, diffuse appearance
+                material.Metallic = 0.0f; // Non-metallic
                 break;
             default:
                 material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // White

@@ -19,6 +19,7 @@ public partial class World : Node3D
 
 	private WorldGenerator _worldGenerator;
 	private ChunkManager _chunkManager;
+	private CloudGenerator _cloudGenerator;
 	private Player _player;
 	private Timer _chunkUpdateTimer;
 	private Camera3D _mapCamera;
@@ -33,6 +34,9 @@ public partial class World : Node3D
 		_worldGenerator = GetNode<WorldGenerator>("WorldGenerator");
 		_chunkManager = GetNode<ChunkManager>("WorldGenerator/ChunkManager");
 
+		// Get cloud generator
+		_cloudGenerator = GetNode<CloudGenerator>("CloudGenerator");
+
 		// Set seed
 		if (Seed == 0)
 		{
@@ -41,6 +45,12 @@ public partial class World : Node3D
 			Seed = random.Next();
 		}
 		_worldGenerator.Seed = Seed;
+
+		// Set the same seed for cloud generator
+		if (_cloudGenerator != null)
+		{
+			_cloudGenerator.Seed = Seed;
+		}
 
 		// Connect chunk requested signal
 		_chunkManager.ChunkRequested += OnChunkRequested;

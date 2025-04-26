@@ -5,25 +5,25 @@ using System.Collections.Generic;
 public static class BiomeMaterials
 {
     private static Dictionary<BiomeType, Dictionary<VoxelType, Material>> _materials;
-    
+
     public static void Initialize()
     {
         _materials = new Dictionary<BiomeType, Dictionary<VoxelType, Material>>();
-        
+
         // Initialize materials for each biome
         foreach (BiomeType biomeType in Enum.GetValues(typeof(BiomeType)))
         {
             _materials[biomeType] = new Dictionary<VoxelType, Material>();
-            
+
             // Create materials for each voxel type in this biome
             foreach (VoxelType voxelType in Enum.GetValues(typeof(VoxelType)))
             {
                 if (voxelType == VoxelType.Air)
                     continue;
-                
+
                 StandardMaterial3D material = new StandardMaterial3D();
                 material.VertexColorUseAsAlbedo = true;
-                
+
                 // Set color based on biome and voxel type
                 switch (biomeType)
                 {
@@ -46,12 +46,12 @@ public static class BiomeMaterials
                         material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f);
                         break;
                 }
-                
+
                 _materials[biomeType][voxelType] = material;
             }
         }
     }
-    
+
     private static void SetPlainsColors(StandardMaterial3D material, VoxelType voxelType)
     {
         switch (voxelType)
@@ -69,10 +69,10 @@ public static class BiomeMaterials
                 material.AlbedoColor = new Color(0.9f, 0.8f, 0.5f); // Tan
                 break;
             case VoxelType.Wood:
-                material.AlbedoColor = new Color(0.6f, 0.4f, 0.2f); // Brown
+                material.AlbedoColor = new Color(0.65f, 0.45f, 0.25f); // Lighter brown for Plains biome
                 break;
             case VoxelType.Leaves:
-                material.AlbedoColor = new Color(0.3f, 0.7f, 0.2f); // Green
+                material.AlbedoColor = new Color(0.35f, 0.75f, 0.25f); // Brighter green for Plains biome
                 break;
             case VoxelType.Water:
                 material.AlbedoColor = new Color(0.2f, 0.4f, 0.8f); // Blue
@@ -89,7 +89,7 @@ public static class BiomeMaterials
                 break;
         }
     }
-    
+
     private static void SetForestColors(StandardMaterial3D material, VoxelType voxelType)
     {
         switch (voxelType)
@@ -107,10 +107,10 @@ public static class BiomeMaterials
                 material.AlbedoColor = new Color(0.8f, 0.7f, 0.4f); // Darker tan
                 break;
             case VoxelType.Wood:
-                material.AlbedoColor = new Color(0.5f, 0.3f, 0.1f); // Dark brown
+                material.AlbedoColor = new Color(0.6f, 0.35f, 0.15f); // Warmer brown for Forest biome
                 break;
             case VoxelType.Leaves:
-                material.AlbedoColor = new Color(0.1f, 0.5f, 0.1f); // Dark green
+                material.AlbedoColor = new Color(0.25f, 0.65f, 0.2f); // Vibrant green for Forest biome
                 break;
             case VoxelType.Water:
                 material.AlbedoColor = new Color(0.1f, 0.3f, 0.6f); // Darker blue
@@ -127,7 +127,7 @@ public static class BiomeMaterials
                 break;
         }
     }
-    
+
     private static void SetDesertColors(StandardMaterial3D material, VoxelType voxelType)
     {
         switch (voxelType)
@@ -165,7 +165,7 @@ public static class BiomeMaterials
                 break;
         }
     }
-    
+
     private static void SetMountainColors(StandardMaterial3D material, VoxelType voxelType)
     {
         switch (voxelType)
@@ -203,7 +203,7 @@ public static class BiomeMaterials
                 break;
         }
     }
-    
+
     private static void SetTundraColors(StandardMaterial3D material, VoxelType voxelType)
     {
         switch (voxelType)
@@ -241,19 +241,19 @@ public static class BiomeMaterials
                 break;
         }
     }
-    
+
     public static Material GetMaterial(BiomeType biomeType, VoxelType voxelType)
     {
         if (_materials == null)
         {
             Initialize();
         }
-        
+
         if (_materials.ContainsKey(biomeType) && _materials[biomeType].ContainsKey(voxelType))
         {
             return _materials[biomeType][voxelType];
         }
-        
+
         // Fallback to a default material
         StandardMaterial3D defaultMaterial = new StandardMaterial3D();
         defaultMaterial.AlbedoColor = new Color(1.0f, 1.0f, 1.0f);

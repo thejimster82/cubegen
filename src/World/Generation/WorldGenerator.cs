@@ -252,8 +252,7 @@ public partial class WorldGenerator : Node3D
 
     private void AddBiomeObjects(VoxelChunk chunk, Vector2I chunkPos, int chunkSize)
     {
-        // This would be expanded to add trees, structures, etc.
-        // For now, just a placeholder
+        // Generate trees and other biome objects
         Random random = new Random(Seed + chunkPos.X * 10000 + chunkPos.Y);
 
         for (int x = 0; x < chunkSize; x++)
@@ -265,8 +264,8 @@ public partial class WorldGenerator : Node3D
 
                 BiomeType biomeType = GetBiomeType(worldX, worldZ);
 
-                // Only add objects on certain biomes and with low probability
-                if (biomeType == BiomeType.Forest && random.NextDouble() < 0.02)
+                // Only add trees in Forest biome with reduced probability (more spaced out)
+                if (biomeType == BiomeType.Forest && random.NextDouble() < 0.008) // Reduced from 0.02 to 0.008
                 {
                     // Find surface height
                     int surfaceHeight = -1;
@@ -281,13 +280,83 @@ public partial class WorldGenerator : Node3D
 
                     if (surfaceHeight >= 0 && chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass)
                     {
-                        // Add a simple tree (just a trunk for now)
-                        int treeHeight = random.Next(4, 8);
-                        for (int y = 1; y <= treeHeight; y++)
+                        // Generate a detailed tree with trunk and leaves
+                        GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
+                    }
+                }
+            }
+        }
+    }
+
+    private static void GenerateDetailedTree(VoxelChunk chunk, int x, int z, int surfaceHeight, Random random)
+    {
+        // Tree parameters
+        int trunkHeight = random.Next(6, 10); // Taller trunks
+        int leafRadius = random.Next(2, 4);   // Radius of leaf canopy
+        int leafHeight = random.Next(4, 6);   // Height of leaf canopy
+
+        // Generate trunk with more detail
+        // Make the trunk thicker at the base (2x2 for first few blocks)
+        for (int y = 1; y <= Math.Min(3, trunkHeight); y++)
+        {
+            // Create a 2x2 trunk base if there's room in the chunk
+            for (int dx = 0; dx <= 1; dx++)
+            {
+                for (int dz = 0; dz <= 1; dz++)
+                {
+                    int nx = x + dx;
+                    int nz = z + dz;
+
+                    // Check if we're still in the chunk bounds
+                    if (nx < chunk.Size && nz < chunk.Size)
+                    {
+                        if (surfaceHeight + y < chunk.Height)
                         {
-                            if (surfaceHeight + y < ChunkHeight)
+                            chunk.SetVoxel(nx, surfaceHeight + y, nz, VoxelType.Wood);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Continue with a 1x1 trunk for the rest of the height
+        for (int y = 4; y <= trunkHeight; y++)
+        {
+            if (surfaceHeight + y < chunk.Height)
+            {
+                chunk.SetVoxel(x, surfaceHeight + y, z, VoxelType.Wood);
+            }
+        }
+
+        // Generate leaf canopy (spherical/rounded shape)
+        int leafStartHeight = surfaceHeight + trunkHeight - leafHeight / 2;
+
+        for (int y = 0; y < leafHeight; y++)
+        {
+            // Calculate the radius at this height (ellipsoid shape)
+            // Maximum radius at the middle, smaller at top and bottom
+            float heightFactor = 1.0f - Math.Abs((y - leafHeight / 2.0f) / (leafHeight / 2.0f));
+            int currentRadius = (int)Math.Ceiling(leafRadius * heightFactor);
+
+            for (int dx = -currentRadius; dx <= currentRadius; dx++)
+            {
+                for (int dz = -currentRadius; dz <= currentRadius; dz++)
+                {
+                    // Create a rounded shape by checking distance from center
+                    float distance = (float)Math.Sqrt(dx * dx + dz * dz);
+                    if (distance <= currentRadius + 0.5f)
+                    {
+                        int nx = x + dx;
+                        int nz = z + dz;
+                        int ny = leafStartHeight + y;
+
+                        // Check if we're still in the chunk bounds
+                        if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size && ny < chunk.Height)
+                        {
+                            // Don't overwrite the trunk
+                            if (chunk.GetVoxel(nx, ny, nz) != VoxelType.Wood)
                             {
-                                chunk.SetVoxel(x, surfaceHeight + y, z, VoxelType.Wood);
+                                chunk.SetVoxel(nx, ny, nz, VoxelType.Leaves);
                             }
                         }
                     }

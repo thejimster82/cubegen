@@ -1,6 +1,7 @@
 using Godot;
 using System;
 using System.Collections.Generic;
+using CubeGen.World.Common;
 
 public partial class ChunkMesh : Node3D
 {
@@ -72,7 +73,7 @@ public partial class ChunkMesh : Node3D
                     // Get biome type for this position
                     int worldX = chunk.Position.X * chunk.Size + x;
                     int worldZ = chunk.Position.Y * chunk.Size + z;
-                    BiomeType biomeType = WorldGenerator.GetBiomeType(worldX, worldZ);
+                    BiomeType biomeType = CubeGen.World.Generation.WorldGenerator.GetBiomeType(worldX, worldZ);
 
                     // Initialize dictionaries if needed
                     if (!meshDataByBiomeAndType.ContainsKey(biomeType))

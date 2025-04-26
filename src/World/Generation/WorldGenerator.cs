@@ -1,6 +1,9 @@
 using Godot;
 using System;
+using CubeGen.World.Common;
 
+namespace CubeGen.World.Generation
+{
 public partial class WorldGenerator : Node3D
 {
     [Export] public int Seed { get; set; } = 0;
@@ -280,8 +283,19 @@ public partial class WorldGenerator : Node3D
 
                     if (surfaceHeight >= 0 && chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass)
                     {
-                        // Generate a detailed tree with trunk and leaves
-                        GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
+                        // Calculate max leaf radius for this tree (for boundary check)
+                        int maxLeafRadius = random.Next(4, 8);
+
+                        // Check if tree is too close to chunk boundary
+                        int safeDistance = maxLeafRadius + 2; // Add a small buffer
+
+                        // Only generate trees that are safely away from chunk boundaries
+                        if (x >= safeDistance && x < (chunkSize - safeDistance) &&
+                            z >= safeDistance && z < (chunkSize - safeDistance))
+                        {
+                            // Generate a detailed tree with trunk and leaves
+                            GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
+                        }
                     }
                 }
             }
@@ -307,13 +321,10 @@ public partial class WorldGenerator : Node3D
                     int nx = x + dx;
                     int nz = z + dz;
 
-                    // Check if we're still in the chunk bounds
-                    if (nx < chunk.Size && nz < chunk.Size)
+                    // We already checked chunk boundaries in AddBiomeObjects, so this should be safe
+                    if (surfaceHeight + y < chunk.Height)
                     {
-                        if (surfaceHeight + y < chunk.Height)
-                        {
-                            chunk.SetVoxel(nx, surfaceHeight + y, nz, VoxelType.Wood);
-                        }
+                        chunk.SetVoxel(nx, surfaceHeight + y, nz, VoxelType.Wood);
                     }
                 }
             }
@@ -331,6 +342,7 @@ public partial class WorldGenerator : Node3D
         // Generate leaf canopy (spherical/rounded shape)
         int leafStartHeight = surfaceHeight + trunkHeight - leafHeight / 2;
 
+        // Create a more balanced, symmetrical leaf structure
         for (int y = 0; y < leafHeight; y++)
         {
             // Calculate the radius at this height (ellipsoid shape)
@@ -338,24 +350,41 @@ public partial class WorldGenerator : Node3D
             float heightFactor = 1.0f - Math.Abs((y - leafHeight / 2.0f) / (leafHeight / 2.0f));
             int currentRadius = (int)Math.Ceiling(leafRadius * heightFactor);
 
+            // Add some randomness to the leaf shape but keep it symmetrical
+            float randomFactor = 0.8f + (float)random.NextDouble() * 0.4f; // 0.8 to 1.2
+            currentRadius = (int)Math.Ceiling(currentRadius * randomFactor);
+
             for (int dx = -currentRadius; dx <= currentRadius; dx++)
             {
                 for (int dz = -currentRadius; dz <= currentRadius; dz++)
                 {
                     // Create a rounded shape by checking distance from center
                     float distance = (float)Math.Sqrt(dx * dx + dz * dz);
-                    if (distance <= currentRadius + 0.5f)
+
+                    // Add some noise to the leaf edge for a more natural look
+                    float edgeNoise = (float)random.NextDouble() * 0.8f;
+                    float effectiveRadius = currentRadius + edgeNoise;
+
+                    if (distance <= effectiveRadius)
                     {
                         int nx = x + dx;
                         int nz = z + dz;
                         int ny = leafStartHeight + y;
 
-                        // Check if we're still in the chunk bounds
-                        if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size && ny < chunk.Height)
+                        // We already checked chunk boundaries in AddBiomeObjects, so this should be safe
+                        if (ny < chunk.Height)
                         {
                             // Don't overwrite the trunk
                             if (chunk.GetVoxel(nx, ny, nz) != VoxelType.Wood)
                             {
+                                // Add some randomness to make leaves less uniform
+                                // But ensure the tree still looks full and balanced
+                                if (distance > effectiveRadius - 0.8f && random.NextDouble() < 0.3f)
+                                {
+                                    // Skip some edge leaves randomly
+                                    continue;
+                                }
+
                                 chunk.SetVoxel(nx, ny, nz, VoxelType.Leaves);
                             }
                         }
@@ -365,27 +394,4 @@ public partial class WorldGenerator : Node3D
         }
     }
 }
-
-public enum BiomeType
-{
-    Plains,
-    Forest,
-    Desert,
-    Mountains,
-    Tundra
-}
-
-public enum VoxelType
-{
-    Air,
-    Grass,
-    Dirt,
-    Stone,
-    Sand,
-    Wood,
-    Leaves,
-    Water,
-    Snow,
-    Bedrock,
-    Cloud
 }

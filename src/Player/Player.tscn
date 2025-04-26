@@ -9,9 +9,9 @@ height = 1.5
 height = 1.5
 
 [node name="Player" type="CharacterBody3D"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 1, 0)
 floor_max_angle = 0.872665
-floor_snap_length = 0.5
+floor_snap_length = 1.0
 script = ExtResource("1_yvnqm")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]

@@ -65,19 +65,20 @@ public partial class World : Node3D
 		}
 
 		// Handle map input when in map mode
-		if (_isMapMode)
+		if (_isMapMode && _mapCamera != null)
 		{
-			// Handle zooming with mouse wheel
-			if (@event is InputEventMouseButton mouseEvent && _mapCamera != null)
+			// Handle zooming with keys (+ and - keys)
+			if (@event is InputEventKey zoomKeyEvent && zoomKeyEvent.Pressed)
 			{
-				// Determine zoom speed based on whether Shift is held
-				float currentZoomSpeed = Input.IsKeyPressed(Key.Shift) ? ZoomSpeedFast : ZoomSpeed;
-
 				// Get current distance from camera to target
 				Vector3 lookTarget = new Vector3(_mapCamera.Position.X, 0, _mapCamera.Position.Z);
 				float currentDistance = _mapCamera.Position.DistanceTo(lookTarget);
 
-				if (mouseEvent.ButtonIndex == MouseButton.WheelUp)
+				// Determine zoom speed based on whether Shift is held
+				float currentZoomSpeed = Input.IsKeyPressed(Key.Shift) ? ZoomSpeedFast : ZoomSpeed;
+
+				// Zoom in with + key or = key (same key on most keyboards)
+				if (zoomKeyEvent.Keycode == Key.Equal || zoomKeyEvent.Keycode == Key.Plus || zoomKeyEvent.Keycode == Key.KpAdd)
 				{
 					// Zoom in - move camera closer to target
 					float zoomFactor = 0.9f; // Zoom in by 10%
@@ -94,8 +95,15 @@ public partial class World : Node3D
 					// Update camera position
 					_mapCamera.Position = newPosition;
 					_mapCamera.LookAt(lookTarget, Vector3.Up);
+
+					// Update the controls label
+					if (_controlsLabel != null)
+					{
+						_controlsLabel.Text = $"WASD: Move | Shift: Fast Move | +/-: Zoom | M: Exit Map | Distance: {newDistance:F0}";
+					}
 				}
-				else if (mouseEvent.ButtonIndex == MouseButton.WheelDown)
+				// Zoom out with - key
+				else if (zoomKeyEvent.Keycode == Key.Minus || zoomKeyEvent.Keycode == Key.KpSubtract)
 				{
 					// Zoom out - move camera away from target
 					float zoomFactor = 1.1f; // Zoom out by 10%
@@ -112,12 +120,12 @@ public partial class World : Node3D
 					// Update camera position
 					_mapCamera.Position = newPosition;
 					_mapCamera.LookAt(lookTarget, Vector3.Up);
-				}
 
-				// Update the controls label to show current distance
-				if (_controlsLabel != null)
-				{
-					_controlsLabel.Text = $"WASD: Move | Shift: Fast Move | Mouse Wheel: Zoom | M: Exit Map | Distance: {currentDistance:F0}";
+					// Update the controls label
+					if (_controlsLabel != null)
+					{
+						_controlsLabel.Text = $"WASD: Move | Shift: Fast Move | +/-: Zoom | M: Exit Map | Distance: {newDistance:F0}";
+					}
 				}
 			}
 		}
@@ -284,9 +292,9 @@ public partial class World : Node3D
 		_mapCamera = new Camera3D();
 		_mapCamera.Name = "MapCamera";
 
-		// Set up camera properties for angled view
-		// Position the camera at an angle to see terrain better
-		_mapCamera.Position = new Vector3(-MapHeight * 0.8f, MapHeight * 0.7f, MapHeight * 0.8f);
+		// Set up camera properties for a steeper 45-degree angled view
+		// Position the camera to achieve approximately 45-degree viewing angle
+		_mapCamera.Position = new Vector3(-MapHeight * 0.7f, MapHeight * 0.7f, MapHeight * 0.7f);
 
 		// Look at the center of the map
 		_mapCamera.LookAt(Vector3.Zero, Vector3.Up);
@@ -503,7 +511,7 @@ public partial class World : Node3D
 		// Create controls label
 		_controlsLabel = new Label();
 		_controlsLabel.Position = new Vector2(20, 50);
-		_controlsLabel.Text = "WASD: Move | Shift: Fast Move | Mouse Wheel: Zoom | M: Exit Map | Zoom: 200";
+		_controlsLabel.Text = "WASD: Move | Shift: Fast Move | +/-: Zoom | M: Exit Map";
 		_mapUI.AddChild(_controlsLabel);
 
 		// Add to scene

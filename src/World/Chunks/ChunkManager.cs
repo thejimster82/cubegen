@@ -214,7 +214,7 @@ public partial class ChunkManager : Node3D
         }
     }
 
-    public void UpdateChunksAroundPlayer(Vector3 playerPosition, int viewDistance)
+    public void UpdateChunksAroundPlayer(Vector3 playerPosition, int viewDistance, Vector3 playerMovementDirection = default)
     {
         GD.Print($"Started Updating Chunks");
         // Convert player position to chunk coordinates
@@ -235,6 +235,9 @@ public partial class ChunkManager : Node3D
         // Get list of chunks that should be active (within view distance)
         HashSet<Vector2I> activeChunks = new HashSet<Vector2I>();
 
+        // Store chunks to request with their priorities
+        List<(Vector2I, float)> chunksToRequest = new();
+
         // Use a circular pattern for better visual appearance
         int viewDistanceSquared = viewDistance * viewDistance;
 
@@ -251,22 +254,60 @@ public partial class ChunkManager : Node3D
                     // Request chunk generation if it doesn't exist
                     if (!HasChunk(chunkPos))
                     {
-                        // Calculate distance from player for prioritization
+                        // Calculate base distance from player for prioritization
                         float distanceSquared = x * x + z * z;
 
-                        // Add to the request queue instead of emitting signal directly
-                        _chunksMutex.WaitOne();
-                        try
+                        // Apply direction-based prioritization if we have a movement direction
+                        if (playerMovementDirection != Vector3.Zero)
                         {
-                            _chunksToRequest.Add((chunkPos, distanceSquared));
+                            // Convert chunk offset to world direction
+                            Vector3 chunkDirection = new Vector3(x, 0, z);
+                            if (chunkDirection != Vector3.Zero)
+                            {
+                                chunkDirection = chunkDirection.Normalized();
+
+                                // Calculate dot product to determine if chunk is in front of player
+                                // Dot product ranges from -1 (behind) to 1 (in front)
+                                float directionFactor = playerMovementDirection.Dot(chunkDirection);
+
+                                // Adjust priority based on direction
+                                // Chunks in front get lower priority value (loaded first)
+                                // Chunks behind get higher priority value (loaded later)
+                                if (directionFactor > 0) // In front of player
+                                {
+                                    // Reduce distance (higher priority) for chunks in front
+                                    distanceSquared *= (1.0f - directionFactor * 0.5f);
+                                }
+                                else // Behind player
+                                {
+                                    // Increase distance (lower priority) for chunks behind
+                                    distanceSquared *= (1.0f + Math.Abs(directionFactor) * 2.0f);
+                                }
+                            }
                         }
-                        finally
-                        {
-                            _chunksMutex.ReleaseMutex();
-                        }
+
+                        // Add to the local request list
+                        chunksToRequest.Add((chunkPos, distanceSquared));
                     }
                 }
             }
+        }
+
+        // Sort chunks by priority (distance adjusted by direction)
+        chunksToRequest.Sort((a, b) => a.Item2.CompareTo(b.Item2));
+
+        // Add chunks to the request queue
+        _chunksMutex.WaitOne();
+        try
+        {
+            foreach (var chunk in chunksToRequest)
+            {
+                _chunksToRequest.Add(chunk);
+            }
+        }
+        finally
+        {
+            _chunksMutex.ReleaseMutex();
         }
 
         // Find chunks to unload (chunks that are too far from player)
@@ -292,7 +333,42 @@ public partial class ChunkManager : Node3D
         {
             RemoveChunk(chunkPos);
         }
+
+        // Also remove any chunks from the request queue that are no longer needed
+        CleanupRequestQueue(activeChunks);
+
         GD.Print($"Finished Updating Chunks");
+    }
+
+    // Remove chunks from the request queue that are no longer needed
+    private void CleanupRequestQueue(HashSet<Vector2I> activeChunks)
+    {
+        _chunksMutex.WaitOne();
+        try
+        {
+            // Create a new list with only the chunks we still need
+            List<(Vector2I, float)> updatedRequests = new();
+
+            foreach (var (chunkPos, priority) in _chunksToRequest)
+            {
+                // Only keep chunks that are still active
+                if (activeChunks.Contains(chunkPos))
+                {
+                    updatedRequests.Add((chunkPos, priority));
+                }
+            }
+
+            // Replace the request queue with the filtered list
+            _chunksToRequest.Clear();
+            foreach (var chunk in updatedRequests)
+            {
+                _chunksToRequest.Add(chunk);
+            }
+        }
+        finally
+        {
+            _chunksMutex.ReleaseMutex();
+        }
     }
 
     public override void _ExitTree()

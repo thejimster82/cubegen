@@ -33,6 +33,10 @@ public partial class World : Node3D
 	private Label _controlsLabel;
 	private bool _isMapMode = false;
 
+	// Track player movement for direction-based chunk loading
+	private Vector3 _lastPlayerPosition = Vector3.Zero;
+	private Vector3 _playerMovementDirection = Vector3.Zero;
+
 	public override void _Ready()
 	{
 		_worldGenerator = GetNode<WorldGenerator>("WorldGenerator");
@@ -562,10 +566,26 @@ public partial class World : Node3D
 			// Capture player position on the main thread
 			Vector3 playerPosition = _player.Position;
 
-			// Pass the captured position to the thread
-			Thread t = new(() => _chunkManager.UpdateChunksAroundPlayer(playerPosition, ViewDistance));
+			// Calculate player movement direction
+			if (_lastPlayerPosition != Vector3.Zero)
+			{
+				Vector3 movement = playerPosition - _lastPlayerPosition;
+
+				// Only update direction if the player has moved significantly
+				if (movement.Length() > 0.1f)
+				{
+					// Get horizontal movement direction (ignore Y)
+					movement.Y = 0;
+					_playerMovementDirection = movement.Normalized();
+				}
+			}
+
+			// Update last position
+			_lastPlayerPosition = playerPosition;
+
+			// Pass the captured position and movement direction to the thread
+			Thread t = new(() => _chunkManager.UpdateChunksAroundPlayer(playerPosition, ViewDistance, _playerMovementDirection));
 			t.Start();
-			// Uncomment for debugging chunk loading
 		}
 	}
 }

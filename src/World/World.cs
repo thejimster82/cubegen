@@ -3,6 +3,8 @@ using System;
 using System.Collections.Generic;
 using CubeGen.World.Common;
 using CubeGen.World.Generation;
+using System.Threading.Tasks;
+using System.Threading;
 
 public partial class World : Node3D
 {
@@ -23,7 +25,7 @@ public partial class World : Node3D
 	private ChunkManager _chunkManager;
 	private CloudGenerator _cloudGenerator;
 	private Player _player;
-	private Timer _chunkUpdateTimer;
+	private Godot.Timer _chunkUpdateTimer;
 	private Camera3D _mapCamera;
 	private Node3D _mapVisualizer;
 	private Control _mapUI;
@@ -47,6 +49,7 @@ public partial class World : Node3D
 			Seed = random.Next();
 		}
 		_worldGenerator.Seed = Seed;
+		_worldGenerator.ViewDistance = ViewDistance;
 
 		// Set the same seed for cloud generator
 		if (_cloudGenerator != null)
@@ -61,7 +64,7 @@ public partial class World : Node3D
 		SpawnPlayer();
 
 		// Create timer for chunk updates
-		_chunkUpdateTimer = new Timer();
+		_chunkUpdateTimer = new Godot.Timer();
 		_chunkUpdateTimer.WaitTime = 0.2f; // Update chunks more frequently
 		_chunkUpdateTimer.Timeout += OnChunkUpdateTimerTimeout;
 		AddChild(_chunkUpdateTimer);
@@ -307,6 +310,7 @@ public partial class World : Node3D
 		// Set up camera properties for a steeper 45-degree angled view
 		// Position the camera to achieve approximately 45-degree viewing angle
 		_mapCamera.Position = new Vector3(-MapHeight * 0.7f, MapHeight * 0.7f, MapHeight * 0.7f);
+		_mapCamera.Rotation = new Vector3(0, 0, 0);
 
 		// Look at the center of the map
 		_mapCamera.LookAt(Vector3.Zero, Vector3.Up);
@@ -555,11 +559,13 @@ public partial class World : Node3D
 	{
 		if (_player != null && _chunkManager != null)
 		{
-			// Update chunks around player
-			_chunkManager.UpdateChunksAroundPlayer(_player.Position, ViewDistance);
+			// Capture player position on the main thread
+			Vector3 playerPosition = _player.Position;
 
+			// Pass the captured position to the thread
+			Thread t = new(() => _chunkManager.UpdateChunksAroundPlayer(playerPosition, ViewDistance));
+			t.Start();
 			// Uncomment for debugging chunk loading
-			// GD.Print($"Player position: {_player.Position}, Active chunks: {_chunkManager.ActiveChunkCount}");
 		}
 	}
 }

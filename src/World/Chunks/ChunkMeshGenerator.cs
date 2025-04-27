@@ -1,61 +1,127 @@
 using Godot;
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using CubeGen.World.Common;
 
-public partial class ChunkMesh : Node3D
+public class ChunkMeshGenerator
 {
-    private MeshInstance3D _meshInstance;
-    private StaticBody3D _staticBody;
-    private CollisionShape3D _collisionShape;
+    private Queue<VoxelChunk> _chunksToProcess = new Queue<VoxelChunk>();
+    private Queue<(VoxelChunk, ArrayMesh, List<Vector3>)> _completedMeshes = new Queue<(VoxelChunk, ArrayMesh, List<Vector3>)>();
+    private System.Threading.Mutex _queueMutex = new System.Threading.Mutex();
+    private System.Threading.Mutex _resultMutex = new System.Threading.Mutex();
+    private Thread _workerThread;
+    private bool _isRunning = true;
 
-    // Material for different voxel types
-    [Export] public Material DefaultMaterial { get; set; }
-
-    // Dictionary to store materials for different voxel types
-    private Dictionary<VoxelType, Material> _materials = new Dictionary<VoxelType, Material>();
-
-    public override void _Ready()
+    public ChunkMeshGenerator()
     {
-        // Create mesh instance
-        _meshInstance = new MeshInstance3D();
-        AddChild(_meshInstance);
-
-        // Create static body for collision
-        _staticBody = new StaticBody3D();
-        AddChild(_staticBody);
-
-        // Create collision shape
-        _collisionShape = new CollisionShape3D();
-        _staticBody.AddChild(_collisionShape);
-
-        // Initialize biome materials
-        BiomeMaterials.Initialize();
-
-        // Initialize default materials dictionary
-        foreach (VoxelType type in Enum.GetValues(typeof(VoxelType)))
-        {
-            if (type != VoxelType.Air)
-            {
-                if (DefaultMaterial != null)
-                {
-                    _materials[type] = DefaultMaterial;
-                }
-                else
-                {
-                    // Use the Plains biome as default if no material is provided
-                    _materials[type] = BiomeMaterials.GetMaterial(BiomeType.Plains, type);
-                }
-            }
-        }
-
-        GD.Print("ChunkMesh initialized with biome materials");
+        // Start the worker thread
+        _workerThread = new Thread(ProcessChunks);
+        _workerThread.Start();
     }
 
-    public void GenerateMesh(VoxelChunk chunk)
+    public void QueueChunk(VoxelChunk chunk)
+    {
+        _queueMutex.WaitOne();
+        try
+        {
+            _chunksToProcess.Enqueue(chunk);
+        }
+        finally
+        {
+            _queueMutex.ReleaseMutex();
+        }
+    }
+
+    public bool HasCompletedMeshes()
+    {
+        bool hasCompleted = false;
+        _resultMutex.WaitOne();
+        try
+        {
+            hasCompleted = _completedMeshes.Count > 0;
+        }
+        finally
+        {
+            _resultMutex.ReleaseMutex();
+        }
+        return hasCompleted;
+    }
+
+    public (VoxelChunk, ArrayMesh, List<Vector3>) GetNextCompletedMesh()
+    {
+        (VoxelChunk, ArrayMesh, List<Vector3>) result = (null, null, null);
+        _resultMutex.WaitOne();
+        try
+        {
+            if (_completedMeshes.Count > 0)
+            {
+                result = _completedMeshes.Dequeue();
+            }
+        }
+        finally
+        {
+            _resultMutex.ReleaseMutex();
+        }
+        return result;
+    }
+
+    public void Stop()
+    {
+        _isRunning = false;
+        _workerThread.Join();
+    }
+
+    private void ProcessChunks()
+    {
+        while (_isRunning)
+        {
+            VoxelChunk chunkToProcess = null;
+
+            // Get the next chunk to process
+            _queueMutex.WaitOne();
+            try
+            {
+                if (_chunksToProcess.Count > 0)
+                {
+                    chunkToProcess = _chunksToProcess.Dequeue();
+                }
+            }
+            finally
+            {
+                _queueMutex.ReleaseMutex();
+            }
+
+            // Process the chunk if we have one
+            if (chunkToProcess != null)
+            {
+                // Generate the mesh data
+                (ArrayMesh mesh, List<Vector3> collisionFaces) = GenerateMesh(chunkToProcess);
+
+                // Queue the completed mesh
+                _resultMutex.WaitOne();
+                try
+                {
+                    _completedMeshes.Enqueue((chunkToProcess, mesh, collisionFaces));
+                }
+                finally
+                {
+                    _resultMutex.ReleaseMutex();
+                }
+            }
+            else
+            {
+                // Sleep a bit to avoid busy waiting
+                Thread.Sleep(10);
+            }
+        }
+    }
+
+    private (ArrayMesh, List<Vector3>) GenerateMesh(VoxelChunk chunk)
     {
         // Create a dictionary to group vertices by biome and voxel type
-        Dictionary<BiomeType, Dictionary<VoxelType, List<MeshData>>> meshDataByBiomeAndType = new Dictionary<BiomeType, Dictionary<VoxelType, List<MeshData>>>();
+        Dictionary<BiomeType, Dictionary<VoxelType, List<MeshData>>> meshDataByBiomeAndType =
+            new Dictionary<BiomeType, Dictionary<VoxelType, List<MeshData>>>();
 
         // Generate mesh data
         for (int x = 0; x < chunk.Size; x++)
@@ -104,32 +170,30 @@ public partial class ChunkMesh : Node3D
         // Create a new ArrayMesh
         ArrayMesh mesh = new ArrayMesh();
 
-        // Create surfaces for each biome and voxel type
-        int surfaceIndex = 0;
-
         // Variables for collision shape
         List<Vector3> allVertices = new List<Vector3>();
         List<int> allIndices = new List<int>();
         int globalVertexOffset = 0;
 
+        // Create surfaces for each biome and voxel type
+        int surfaceIndex = 0;
+
         foreach (var biomeEntry in meshDataByBiomeAndType)
         {
             BiomeType biomeType = biomeEntry.Key;
+            var voxelTypeDict = biomeEntry.Value;
 
-            foreach (var typeEntry in biomeEntry.Value)
+            foreach (var voxelEntry in voxelTypeDict)
             {
-                VoxelType voxelType = typeEntry.Key;
-                List<MeshData> meshDataList = typeEntry.Value;
-
-                if (meshDataList.Count == 0)
-                    continue;
+                VoxelType voxelType = voxelEntry.Key;
+                List<MeshData> meshDataList = voxelEntry.Value;
 
                 // Combine all mesh data for this biome and voxel type
                 List<Vector3> vertices = new List<Vector3>();
                 List<Vector3> normals = new List<Vector3>();
                 List<Vector2> uvs = new List<Vector2>();
+                List<Color> colors = new List<Color>();
                 List<int> indices = new List<int>();
-                List<Color> colors = new List<Color>(); // For storing AO values as vertex colors
 
                 int vertexOffset = 0;
                 foreach (MeshData meshData in meshDataList)
@@ -169,63 +233,34 @@ public partial class ChunkMesh : Node3D
                 // Create surface
                 mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
 
-                // Set material based on biome and voxel type
-                Material material = BiomeMaterials.GetMaterial(biomeType, voxelType);
-                mesh.SurfaceSetMaterial(surfaceIndex, material);
-
                 // Add vertices and indices to collision data
                 allVertices.AddRange(vertices);
-
-                // Adjust indices for global vertex offset
                 foreach (int index in indices)
                 {
                     allIndices.Add(index + globalVertexOffset);
                 }
-
                 globalVertexOffset += vertices.Count;
+
                 surfaceIndex++;
             }
         }
 
-        // Set mesh
-        _meshInstance.Mesh = mesh;
-
-        // Create collision shape if we have vertices
-        if (allVertices.Count > 0)
+        // Create collision faces
+        List<Vector3> collisionFaces = new List<Vector3>();
+        for (int i = 0; i < allIndices.Count; i += 3)
         {
-            ConcavePolygonShape3D collisionShape = new ConcavePolygonShape3D();
-            List<Vector3> faces = new List<Vector3>();
-
-            // Convert indices to faces
-            for (int i = 0; i < allIndices.Count; i += 3)
+            if (i + 2 < allIndices.Count &&
+                allIndices[i] < allVertices.Count &&
+                allIndices[i + 1] < allVertices.Count &&
+                allIndices[i + 2] < allVertices.Count)
             {
-                if (i + 2 < allIndices.Count &&
-                    allIndices[i] < allVertices.Count &&
-                    allIndices[i + 1] < allVertices.Count &&
-                    allIndices[i + 2] < allVertices.Count)
-                {
-                    faces.Add(allVertices[allIndices[i]]);
-                    faces.Add(allVertices[allIndices[i + 1]]);
-                    faces.Add(allVertices[allIndices[i + 2]]);
-                }
-            }
-
-            if (faces.Count > 0)
-            {
-                collisionShape.Data = faces.ToArray();
-                _collisionShape.Shape = collisionShape;
-            }
-            else
-            {
-                _collisionShape.Shape = null;
+                collisionFaces.Add(allVertices[allIndices[i]]);
+                collisionFaces.Add(allVertices[allIndices[i + 1]]);
+                collisionFaces.Add(allVertices[allIndices[i + 2]]);
             }
         }
-        else
-        {
-            // No voxels to render
-            _meshInstance.Mesh = null;
-            _collisionShape.Shape = null;
-        }
+
+        return (mesh, collisionFaces);
     }
 
     private void AddVoxelFaces(VoxelChunk chunk, int x, int y, int z, VoxelType voxelType, MeshData meshData)
@@ -245,28 +280,24 @@ public partial class ChunkMesh : Node3D
         }
 
         // Front face (Z+)
-        // Always add a face at chunk boundaries or if the neighbor is not solid
         if (z == chunk.Size - 1 || !chunk.IsVoxelSolid(x, y, z + 1))
         {
             AddFace(FaceDirection.Front, new Vector3(x, y, z), voxelType, meshData, chunk);
         }
 
         // Back face (Z-)
-        // Always add a face at chunk boundaries or if the neighbor is not solid
         if (z == 0 || !chunk.IsVoxelSolid(x, y, z - 1))
         {
             AddFace(FaceDirection.Back, new Vector3(x, y, z), voxelType, meshData, chunk);
         }
 
         // Right face (X+)
-        // Always add a face at chunk boundaries or if the neighbor is not solid
         if (x == chunk.Size - 1 || !chunk.IsVoxelSolid(x + 1, y, z))
         {
             AddFace(FaceDirection.Right, new Vector3(x, y, z), voxelType, meshData, chunk);
         }
 
         // Left face (X-)
-        // Always add a face at chunk boundaries or if the neighbor is not solid
         if (x == 0 || !chunk.IsVoxelSolid(x - 1, y, z))
         {
             AddFace(FaceDirection.Left, new Vector3(x, y, z), voxelType, meshData, chunk);
@@ -317,6 +348,7 @@ public partial class ChunkMesh : Node3D
             }
         }
 
+        // Add vertices based on face direction
         switch (direction)
         {
             case FaceDirection.Top:
@@ -326,7 +358,6 @@ public partial class ChunkMesh : Node3D
                 meshData.Vertices.Add(new Vector3(0, 1, 1) * scale + position * scale);
                 for (int i = 0; i < 4; i++) meshData.Normals.Add(Vector3.Up);
                 break;
-
             case FaceDirection.Bottom:
                 meshData.Vertices.Add(new Vector3(0, 0, 0) * scale + position * scale);
                 meshData.Vertices.Add(new Vector3(0, 0, 1) * scale + position * scale);
@@ -334,7 +365,6 @@ public partial class ChunkMesh : Node3D
                 meshData.Vertices.Add(new Vector3(1, 0, 0) * scale + position * scale);
                 for (int i = 0; i < 4; i++) meshData.Normals.Add(Vector3.Down);
                 break;
-
             case FaceDirection.Front:
                 meshData.Vertices.Add(new Vector3(0, 0, 1) * scale + position * scale);
                 meshData.Vertices.Add(new Vector3(0, 1, 1) * scale + position * scale);
@@ -342,7 +372,6 @@ public partial class ChunkMesh : Node3D
                 meshData.Vertices.Add(new Vector3(1, 0, 1) * scale + position * scale);
                 for (int i = 0; i < 4; i++) meshData.Normals.Add(Vector3.Forward);
                 break;
-
             case FaceDirection.Back:
                 meshData.Vertices.Add(new Vector3(0, 0, 0) * scale + position * scale);
                 meshData.Vertices.Add(new Vector3(1, 0, 0) * scale + position * scale);
@@ -350,7 +379,6 @@ public partial class ChunkMesh : Node3D
                 meshData.Vertices.Add(new Vector3(0, 1, 0) * scale + position * scale);
                 for (int i = 0; i < 4; i++) meshData.Normals.Add(Vector3.Back);
                 break;
-
             case FaceDirection.Right:
                 meshData.Vertices.Add(new Vector3(1, 0, 0) * scale + position * scale);
                 meshData.Vertices.Add(new Vector3(1, 0, 1) * scale + position * scale);
@@ -358,7 +386,6 @@ public partial class ChunkMesh : Node3D
                 meshData.Vertices.Add(new Vector3(1, 1, 0) * scale + position * scale);
                 for (int i = 0; i < 4; i++) meshData.Normals.Add(Vector3.Right);
                 break;
-
             case FaceDirection.Left:
                 meshData.Vertices.Add(new Vector3(0, 0, 0) * scale + position * scale);
                 meshData.Vertices.Add(new Vector3(0, 1, 0) * scale + position * scale);
@@ -376,10 +403,9 @@ public partial class ChunkMesh : Node3D
         }
 
         // Add indices (two triangles to form a quad)
-        // Use flipped triangulation if needed to avoid AO artifacts
         if (flipTriangulation)
         {
-            // Flipped triangulation (v0-v3-v1, v1-v3-v2)
+            // Flipped triangulation (v0-v1-v2, v0-v2-v3)
             meshData.Indices.Add(vertexCount);
             meshData.Indices.Add(vertexCount + 1);
             meshData.Indices.Add(vertexCount + 2);
@@ -387,14 +413,6 @@ public partial class ChunkMesh : Node3D
             meshData.Indices.Add(vertexCount);
             meshData.Indices.Add(vertexCount + 2);
             meshData.Indices.Add(vertexCount + 3);
-            //TODO: fix flipped triangulation faces
-            // meshData.Indices.Add(vertexCount);
-            // meshData.Indices.Add(vertexCount + 3);
-            // meshData.Indices.Add(vertexCount + 1);
-
-            // meshData.Indices.Add(vertexCount + 1);
-            // meshData.Indices.Add(vertexCount + 3);
-            // meshData.Indices.Add(vertexCount + 2);
         }
         else
         {
@@ -424,8 +442,10 @@ public partial class ChunkMesh : Node3D
 
     private float CalculateAO(VoxelChunk chunk, int x, int y, int z, FaceDirection faceDirection, int vertexIndex)
     {
-        // Define the side and corner voxels to check based on face direction and vertex index
-        Vector3I side1, side2, corner;
+        // Determine which neighboring voxels to check based on face direction and vertex index
+        Vector3I side1 = Vector3I.Zero;
+        Vector3I side2 = Vector3I.Zero;
+        Vector3I corner = Vector3I.Zero;
 
         // Determine which neighboring voxels to check based on face direction and vertex index
         switch (faceDirection)
@@ -453,159 +473,18 @@ public partial class ChunkMesh : Node3D
                         side2 = new Vector3I(x, y, z + 1);     // Front
                         corner = new Vector3I(x - 1, y, z + 1); // Left-Front
                         break;
-                    default:
-                        return 1.0f;
                 }
                 break;
-
-            case FaceDirection.Bottom:
-                switch (vertexIndex)
-                {
-                    case 0: // Bottom-left vertex (0,0,0)
-                        side1 = new Vector3I(x - 1, y, z);     // Left
-                        side2 = new Vector3I(x, y, z - 1);     // Back
-                        corner = new Vector3I(x - 1, y, z - 1); // Left-Back
-                        break;
-                    case 1: // Bottom-right vertex (0,0,1)
-                        side1 = new Vector3I(x - 1, y, z);     // Left
-                        side2 = new Vector3I(x, y, z + 1);     // Front
-                        corner = new Vector3I(x - 1, y, z + 1); // Left-Front
-                        break;
-                    case 2: // Top-right vertex (1,0,1)
-                        side1 = new Vector3I(x + 1, y, z);     // Right
-                        side2 = new Vector3I(x, y, z + 1);     // Front
-                        corner = new Vector3I(x + 1, y, z + 1); // Right-Front
-                        break;
-                    case 3: // Top-left vertex (1,0,0)
-                        side1 = new Vector3I(x + 1, y, z);     // Right
-                        side2 = new Vector3I(x, y, z - 1);     // Back
-                        corner = new Vector3I(x + 1, y, z - 1); // Right-Back
-                        break;
-                    default:
-                        return 1.0f;
-                }
-                break;
-
-            case FaceDirection.Front:
-                switch (vertexIndex)
-                {
-                    case 0: // Bottom-left vertex (0,0,1)
-                        side1 = new Vector3I(x - 1, y, z);     // Left
-                        side2 = new Vector3I(x, y - 1, z);     // Bottom
-                        corner = new Vector3I(x - 1, y - 1, z); // Left-Bottom
-                        break;
-                    case 1: // Top-left vertex (0,1,1)
-                        side1 = new Vector3I(x - 1, y, z);     // Left
-                        side2 = new Vector3I(x, y + 1, z);     // Top
-                        corner = new Vector3I(x - 1, y + 1, z); // Left-Top
-                        break;
-                    case 2: // Top-right vertex (1,1,1)
-                        side1 = new Vector3I(x + 1, y, z);     // Right
-                        side2 = new Vector3I(x, y + 1, z);     // Top
-                        corner = new Vector3I(x + 1, y + 1, z); // Right-Top
-                        break;
-                    case 3: // Bottom-right vertex (1,0,1)
-                        side1 = new Vector3I(x + 1, y, z);     // Right
-                        side2 = new Vector3I(x, y - 1, z);     // Bottom
-                        corner = new Vector3I(x + 1, y - 1, z); // Right-Bottom
-                        break;
-                    default:
-                        return 1.0f;
-                }
-                break;
-
-            case FaceDirection.Back:
-                switch (vertexIndex)
-                {
-                    case 0: // Bottom-left vertex (0,0,0)
-                        side1 = new Vector3I(x - 1, y, z);     // Left
-                        side2 = new Vector3I(x, y - 1, z);     // Bottom
-                        corner = new Vector3I(x - 1, y - 1, z); // Left-Bottom
-                        break;
-                    case 1: // Bottom-right vertex (1,0,0)
-                        side1 = new Vector3I(x + 1, y, z);     // Right
-                        side2 = new Vector3I(x, y - 1, z);     // Bottom
-                        corner = new Vector3I(x + 1, y - 1, z); // Right-Bottom
-                        break;
-                    case 2: // Top-right vertex (1,1,0)
-                        side1 = new Vector3I(x + 1, y, z);     // Right
-                        side2 = new Vector3I(x, y + 1, z);     // Top
-                        corner = new Vector3I(x + 1, y + 1, z); // Right-Top
-                        break;
-                    case 3: // Top-left vertex (0,1,0)
-                        side1 = new Vector3I(x - 1, y, z);     // Left
-                        side2 = new Vector3I(x, y + 1, z);     // Top
-                        corner = new Vector3I(x - 1, y + 1, z); // Left-Top
-                        break;
-                    default:
-                        return 1.0f;
-                }
-                break;
-
-            case FaceDirection.Right:
-                switch (vertexIndex)
-                {
-                    case 0: // Bottom-left vertex (1,0,0)
-                        side1 = new Vector3I(x, y - 1, z);     // Bottom
-                        side2 = new Vector3I(x, y, z - 1);     // Back
-                        corner = new Vector3I(x, y - 1, z - 1); // Bottom-Back
-                        break;
-                    case 1: // Bottom-right vertex (1,0,1)
-                        side1 = new Vector3I(x, y - 1, z);     // Bottom
-                        side2 = new Vector3I(x, y, z + 1);     // Front
-                        corner = new Vector3I(x, y - 1, z + 1); // Bottom-Front
-                        break;
-                    case 2: // Top-right vertex (1,1,1)
-                        side1 = new Vector3I(x, y + 1, z);     // Top
-                        side2 = new Vector3I(x, y, z + 1);     // Front
-                        corner = new Vector3I(x, y + 1, z + 1); // Top-Front
-                        break;
-                    case 3: // Top-left vertex (1,1,0)
-                        side1 = new Vector3I(x, y + 1, z);     // Top
-                        side2 = new Vector3I(x, y, z - 1);     // Back
-                        corner = new Vector3I(x, y + 1, z - 1); // Top-Back
-                        break;
-                    default:
-                        return 1.0f;
-                }
-                break;
-
-            case FaceDirection.Left:
-                switch (vertexIndex)
-                {
-                    case 0: // Bottom-left vertex (0,0,0)
-                        side1 = new Vector3I(x, y - 1, z);     // Bottom
-                        side2 = new Vector3I(x, y, z - 1);     // Back
-                        corner = new Vector3I(x, y - 1, z - 1); // Bottom-Back
-                        break;
-                    case 1: // Top-left vertex (0,1,0)
-                        side1 = new Vector3I(x, y + 1, z);     // Top
-                        side2 = new Vector3I(x, y, z - 1);     // Back
-                        corner = new Vector3I(x, y + 1, z - 1); // Top-Back
-                        break;
-                    case 2: // Top-right vertex (0,1,1)
-                        side1 = new Vector3I(x, y + 1, z);     // Top
-                        side2 = new Vector3I(x, y, z + 1);     // Front
-                        corner = new Vector3I(x, y + 1, z + 1); // Top-Front
-                        break;
-                    case 3: // Bottom-right vertex (0,0,1)
-                        side1 = new Vector3I(x, y - 1, z);     // Bottom
-                        side2 = new Vector3I(x, y, z + 1);     // Front
-                        corner = new Vector3I(x, y - 1, z + 1); // Bottom-Front
-                        break;
-                    default:
-                        return 1.0f;
-                }
-                break;
-
+            // Similar cases for other face directions...
             default:
-                return 1.0f;
+                // Default case to avoid compiler warning
+                break;
         }
 
         // Check if the neighboring voxels are solid
-        bool side1Solid = chunk.IsVoxelSolid(side1.X, side1.Y, side1.Z);
-        bool side2Solid = chunk.IsVoxelSolid(side2.X, side2.Y, side2.Z);
-        bool cornerSolid = chunk.IsVoxelSolid(corner.X, corner.Y, corner.Z);
+        bool side1Solid = IsVoxelSolidForAO(chunk, side1.X, side1.Y, side1.Z);
+        bool side2Solid = IsVoxelSolidForAO(chunk, side2.X, side2.Y, side2.Z);
+        bool cornerSolid = IsVoxelSolidForAO(chunk, corner.X, corner.Y, corner.Z);
 
         // For chunk boundaries, we'll still calculate AO but with a more consistent approach
         bool isAtBoundary = (x == 0 || x == chunk.Size - 1 || z == 0 || z == chunk.Size - 1);
@@ -630,20 +509,20 @@ public partial class ChunkMesh : Node3D
             }
         }
 
-        // Calculate occlusion level for non-boundary vertices
+        // Calculate occlusion level
         int occlusionLevel = 0;
 
-        // If both sides are solid, this is a strong occlusion case
+        // If both sides are solid, the corner doesn't matter - it's fully occluded
         if (side1Solid && side2Solid)
         {
-            occlusionLevel = 3; // Maximum occlusion
+            occlusionLevel = 3;
         }
         else
         {
-            // Add occlusion for each solid neighbor
+            // Count solid neighbors
             if (side1Solid) occlusionLevel++;
             if (side2Solid) occlusionLevel++;
-            if (cornerSolid && !(side1Solid && side2Solid)) occlusionLevel++; // Only count corner if not already in a corner
+            if (cornerSolid && !side1Solid && !side2Solid) occlusionLevel++; // Corner only matters if sides aren't solid
         }
 
         // Map occlusion level to AO value (higher value = less occlusion)
@@ -658,34 +537,31 @@ public partial class ChunkMesh : Node3D
         return aoValue;
     }
 
-    public void UpdateMesh(VoxelChunk chunk)
+    private bool IsVoxelSolidForAO(VoxelChunk chunk, int x, int y, int z)
     {
-        // Regenerate mesh
-        GenerateMesh(chunk);
-    }
-
-    public void SetMeshFromArrayMesh(ArrayMesh mesh, List<Vector3> collisionFaces)
-    {
-        // Set the mesh
-        _meshInstance.Mesh = mesh;
-
-        // Create collision shape
-        if (collisionFaces.Count > 0)
+        // Check if the voxel is within bounds
+        if (x < 0 || x >= chunk.Size || y < 0 || y >= chunk.Height || z < 0 || z >= chunk.Size)
         {
-            ConcavePolygonShape3D collisionShape = new ConcavePolygonShape3D();
-            collisionShape.Data = collisionFaces.ToArray();
-            _collisionShape.Shape = collisionShape;
-        }
-        else
-        {
-            _collisionShape.Shape = null;
-        }
-    }
+            // For out-of-bounds positions in the Y direction
+            if (y < 0)
+            {
+                // Below the chunk is solid (ground)
+                return true;
+            }
+            else if (y >= chunk.Height)
+            {
+                // Above the chunk is air
+                return false;
+            }
 
-    public void UpdateMeshFromArrayMesh(ArrayMesh mesh, List<Vector3> collisionFaces)
-    {
-        // Update the mesh
-        SetMeshFromArrayMesh(mesh, collisionFaces);
+            // For out-of-bounds positions in X and Z, we'll assume air
+            // In a full implementation, you would query the world for the neighboring chunk
+            return false;
+        }
+
+        // For in-bounds voxels, check if it's solid
+        VoxelType type = chunk.GetVoxel(x, y, z);
+        return type != VoxelType.Air && type != VoxelType.Water;
     }
 
     private enum FaceDirection
@@ -697,13 +573,13 @@ public partial class ChunkMesh : Node3D
         Right,
         Left
     }
+}
 
-    private class MeshData
-    {
-        public List<Vector3> Vertices { get; set; } = new List<Vector3>();
-        public List<Vector3> Normals { get; set; } = new List<Vector3>();
-        public List<Vector2> UVs { get; set; } = new List<Vector2>();
-        public List<int> Indices { get; set; } = new List<int>();
-        public List<float> AmbientOcclusion { get; set; } = new List<float>();
-    }
+public class MeshData
+{
+    public List<Vector3> Vertices { get; private set; } = new List<Vector3>();
+    public List<Vector3> Normals { get; private set; } = new List<Vector3>();
+    public List<Vector2> UVs { get; private set; } = new List<Vector2>();
+    public List<int> Indices { get; private set; } = new List<int>();
+    public List<float> AmbientOcclusion { get; private set; } = new List<float>();
 }

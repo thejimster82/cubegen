@@ -58,55 +58,23 @@ public class VoxelChunk
 
     public bool IsVoxelSolid(int x, int y, int z)
     {
-        // Check if this is at or near a chunk boundary
-        bool isNearBoundary = (x <= 1 || x >= Size - 2 || z <= 1 || z >= Size - 2);
-
-        // For positions near chunk boundaries, always return consistent results
-        // to ensure identical mesh generation on both sides of the boundary
-        if (isNearBoundary)
-        {
-            // If within bounds, check directly
-            if (IsInBounds(x, y, z))
-            {
-                VoxelType type = _voxels[x][y][z];
-                bool isSolid = (type != VoxelType.Air && type != VoxelType.Water);
-
-                // For the exact boundary voxels, force them to match their neighbors
-                // This ensures consistent mesh generation across chunk boundaries
-                if (x == 0 || x == Size - 1 || z == 0 || z == Size - 1)
-                {
-                    // Get the type of the neighboring voxel inside the chunk
-                    int nx = x == 0 ? 1 : (x == Size - 1 ? Size - 2 : x);
-                    int nz = z == 0 ? 1 : (z == Size - 1 ? Size - 2 : z);
-
-                    VoxelType neighborType = _voxels[nx][y][nz];
-                    bool neighborSolid = (neighborType != VoxelType.Air && neighborType != VoxelType.Water);
-
-                    // Use the neighbor's solidity to ensure consistency
-                    return neighborSolid;
-                }
-
-                return isSolid;
-            }
-
-            // For out-of-bounds positions near chunk boundaries, always assume solid
-            return true;
-        }
-
-        // For normal in-bounds voxels, check directly
+        // First, handle in-bounds voxels directly
         if (IsInBounds(x, y, z))
         {
             VoxelType type = _voxels[x][y][z];
             return type != VoxelType.Air && type != VoxelType.Water;
         }
 
-        // For other out-of-bounds positions, assume solid at horizontal boundaries
-        if (x < 0 || x >= Size || z < 0 || z >= Size)
+        // For out-of-bounds positions in the Y direction
+        if (y < 0 || y >= Height)
         {
-            return true;
+            // Below the chunk is solid (ground), above is air
+            return y < 0;
         }
 
-        // For y out of bounds, use normal air behavior
+        // For out-of-bounds positions in X and Z, we need to check if this would be
+        // a neighboring chunk. For now, we'll assume air at chunk boundaries.
+        // In a full implementation, you would query the world for the neighboring chunk.
         return false;
     }
 

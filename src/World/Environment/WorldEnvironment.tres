@@ -21,6 +21,5 @@ fog_density = 0.0005
 fog_aerial_perspective = 1.0
 fog_sky_affect = 0.25
 fog_height = -100.0
-fog_height_density = 0.0
 volumetric_fog_enabled = true
 volumetric_fog_density = 0.005

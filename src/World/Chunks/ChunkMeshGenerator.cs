@@ -239,6 +239,10 @@ public class ChunkMeshGenerator
                 // Create surface
                 mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
 
+                // Set material based on biome and voxel type
+                Material material = BiomeMaterials.GetMaterial(biomeType, voxelType);
+                mesh.SurfaceSetMaterial(surfaceIndex, material);
+
                 // Add vertices and indices to collision data
                 allVertices.AddRange(vertices);
                 foreach (int index in indices)

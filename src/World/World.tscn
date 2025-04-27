@@ -11,6 +11,7 @@
 [node name="World" type="Node3D"]
 script = ExtResource("1_yvnqm")
 PlayerScene = ExtResource("5_yvnqm")
+ViewDistance = 30
 
 [node name="WorldGenerator" type="Node3D" parent="."]
 script = ExtResource("2_yvnqm")

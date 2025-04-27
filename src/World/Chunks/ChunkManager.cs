@@ -26,14 +26,14 @@ public partial class ChunkManager : Node3D
     private float _timeSinceLastUpdate = 0.0f;
 
     // Thread-safe queue for chunks that need to be requested
-    private List<Vector2I> _chunksToRequest = new List<Vector2I>();
+    private List<(Vector2I, float)> _chunksToRequest = new List<(Vector2I, float)>();
     private System.Threading.Mutex _chunksMutex = new System.Threading.Mutex();
 
     // Background mesh generator
     private ChunkMeshGenerator _meshGenerator;
 
-    // Queue for chunks waiting to be added to the scene
-    private Queue<(VoxelChunk, ArrayMesh, List<Vector3>)> _meshesToAdd = new Queue<(VoxelChunk, ArrayMesh, List<Vector3>)>();
+    // Maximum number of chunks to process per frame
+    private const int MaxChunksPerFrame = 3;
 
     public void Initialize(int chunkSize, int chunkHeight)
     {
@@ -61,35 +61,38 @@ public partial class ChunkManager : Node3D
     private void ProcessCompletedMeshes()
     {
         // Process any completed meshes from the mesh generator
-        while (_meshGenerator.HasCompletedMeshes())
+        // Limit the number of meshes processed per frame
+        int meshesProcessed = 0;
+
+        while (_meshGenerator.HasCompletedMeshes() && meshesProcessed < MaxChunksPerFrame)
         {
             var (chunk, mesh, collisionFaces) = _meshGenerator.GetNextCompletedMesh();
 
             if (chunk != null)
             {
-                if (_chunks.ContainsKey(chunk.Position))
+                if (_chunks.TryGetValue(chunk.Position, out ChunkMesh existingMesh))
                 {
                     // Update existing chunk mesh
-                    ChunkMesh chunkMesh = _chunks[chunk.Position];
-
                     // Update the mesh
-                    chunkMesh.UpdateMeshFromArrayMesh(mesh, collisionFaces);
+                    existingMesh.UpdateMeshFromArrayMesh(mesh, collisionFaces);
                 }
                 else
                 {
                     // Create new chunk mesh
-                    ChunkMesh chunkMesh = ChunkMeshScene.Instantiate<ChunkMesh>();
-                    AddChild(chunkMesh);
+                    ChunkMesh newMesh = ChunkMeshScene.Instantiate<ChunkMesh>();
+                    AddChild(newMesh);
 
                     // Set position
-                    chunkMesh.Position = chunk.GetWorldPosition();
+                    newMesh.Position = chunk.GetWorldPosition();
 
                     // Set the mesh
-                    chunkMesh.SetMeshFromArrayMesh(mesh, collisionFaces);
+                    newMesh.SetMeshFromArrayMesh(mesh, collisionFaces);
 
                     // Add to dictionary
-                    _chunks.Add(chunk.Position, chunkMesh);
+                    _chunks.Add(chunk.Position, newMesh);
                 }
+
+                meshesProcessed++;
             }
         }
     }
@@ -135,9 +138,9 @@ public partial class ChunkManager : Node3D
         // Now remove chunks on the main thread
         foreach (Vector2I position in chunksToRemove)
         {
-            if (_chunks.ContainsKey(position))
+            if (_chunks.TryGetValue(position, out ChunkMesh chunkToRemove))
             {
-                _chunks[position].QueueFree();
+                chunkToRemove.QueueFree();
                 _chunks.Remove(position);
             }
         }
@@ -162,7 +165,7 @@ public partial class ChunkManager : Node3D
     private void ProcessChunkRequests()
     {
         // Get the list of chunks to request in a thread-safe way
-        List<Vector2I> chunksToRequest = new List<Vector2I>();
+        List<(Vector2I, float)> chunksToRequest = new();
 
         _chunksMutex.WaitOne();
         try
@@ -178,10 +181,36 @@ public partial class ChunkManager : Node3D
             _chunksMutex.ReleaseMutex();
         }
 
+        // Sort chunks by distance (priority)
+        chunksToRequest.Sort((a, b) => a.Item2.CompareTo(b.Item2));
+
+        // Limit the number of chunks processed per frame
+        int chunksProcessed = 0;
+
         // Now emit signals for each chunk on the main thread
-        foreach (Vector2I chunkPos in chunksToRequest)
+        foreach (var (chunkPos, _) in chunksToRequest)
         {
             EmitSignal(SignalName.ChunkRequested, chunkPos);
+
+            // Limit the number of chunks processed per frame
+            chunksProcessed++;
+            if (chunksProcessed >= MaxChunksPerFrame)
+            {
+                // Re-queue the remaining chunks for next frame
+                _chunksMutex.WaitOne();
+                try
+                {
+                    for (int i = chunksProcessed; i < chunksToRequest.Count; i++)
+                    {
+                        _chunksToRequest.Add(chunksToRequest[i]);
+                    }
+                }
+                finally
+                {
+                    _chunksMutex.ReleaseMutex();
+                }
+                break;
+            }
         }
     }
 
@@ -222,11 +251,14 @@ public partial class ChunkManager : Node3D
                     // Request chunk generation if it doesn't exist
                     if (!HasChunk(chunkPos))
                     {
+                        // Calculate distance from player for prioritization
+                        float distanceSquared = x * x + z * z;
+
                         // Add to the request queue instead of emitting signal directly
                         _chunksMutex.WaitOne();
                         try
                         {
-                            _chunksToRequest.Add(chunkPos);
+                            _chunksToRequest.Add((chunkPos, distanceSquared));
                         }
                         finally
                         {
@@ -266,10 +298,7 @@ public partial class ChunkManager : Node3D
     public override void _ExitTree()
     {
         // Stop the mesh generator thread when the node is removed from the scene
-        if (_meshGenerator != null)
-        {
-            _meshGenerator.Stop();
-        }
+        _meshGenerator?.Stop();
 
         base._ExitTree();
     }

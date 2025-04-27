@@ -221,6 +221,12 @@ public class ChunkMeshGenerator
                     vertexOffset += meshData.Vertices.Count;
                 }
 
+                // Skip if there are no vertices
+                if (vertices.Count == 0 || indices.Count == 0)
+                {
+                    continue;
+                }
+
                 // Create surface arrays
                 Godot.Collections.Array arrays = new Godot.Collections.Array();
                 arrays.Resize((int)Mesh.ArrayType.Max);

@@ -314,10 +314,6 @@ public partial class World : Node3D
 		// Set up camera properties for a steeper 45-degree angled view
 		// Position the camera to achieve approximately 45-degree viewing angle
 		_mapCamera.Position = new Vector3(-MapHeight * 0.7f, MapHeight * 0.7f, MapHeight * 0.7f);
-		_mapCamera.Rotation = new Vector3(0, 0, 0);
-
-		// Look at the center of the map
-		_mapCamera.LookAt(Vector3.Zero, Vector3.Up);
 
 		// Use perspective projection for better 3D view
 		_mapCamera.Projection = Camera3D.ProjectionType.Perspective;
@@ -328,6 +324,20 @@ public partial class World : Node3D
 
 		// Add to scene
 		AddChild(_mapCamera);
+
+		// We need to wait until the camera is added to the scene tree before calling LookAt
+		// Use CallDeferred to ensure the node is properly added to the tree first
+		CallDeferred(nameof(SetupMapCameraLookAt));
+	}
+
+	private void SetupMapCameraLookAt()
+	{
+		// This method is called after the camera is added to the scene tree
+		if (_mapCamera != null && _mapCamera.IsInsideTree())
+		{
+			// Look at the center of the map
+			_mapCamera.LookAt(Vector3.Zero, Vector3.Up);
+		}
 	}
 
 	private void CreateMapVisualizer()

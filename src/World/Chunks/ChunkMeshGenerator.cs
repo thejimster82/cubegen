@@ -188,17 +188,149 @@ public class ChunkMeshGenerator
         Dictionary<BiomeType, Dictionary<VoxelType, List<MeshData>>> meshDataByBiomeAndType =
             new Dictionary<BiomeType, Dictionary<VoxelType, List<MeshData>>>();
 
-        // Generate mesh data
+        // First, find the surface height for each x,z coordinate
+        int[,] terrainSurfaceHeights = new int[chunk.Size, chunk.Size];
+        int[,] depthNeeded = new int[chunk.Size, chunk.Size];
+
+        // Initialize with -1 to indicate no surface found
+        for (int x = 0; x < chunk.Size; x++)
+        {
+            for (int z = 0; z < chunk.Size; z++)
+            {
+                terrainSurfaceHeights[x, z] = -1;
+                depthNeeded[x, z] = 1; // Default to 1 block below surface
+            }
+        }
+
+        // Find the highest solid voxel for each x,z coordinate
+        for (int x = 0; x < chunk.Size; x++)
+        {
+            for (int z = 0; z < chunk.Size; z++)
+            {
+                // Scan from top to bottom to find the first solid voxel
+                for (int y = chunk.Height - 1; y >= 0; y--)
+                {
+                    VoxelType voxelType = chunk.GetVoxel(x, y, z);
+                    if (voxelType != VoxelType.Air && voxelType != VoxelType.Water)
+                    {
+                        terrainSurfaceHeights[x, z] = y;
+
+                        // Determine depth needed based on voxel type
+                        // Trees and other structures need more depth
+                        if (voxelType == VoxelType.Leaves || voxelType == VoxelType.Wood)
+                        {
+                            depthNeeded[x, z] = 0; // Process all voxels for trees
+                        }
+                        else if (voxelType == VoxelType.Grass || voxelType == VoxelType.Sand || voxelType == VoxelType.Snow)
+                        {
+                            depthNeeded[x, z] = 3; // Process a few blocks below surface for terrain
+                        }
+                        else
+                        {
+                            depthNeeded[x, z] = 1; // Default depth for other voxel types
+                        }
+
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Now process all voxels in the chunk
+        // We'll use two approaches:
+        // 1. For terrain voxels, we'll only process down to the required depth
+        // 2. For non-terrain voxels (trees, etc.), we'll process all of them
+
+        // First, create a set to track which voxels we've already processed
+        HashSet<(int, int, int)> processedVoxels = new HashSet<(int, int, int)>();
+
+        // Process terrain voxels with depth optimization
+        for (int x = 0; x < chunk.Size; x++)
+        {
+            for (int z = 0; z < chunk.Size; z++)
+            {
+                int surfaceY = terrainSurfaceHeights[x, z];
+
+                // Skip if no surface was found at this x,z coordinate
+                if (surfaceY == -1)
+                    continue;
+
+                int depth = depthNeeded[x, z];
+
+                // If depth is 0, process all voxels in this column
+                int minY = (depth == 0) ? 0 : Math.Max(0, surfaceY - depth);
+
+                // Process voxels from surface down to minY
+                for (int y = surfaceY; y >= minY; y--)
+                {
+                    VoxelType voxelType = chunk.GetVoxel(x, y, z);
+
+                    // Skip air voxels
+                    if (voxelType == VoxelType.Air)
+                        continue;
+
+                    // Skip if this voxel is completely surrounded by solid voxels
+                    // This is a significant optimization for underground voxels
+                    if (y < surfaceY - 1 && // Not the surface or just below it
+                        IsVoxelSurrounded(chunk, x, y, z))
+                    {
+                        continue;
+                    }
+
+                    // Mark this voxel as processed
+                    processedVoxels.Add((x, y, z));
+
+                    // Get biome type for this position
+                    int worldX = chunk.Position.X * chunk.Size + x;
+                    int worldZ = chunk.Position.Y * chunk.Size + z;
+                    BiomeType biomeType = CubeGen.World.Generation.WorldGenerator.GetBiomeType(worldX, worldZ);
+
+                    // Initialize dictionaries if needed
+                    if (!meshDataByBiomeAndType.ContainsKey(biomeType))
+                    {
+                        meshDataByBiomeAndType[biomeType] = new Dictionary<VoxelType, List<MeshData>>();
+                    }
+
+                    if (!meshDataByBiomeAndType[biomeType].ContainsKey(voxelType))
+                    {
+                        meshDataByBiomeAndType[biomeType][voxelType] = new List<MeshData>();
+                    }
+
+                    // Create mesh data for this voxel
+                    MeshData meshData = new MeshData();
+
+                    // Check each face and add to mesh data
+                    AddVoxelFaces(chunk, x, y, z, voxelType, meshData);
+
+                    // Add mesh data to the appropriate list if it has any vertices
+                    if (meshData.Vertices.Count > 0)
+                    {
+                        meshDataByBiomeAndType[biomeType][voxelType].Add(meshData);
+                    }
+                }
+            }
+        }
+
+        // Now process any remaining voxels that weren't processed in the terrain pass
+        // This handles trees, structures, and other non-terrain voxels
         for (int x = 0; x < chunk.Size; x++)
         {
             for (int y = 0; y < chunk.Height; y++)
             {
                 for (int z = 0; z < chunk.Size; z++)
                 {
+                    // Skip if already processed
+                    if (processedVoxels.Contains((x, y, z)))
+                        continue;
+
                     VoxelType voxelType = chunk.GetVoxel(x, y, z);
 
                     // Skip air voxels
                     if (voxelType == VoxelType.Air)
+                        continue;
+
+                    // Skip if this voxel is completely surrounded by solid voxels
+                    if (IsVoxelSurrounded(chunk, x, y, z))
                         continue;
 
                     // Get biome type for this position
@@ -618,6 +750,22 @@ public class ChunkMeshGenerator
         // Use the ChunkManager to check if the voxel is solid in world coordinates
         // This will handle cross-chunk lookups consistently
         return _chunkManager.IsVoxelSolid(worldX, worldY, worldZ);
+    }
+
+    // Check if a voxel is completely surrounded by solid voxels
+    // If it is, we can skip generating mesh data for it since it won't be visible
+    private bool IsVoxelSurrounded(VoxelChunk chunk, int x, int y, int z)
+    {
+        // Check all 6 faces
+        bool topSolid = IsVoxelSolidForAO(chunk, x, y + 1, z);
+        bool bottomSolid = IsVoxelSolidForAO(chunk, x, y - 1, z);
+        bool frontSolid = IsVoxelSolidForAO(chunk, x, y, z + 1);
+        bool backSolid = IsVoxelSolidForAO(chunk, x, y, z - 1);
+        bool rightSolid = IsVoxelSolidForAO(chunk, x + 1, y, z);
+        bool leftSolid = IsVoxelSolidForAO(chunk, x - 1, y, z);
+
+        // If all faces are covered by solid voxels, this voxel is not visible
+        return topSolid && bottomSolid && frontSolid && backSolid && rightSolid && leftSolid;
     }
 
     private enum FaceDirection

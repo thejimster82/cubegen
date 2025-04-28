@@ -33,6 +33,9 @@ public partial class World : Node3D
 	private Label _controlsLabel;
 	private bool _isMapMode = false;
 
+	// Store camera rotation to preserve it during movement and zooming
+	private Basis _mapCameraRotation;
+
 	// Track player movement for direction-based chunk loading
 	private Vector3 _lastPlayerPosition = Vector3.Zero;
 	private Vector3 _playerMovementDirection = Vector3.Zero;
@@ -86,6 +89,41 @@ public partial class World : Node3D
 		// Handle map input when in map mode
 		if (_isMapMode && _mapCamera != null)
 		{
+			// Handle camera rotation with Q and E keys
+			if (@event is InputEventKey rotateKeyEvent && rotateKeyEvent.Pressed)
+			{
+				// Rotate left with Q key
+				if (rotateKeyEvent.Keycode == Key.Q)
+				{
+					// Rotate the camera basis around the Y axis (15 degrees counterclockwise)
+					_mapCameraRotation = _mapCameraRotation.Rotated(Vector3.Up, Mathf.DegToRad(15));
+
+					// Apply the rotation to the camera
+					_mapCamera.GlobalTransform = new Transform3D(_mapCameraRotation, _mapCamera.Position);
+
+					// Update the controls label
+					if (_controlsLabel != null)
+					{
+						_controlsLabel.Text = "WASD: Move | Q/E: Rotate | Shift: Fast Move | +/-: Zoom | M: Exit Map";
+					}
+				}
+				// Rotate right with E key
+				else if (rotateKeyEvent.Keycode == Key.E)
+				{
+					// Rotate the camera basis around the Y axis (15 degrees clockwise)
+					_mapCameraRotation = _mapCameraRotation.Rotated(Vector3.Up, Mathf.DegToRad(-15));
+
+					// Apply the rotation to the camera
+					_mapCamera.GlobalTransform = new Transform3D(_mapCameraRotation, _mapCamera.Position);
+
+					// Update the controls label
+					if (_controlsLabel != null)
+					{
+						_controlsLabel.Text = "WASD: Move | Q/E: Rotate | Shift: Fast Move | +/-: Zoom | M: Exit Map";
+					}
+				}
+			}
+
 			// Handle zooming with keys (+ and - keys)
 			if (@event is InputEventKey zoomKeyEvent && zoomKeyEvent.Pressed)
 			{
@@ -111,9 +149,11 @@ public partial class World : Node3D
 					float heightRatio = _mapCamera.Position.Y / currentDistance;
 					newPosition.Y = lookTarget.Y + newDistance * heightRatio;
 
-					// Update camera position
+					// Update camera position while preserving rotation
 					_mapCamera.Position = newPosition;
-					_mapCamera.LookAt(lookTarget, Vector3.Up);
+
+					// Apply the stored rotation instead of using LookAt
+					_mapCamera.GlobalTransform = new Transform3D(_mapCameraRotation, newPosition);
 
 					// Update the controls label
 					if (_controlsLabel != null)
@@ -136,9 +176,11 @@ public partial class World : Node3D
 					float heightRatio = _mapCamera.Position.Y / currentDistance;
 					newPosition.Y = lookTarget.Y + newDistance * heightRatio;
 
-					// Update camera position
+					// Update camera position while preserving rotation
 					_mapCamera.Position = newPosition;
-					_mapCamera.LookAt(lookTarget, Vector3.Up);
+
+					// Apply the stored rotation instead of using LookAt
+					_mapCamera.GlobalTransform = new Transform3D(_mapCameraRotation, newPosition);
 
 					// Update the controls label
 					if (_controlsLabel != null)
@@ -190,39 +232,19 @@ public partial class World : Node3D
 				// Move the camera
 				Vector3 newPosition = _mapCamera.Position + moveDirection * currentSpeed * (float)delta;
 
-				// Update camera position and keep it looking at the center point
+				// Update camera position while preserving rotation
 				_mapCamera.Position = newPosition;
 
-				// Calculate the point to look at (ground point below camera)
-				// Add a small offset to avoid colinear vectors warning
-				Vector3 lookTarget = new Vector3(newPosition.X, 0, newPosition.Z);
-
-				// Check if camera is directly above the target (which would cause colinear vectors)
-				Vector3 cameraToTarget = lookTarget - newPosition;
-				cameraToTarget = cameraToTarget.Normalized();
-				float dotProduct = cameraToTarget.Dot(Vector3.Up);
-
-				// If the camera is looking almost straight down (dot product close to -1)
-				// or almost straight up (dot product close to 1), use a different up vector
-				if (Math.Abs(dotProduct) > 0.99f)
-				{
-					// Use a different up vector (forward in this case)
-					_mapCamera.LookAt(lookTarget, Vector3.Forward);
-				}
-				else
-				{
-					// Normal case, use standard up vector
-					_mapCamera.LookAt(lookTarget, Vector3.Up);
-				}
+				// Apply the stored rotation instead of using LookAt
+				_mapCamera.GlobalTransform = new Transform3D(_mapCameraRotation, newPosition);
 			}
 
 			// Update biome label
 			if (_biomeLabel != null)
 			{
-				// Use the point the camera is looking at for biome determination
-				Vector3 lookPoint = -_mapCamera.GlobalTransform.Basis.Z * 100 + _mapCamera.Position;
-				int worldX = (int)lookPoint.X;
-				int worldZ = (int)lookPoint.Z;
+				// Use the point directly below the camera for biome determination
+				int worldX = (int)_mapCamera.Position.X;
+				int worldZ = (int)_mapCamera.Position.Z;
 				BiomeType biomeType = WorldGenerator.GetBiomeType(worldX, worldZ);
 				_biomeLabel.Text = $"Biome: {biomeType} | Position: ({worldX}, {worldZ})";
 			}
@@ -370,6 +392,9 @@ public partial class World : Node3D
 				// Normal case
 				_mapCamera.LookAt(Vector3.Zero, Vector3.Up);
 			}
+
+			// Store the initial camera rotation to preserve it during movement and zooming
+			_mapCameraRotation = _mapCamera.GlobalTransform.Basis;
 		}
 	}
 
@@ -574,7 +599,7 @@ public partial class World : Node3D
 		// Create controls label
 		_controlsLabel = new Label();
 		_controlsLabel.Position = new Vector2(20, 50);
-		_controlsLabel.Text = "WASD: Move | Shift: Fast Move | +/-: Zoom | M: Exit Map";
+		_controlsLabel.Text = "WASD: Move | Q/E: Rotate | Shift: Fast Move | +/-: Zoom | M: Exit Map";
 		_mapUI.AddChild(_controlsLabel);
 
 		// Add to scene

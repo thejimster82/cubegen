@@ -544,7 +544,7 @@ public partial class World : Node3D
 		AddChild(_player);
 
 		// Position player above the terrain at spawn point
-		Vector3 spawnPosition = new Vector3(0, 100, 0); // Halved for higher resolution voxels (was 100)
+		Vector3 spawnPosition = new Vector3(0, 60, 0); // Halved for higher resolution voxels (was 100)
 		_player.Position = spawnPosition;
 
 		GD.Print("Player spawned at position: " + spawnPosition);
@@ -578,6 +578,13 @@ public partial class World : Node3D
 					movement.Y = 0;
 					_playerMovementDirection = movement.Normalized();
 				}
+			}
+			else
+			{
+				// First update after player spawn - use a default direction
+				// This ensures chunks are generated in concentric circles at game start
+				_playerMovementDirection = Vector3.Zero;
+				GD.Print("First chunk update after player spawn - using concentric circle pattern");
 			}
 
 			// Update last position

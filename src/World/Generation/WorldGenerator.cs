@@ -1,5 +1,6 @@
 using Godot;
 using System;
+using System.Collections.Generic;
 using CubeGen.World.Common;
 
 namespace CubeGen.World.Generation
@@ -63,18 +64,34 @@ public partial class WorldGenerator : Node3D
 		// Use a circular pattern for better visual appearance
 		int viewDistanceSquared = viewDistance * viewDistance;
 
+		// Create a list of chunks to generate, sorted by distance from center
+		List<(Vector2I, float)> chunksToGenerate = new List<(Vector2I, float)>();
+
+		// First, collect all chunks within view distance
 		for (int x = -viewDistance; x <= viewDistance; x++)
 		{
 			for (int z = -viewDistance; z <= viewDistance; z++)
 			{
+				// Calculate distance squared from center
+				float distanceSquared = x * x + z * z;
+
 				// Use distance squared for a more circular pattern
-				if (x * x + z * z <= viewDistanceSquared)
+				if (distanceSquared <= viewDistanceSquared)
 				{
 					Vector2I chunkPos = new Vector2I(x, z);
-					GD.Print($"Generating initial chunk at: {chunkPos}");
-					GenerateChunk(chunkPos);
+					chunksToGenerate.Add((chunkPos, distanceSquared));
 				}
 			}
+		}
+
+		// Sort chunks by distance from center (closest first)
+		chunksToGenerate.Sort((a, b) => a.Item2.CompareTo(b.Item2));
+
+		// Generate chunks in order of distance from center
+		foreach ((Vector2I chunkPos, float distance) in chunksToGenerate)
+		{
+			GD.Print($"Generating initial chunk at: {chunkPos}, distance: {Math.Sqrt(distance):F2}");
+			GenerateChunk(chunkPos);
 		}
 
 		GD.Print("Initial chunk generation complete");

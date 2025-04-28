@@ -410,9 +410,16 @@ public partial class World : Node3D
 
 		// Add a directional light for better terrain visualization
 		DirectionalLight3D light = new DirectionalLight3D();
-		light.LightEnergy = 1.5f;
+		light.LightEnergy = 0.8f;
 		light.LightColor = new Color(1.0f, 0.98f, 0.9f); // Slightly warm light
 		light.ShadowEnabled = true;
+		light.ShadowBlur = 6.0f;
+		light.ShadowNormalBias = 3.0f;
+		light.DirectionalShadowBlendSplits = true;
+		light.DirectionalShadowFadeStart = 0.8f;
+		light.DirectionalShadowMaxDistance = 1000.0f;
+		light.DirectionalShadowPancakeSize = 40.0f;
+		light.LightAngularDistance = 0.5f;
 
 		// Position the light to cast shadows that highlight terrain features
 		light.RotationDegrees = new Vector3(50, -30, 0);

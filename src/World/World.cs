@@ -194,8 +194,26 @@ public partial class World : Node3D
 				_mapCamera.Position = newPosition;
 
 				// Calculate the point to look at (ground point below camera)
+				// Add a small offset to avoid colinear vectors warning
 				Vector3 lookTarget = new Vector3(newPosition.X, 0, newPosition.Z);
-				_mapCamera.LookAt(lookTarget, Vector3.Up);
+
+				// Check if camera is directly above the target (which would cause colinear vectors)
+				Vector3 cameraToTarget = lookTarget - newPosition;
+				cameraToTarget = cameraToTarget.Normalized();
+				float dotProduct = cameraToTarget.Dot(Vector3.Up);
+
+				// If the camera is looking almost straight down (dot product close to -1)
+				// or almost straight up (dot product close to 1), use a different up vector
+				if (Math.Abs(dotProduct) > 0.99f)
+				{
+					// Use a different up vector (forward in this case)
+					_mapCamera.LookAt(lookTarget, Vector3.Forward);
+				}
+				else
+				{
+					// Normal case, use standard up vector
+					_mapCamera.LookAt(lookTarget, Vector3.Up);
+				}
 			}
 
 			// Update biome label
@@ -336,7 +354,22 @@ public partial class World : Node3D
 		if (_mapCamera != null && _mapCamera.IsInsideTree())
 		{
 			// Look at the center of the map
-			_mapCamera.LookAt(Vector3.Zero, Vector3.Up);
+			// Check if camera position would cause colinear vectors
+			Vector3 cameraToTarget = Vector3.Zero - _mapCamera.Position;
+			cameraToTarget = cameraToTarget.Normalized();
+			float dotProduct = cameraToTarget.Dot(Vector3.Up);
+
+			// If the camera is looking almost straight down or up, use a different up vector
+			if (Math.Abs(dotProduct) > 0.99f)
+			{
+				// Use a different up vector
+				_mapCamera.LookAt(Vector3.Zero, Vector3.Forward);
+			}
+			else
+			{
+				// Normal case
+				_mapCamera.LookAt(Vector3.Zero, Vector3.Up);
+			}
 		}
 	}
 
@@ -566,7 +599,7 @@ public partial class World : Node3D
 		_worldGenerator.GenerateChunk(chunkPosition);
 
 		// Debug output to confirm chunk generation
-		GD.Print($"Generated chunk at position: {chunkPosition}");
+		// GD.Print($"Generated chunk at position: {chunkPosition}");
 	}
 
 	private void OnChunkUpdateTimerTimeout()

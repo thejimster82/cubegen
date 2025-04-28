@@ -50,7 +50,7 @@ public partial class ChunkMesh : Node3D
             }
         }
 
-        GD.Print("ChunkMesh initialized with biome materials");
+        // GD.Print("ChunkMesh initialized with biome materials");
     }
 
     public void GenerateMesh(VoxelChunk chunk)

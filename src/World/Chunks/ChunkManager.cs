@@ -397,7 +397,7 @@ public partial class ChunkManager : Node3D
                             // If no movement direction (e.g., at game start), use pure distance from center
                             // This ensures chunks are generated in concentric circles
                             // No adjustment needed, distanceSquared is already set correctly
-                            GD.Print($"Using concentric circle pattern for chunk at {chunkPos}, distance: {Math.Sqrt(distanceSquared):F2}");
+                            // GD.Print($"Using concentric circle pattern for chunk at {chunkPos}, distance: {Math.Sqrt(distanceSquared):F2}");
                         }
 
                         // Add to the local request list

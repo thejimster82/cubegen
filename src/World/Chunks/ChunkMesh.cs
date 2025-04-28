@@ -8,6 +8,7 @@ public partial class ChunkMesh : Node3D
     private MeshInstance3D _meshInstance;
     private StaticBody3D _staticBody;
     private CollisionShape3D _collisionShape;
+    private VoxelChunk _chunk; // Store reference to the chunk
 
     // Material for different voxel types
     [Export] public Material DefaultMaterial { get; set; }
@@ -54,6 +55,8 @@ public partial class ChunkMesh : Node3D
 
     public void GenerateMesh(VoxelChunk chunk)
     {
+        // Store reference to the chunk
+        _chunk = chunk;
         // Create a dictionary to group vertices by biome and voxel type
         Dictionary<BiomeType, Dictionary<VoxelType, List<MeshData>>> meshDataByBiomeAndType = new Dictionary<BiomeType, Dictionary<VoxelType, List<MeshData>>>();
 
@@ -602,10 +605,39 @@ public partial class ChunkMesh : Node3D
                 return 1.0f;
         }
 
-        // Check if the neighboring voxels are solid
-        bool side1Solid = chunk.IsVoxelSolid(side1.X, side1.Y, side1.Z);
-        bool side2Solid = chunk.IsVoxelSolid(side2.X, side2.Y, side2.Z);
-        bool cornerSolid = chunk.IsVoxelSolid(corner.X, corner.Y, corner.Z);
+        // Convert to world coordinates for consistent lookup across chunk boundaries
+        int worldX1 = chunk.Position.X * chunk.Size + side1.X;
+        int worldY1 = side1.Y;
+        int worldZ1 = chunk.Position.Y * chunk.Size + side1.Z;
+
+        int worldX2 = chunk.Position.X * chunk.Size + side2.X;
+        int worldY2 = side2.Y;
+        int worldZ2 = chunk.Position.Y * chunk.Size + side2.Z;
+
+        int worldXC = chunk.Position.X * chunk.Size + corner.X;
+        int worldYC = corner.Y;
+        int worldZC = chunk.Position.Y * chunk.Size + corner.Z;
+
+        // Use the World's IsVoxelSolid method to check across chunk boundaries
+        bool side1Solid = false;
+        bool side2Solid = false;
+        bool cornerSolid = false;
+
+        // Special case for Y bounds
+        if (worldY1 < 0) side1Solid = true;
+        else if (worldY1 >= chunk.Height) side1Solid = false;
+        else if (IsInBounds(chunk, side1.X, side1.Y, side1.Z))
+            side1Solid = chunk.GetVoxel(side1.X, side1.Y, side1.Z) != VoxelType.Air && chunk.GetVoxel(side1.X, side1.Y, side1.Z) != VoxelType.Water;
+
+        if (worldY2 < 0) side2Solid = true;
+        else if (worldY2 >= chunk.Height) side2Solid = false;
+        else if (IsInBounds(chunk, side2.X, side2.Y, side2.Z))
+            side2Solid = chunk.GetVoxel(side2.X, side2.Y, side2.Z) != VoxelType.Air && chunk.GetVoxel(side2.X, side2.Y, side2.Z) != VoxelType.Water;
+
+        if (worldYC < 0) cornerSolid = true;
+        else if (worldYC >= chunk.Height) cornerSolid = false;
+        else if (IsInBounds(chunk, corner.X, corner.Y, corner.Z))
+            cornerSolid = chunk.GetVoxel(corner.X, corner.Y, corner.Z) != VoxelType.Air && chunk.GetVoxel(corner.X, corner.Y, corner.Z) != VoxelType.Water;
 
         // For chunk boundaries, we'll still calculate AO but with a more consistent approach
         bool isAtBoundary = (x == 0 || x == chunk.Size - 1 || z == 0 || z == chunk.Size - 1);
@@ -664,8 +696,14 @@ public partial class ChunkMesh : Node3D
         GenerateMesh(chunk);
     }
 
-    public void SetMeshFromArrayMesh(ArrayMesh mesh, List<Vector3> collisionFaces)
+    public void SetMeshFromArrayMesh(ArrayMesh mesh, List<Vector3> collisionFaces, VoxelChunk chunk = null)
     {
+        // Store the chunk reference if provided
+        if (chunk != null)
+        {
+            _chunk = chunk;
+        }
+
         // Set the mesh
         _meshInstance.Mesh = mesh;
 
@@ -682,10 +720,22 @@ public partial class ChunkMesh : Node3D
         }
     }
 
-    public void UpdateMeshFromArrayMesh(ArrayMesh mesh, List<Vector3> collisionFaces)
+    public void UpdateMeshFromArrayMesh(ArrayMesh mesh, List<Vector3> collisionFaces, VoxelChunk chunk = null)
     {
         // Update the mesh
-        SetMeshFromArrayMesh(mesh, collisionFaces);
+        SetMeshFromArrayMesh(mesh, collisionFaces, chunk);
+    }
+
+    // Get the chunk associated with this mesh
+    public VoxelChunk GetChunk()
+    {
+        return _chunk;
+    }
+
+    // Helper method to check if coordinates are within chunk bounds
+    private static bool IsInBounds(VoxelChunk chunk, int x, int y, int z)
+    {
+        return x >= 0 && x < chunk.Size && y >= 0 && y < chunk.Height && z >= 0 && z < chunk.Size;
     }
 
     private enum FaceDirection

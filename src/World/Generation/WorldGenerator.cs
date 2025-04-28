@@ -114,7 +114,8 @@ public partial class WorldGenerator : Node3D
 		// Add objects like trees based on biome
 		AddBiomeObjects(chunk, chunkPos, ChunkSize);
 
-		// Send chunk to chunk manager for mesh generation
+		// First, add the chunk data to the chunk manager
+		// This makes the data available for neighboring chunks' AO calculations
 		_chunkManager.AddChunk(chunk);
 	}
 

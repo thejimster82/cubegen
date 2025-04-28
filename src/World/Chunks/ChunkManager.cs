@@ -8,10 +8,13 @@ public partial class ChunkManager : Node3D
 {
     [Export] public PackedScene ChunkMeshScene { get; set; }
 
+    // Store chunk meshes and chunk data separately
     private Dictionary<Vector2I, ChunkMesh> _chunks = new Dictionary<Vector2I, ChunkMesh>();
+    private Dictionary<Vector2I, VoxelChunk> _chunkData = new Dictionary<Vector2I, VoxelChunk>();
 
     // Property to get the current number of active chunks
     public int ActiveChunkCount => _chunks.Count;
+    public int ActiveChunkDataCount => _chunkData.Count;
     private int _chunkSize;
     private int _chunkHeight;
 
@@ -40,21 +43,114 @@ public partial class ChunkManager : Node3D
         _chunkSize = chunkSize;
         _chunkHeight = chunkHeight;
 
-        // Initialize the mesh generator
-        _meshGenerator = new ChunkMeshGenerator();
+        // Initialize the mesh generator with a reference to this ChunkManager
+        _meshGenerator = new ChunkMeshGenerator(this);
+    }
+
+    // Method to get voxel data across chunk boundaries
+    public bool IsVoxelSolid(int worldX, int worldY, int worldZ)
+    {
+        // Convert world coordinates to chunk coordinates
+        Vector2I chunkPos = new Vector2I(
+            Mathf.FloorToInt((float)worldX / _chunkSize),
+            Mathf.FloorToInt((float)worldZ / _chunkSize)
+        );
+
+        // Calculate local coordinates within the chunk
+        int localX = worldX - (chunkPos.X * _chunkSize);
+        int localY = worldY;
+        int localZ = worldZ - (chunkPos.Y * _chunkSize);
+
+        // First check if we have the chunk data directly
+        if (_chunkData.TryGetValue(chunkPos, out VoxelChunk chunk))
+        {
+            return chunk.IsVoxelSolid(localX, localY, localZ);
+        }
+
+        // If no chunk data, check if we have a mesh with chunk data
+        if (_chunks.TryGetValue(chunkPos, out ChunkMesh chunkMesh))
+        {
+            // Get the VoxelChunk from the ChunkMesh
+            chunk = chunkMesh.GetChunk();
+            if (chunk != null)
+            {
+                return chunk.IsVoxelSolid(localX, localY, localZ);
+            }
+        }
+
+        // For Y out of bounds
+        if (worldY < 0)
+        {
+            // Below the world is solid (ground)
+            return true;
+        }
+        else if (worldY >= _chunkHeight)
+        {
+            // Above the world is air
+            return false;
+        }
+
+        // If chunk doesn't exist or is out of bounds, assume air
+        return false;
     }
 
     public void AddChunk(VoxelChunk chunk)
     {
+        // First, store the chunk data regardless of whether we have a mesh for it
+        _chunkData[chunk.Position] = chunk;
+
         if (_chunks.ContainsKey(chunk.Position))
         {
-            // If chunk already exists, queue it for update
+            // If chunk mesh already exists, queue it for update
             _meshGenerator.QueueChunk(chunk);
         }
         else
         {
             // Queue the chunk for mesh generation in the background
             _meshGenerator.QueueChunk(chunk);
+
+            // Also queue any existing neighboring chunks for remeshing
+            // This ensures proper AO calculation at chunk boundaries
+            QueueNeighborsForRemeshing(chunk.Position);
+        }
+    }
+
+    // Queue neighboring chunks for remeshing to fix AO at boundaries
+    private void QueueNeighborsForRemeshing(Vector2I chunkPos)
+    {
+        // Check all 8 neighboring positions
+        Vector2I[] neighbors = new Vector2I[]
+        {
+            new Vector2I(chunkPos.X - 1, chunkPos.Y - 1), // Bottom-left
+            new Vector2I(chunkPos.X - 1, chunkPos.Y),     // Left
+            new Vector2I(chunkPos.X - 1, chunkPos.Y + 1), // Top-left
+            new Vector2I(chunkPos.X, chunkPos.Y - 1),     // Bottom
+            new Vector2I(chunkPos.X, chunkPos.Y + 1),     // Top
+            new Vector2I(chunkPos.X + 1, chunkPos.Y - 1), // Bottom-right
+            new Vector2I(chunkPos.X + 1, chunkPos.Y),     // Right
+            new Vector2I(chunkPos.X + 1, chunkPos.Y + 1)  // Top-right
+        };
+
+        // Queue each existing neighbor for remeshing
+        foreach (Vector2I neighborPos in neighbors)
+        {
+            // First check if we have the chunk data
+            if (_chunkData.TryGetValue(neighborPos, out VoxelChunk neighborChunk))
+            {
+                // Queue it for remeshing
+                _meshGenerator.QueueChunk(neighborChunk);
+            }
+            // If no chunk data but we have a mesh, try to get the chunk from there
+            else if (_chunks.TryGetValue(neighborPos, out ChunkMesh neighborMesh))
+            {
+                // Get the chunk from the mesh
+                neighborChunk = neighborMesh.GetChunk();
+                if (neighborChunk != null)
+                {
+                    // Queue it for remeshing
+                    _meshGenerator.QueueChunk(neighborChunk);
+                }
+            }
         }
     }
 
@@ -73,8 +169,8 @@ public partial class ChunkManager : Node3D
                 if (_chunks.TryGetValue(chunk.Position, out ChunkMesh existingMesh))
                 {
                     // Update existing chunk mesh
-                    // Update the mesh
-                    existingMesh.UpdateMeshFromArrayMesh(mesh, collisionFaces);
+                    // Update the mesh and store the chunk reference
+                    existingMesh.UpdateMeshFromArrayMesh(mesh, collisionFaces, chunk);
                 }
                 else
                 {
@@ -85,8 +181,8 @@ public partial class ChunkManager : Node3D
                     // Set position
                     newMesh.Position = chunk.GetWorldPosition();
 
-                    // Set the mesh
-                    newMesh.SetMeshFromArrayMesh(mesh, collisionFaces);
+                    // Set the mesh and store the chunk reference
+                    newMesh.SetMeshFromArrayMesh(mesh, collisionFaces, chunk);
 
                     // Add to dictionary
                     _chunks.Add(chunk.Position, newMesh);
@@ -138,17 +234,28 @@ public partial class ChunkManager : Node3D
         // Now remove chunks on the main thread
         foreach (Vector2I position in chunksToRemove)
         {
+            // Remove chunk mesh if it exists
             if (_chunks.TryGetValue(position, out ChunkMesh chunkToRemove))
             {
                 chunkToRemove.QueueFree();
                 _chunks.Remove(position);
             }
+
+            // Also remove chunk data
+            _chunkData.Remove(position);
         }
     }
 
+    // Check if we have a chunk mesh at the given position
     public bool HasChunk(Vector2I position)
     {
         return _chunks.ContainsKey(position);
+    }
+
+    // Check if we have chunk data at the given position
+    public bool HasChunkData(Vector2I position)
+    {
+        return _chunkData.ContainsKey(position);
     }
 
     public override void _Process(double delta)
@@ -252,7 +359,7 @@ public partial class ChunkManager : Node3D
                     activeChunks.Add(chunkPos);
 
                     // Request chunk generation if it doesn't exist
-                    if (!HasChunk(chunkPos))
+                    if (!HasChunkData(chunkPos))
                     {
                         // Calculate base distance from player for prioritization
                         float distanceSquared = x * x + z * z;
@@ -315,7 +422,22 @@ public partial class ChunkManager : Node3D
         List<Vector2I> chunksToRemove = new List<Vector2I>();
         int unloadDistanceSquared = UnloadDistance * UnloadDistance;
 
-        foreach (Vector2I chunkPos in _chunks.Keys)
+        // Check both chunk data and chunk meshes for unloading
+        HashSet<Vector2I> allChunkPositions = new HashSet<Vector2I>();
+
+        // Add all chunk positions from both dictionaries
+        foreach (Vector2I pos in _chunks.Keys)
+        {
+            allChunkPositions.Add(pos);
+        }
+
+        foreach (Vector2I pos in _chunkData.Keys)
+        {
+            allChunkPositions.Add(pos);
+        }
+
+        // Check each position for unloading
+        foreach (Vector2I chunkPos in allChunkPositions)
         {
             int dx = chunkPos.X - playerChunk.X;
             int dz = chunkPos.Y - playerChunk.Y;

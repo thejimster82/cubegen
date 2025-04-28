@@ -12,9 +12,12 @@ public class ChunkMeshGenerator
     private System.Threading.Mutex _resultMutex = new System.Threading.Mutex();
     private Thread _workerThread;
     private bool _isRunning = true;
+    private ChunkManager _chunkManager; // Reference to the ChunkManager for cross-chunk lookups
 
-    public ChunkMeshGenerator()
+    public ChunkMeshGenerator(ChunkManager chunkManager)
     {
+        _chunkManager = chunkManager;
+
         // Start the worker thread
         _workerThread = new Thread(ProcessChunks);
         _workerThread.Start();
@@ -95,18 +98,41 @@ public class ChunkMeshGenerator
             // Process the chunk if we have one
             if (chunkToProcess != null)
             {
-                // Generate the mesh data
-                (ArrayMesh mesh, List<Vector3> collisionFaces) = GenerateMesh(chunkToProcess);
+                // Check if all neighboring chunks are available for proper AO calculation
+                bool canProcessChunk = AreNeighboringChunksAvailable(chunkToProcess);
 
-                // Queue the completed mesh
-                _resultMutex.WaitOne();
-                try
+                if (canProcessChunk)
                 {
-                    _completedMeshes.Enqueue((chunkToProcess, mesh, collisionFaces));
+                    // Generate the mesh data
+                    (ArrayMesh mesh, List<Vector3> collisionFaces) = GenerateMesh(chunkToProcess);
+
+                    // Queue the completed mesh
+                    _resultMutex.WaitOne();
+                    try
+                    {
+                        _completedMeshes.Enqueue((chunkToProcess, mesh, collisionFaces));
+                    }
+                    finally
+                    {
+                        _resultMutex.ReleaseMutex();
+                    }
                 }
-                finally
+                else
                 {
-                    _resultMutex.ReleaseMutex();
+                    // Re-queue the chunk for later processing when neighbors are available
+                    _queueMutex.WaitOne();
+                    try
+                    {
+                        // Put it at the back of the queue
+                        _chunksToProcess.Enqueue(chunkToProcess);
+                    }
+                    finally
+                    {
+                        _queueMutex.ReleaseMutex();
+                    }
+
+                    // Sleep a bit to avoid busy re-queueing
+                    Thread.Sleep(50);
                 }
             }
             else
@@ -115,6 +141,45 @@ public class ChunkMeshGenerator
                 Thread.Sleep(10);
             }
         }
+    }
+
+    // Check if all neighboring chunks needed for AO calculation are available
+    private bool AreNeighboringChunksAvailable(VoxelChunk chunk)
+    {
+        // Get the position of the chunk
+        Vector2I pos = chunk.Position;
+
+        // Check all 8 neighboring chunks
+        Vector2I[] neighbors = new Vector2I[]
+        {
+            new Vector2I(pos.X - 1, pos.Y - 1), // Bottom-left
+            new Vector2I(pos.X - 1, pos.Y),     // Left
+            new Vector2I(pos.X - 1, pos.Y + 1), // Top-left
+            new Vector2I(pos.X, pos.Y - 1),     // Bottom
+            new Vector2I(pos.X, pos.Y + 1),     // Top
+            new Vector2I(pos.X + 1, pos.Y - 1), // Bottom-right
+            new Vector2I(pos.X + 1, pos.Y),     // Right
+            new Vector2I(pos.X + 1, pos.Y + 1)  // Top-right
+        };
+
+        // Check if all neighbors exist
+        foreach (Vector2I neighborPos in neighbors)
+        {
+            // Skip chunks that are too far away (outside the world bounds)
+            if (Math.Abs(neighborPos.X - pos.X) > 1 || Math.Abs(neighborPos.Y - pos.Y) > 1)
+                continue;
+
+            // Check if the neighbor data exists in the chunk manager
+            // We only need the chunk data for AO calculation, not the full mesh
+            if (!_chunkManager.HasChunkData(neighborPos))
+            {
+                // If any neighbor data is missing, return false
+                return false;
+            }
+        }
+
+        // All necessary neighbors are available
+        return true;
     }
 
     private (ArrayMesh, List<Vector3>) GenerateMesh(VoxelChunk chunk)
@@ -278,37 +343,37 @@ public class ChunkMeshGenerator
         // Check each of the 6 faces
 
         // Top face (Y+)
-        if (y == chunk.Height - 1 || !chunk.IsVoxelSolid(x, y + 1, z))
+        if (y == chunk.Height - 1 || !IsVoxelSolidForAO(chunk, x, y + 1, z))
         {
             AddFace(FaceDirection.Top, new Vector3(x, y, z), voxelType, meshData, chunk);
         }
 
         // Bottom face (Y-)
-        if (y == 0 || !chunk.IsVoxelSolid(x, y - 1, z))
+        if (y == 0 || !IsVoxelSolidForAO(chunk, x, y - 1, z))
         {
             AddFace(FaceDirection.Bottom, new Vector3(x, y, z), voxelType, meshData, chunk);
         }
 
         // Front face (Z+)
-        if (z == chunk.Size - 1 || !chunk.IsVoxelSolid(x, y, z + 1))
+        if (z == chunk.Size - 1 || !IsVoxelSolidForAO(chunk, x, y, z + 1))
         {
             AddFace(FaceDirection.Front, new Vector3(x, y, z), voxelType, meshData, chunk);
         }
 
         // Back face (Z-)
-        if (z == 0 || !chunk.IsVoxelSolid(x, y, z - 1))
+        if (z == 0 || !IsVoxelSolidForAO(chunk, x, y, z - 1))
         {
             AddFace(FaceDirection.Back, new Vector3(x, y, z), voxelType, meshData, chunk);
         }
 
         // Right face (X+)
-        if (x == chunk.Size - 1 || !chunk.IsVoxelSolid(x + 1, y, z))
+        if (x == chunk.Size - 1 || !IsVoxelSolidForAO(chunk, x + 1, y, z))
         {
             AddFace(FaceDirection.Right, new Vector3(x, y, z), voxelType, meshData, chunk);
         }
 
         // Left face (X-)
-        if (x == 0 || !chunk.IsVoxelSolid(x - 1, y, z))
+        if (x == 0 || !IsVoxelSolidForAO(chunk, x - 1, y, z))
         {
             AddFace(FaceDirection.Left, new Vector3(x, y, z), voxelType, meshData, chunk);
         }
@@ -340,23 +405,19 @@ public class ChunkMeshGenerator
         // Check if we need to flip the triangulation to avoid AO artifacts
         bool flipTriangulation = false;
 
-        // At chunk boundaries, use a consistent triangulation pattern
-        // to avoid seams between chunks
-        bool isAtBoundary = (x == 0 || x == chunk.Size - 1 || z == 0 || z == chunk.Size - 1);
-        if (isAtBoundary)
-        {
-            // Use a deterministic pattern based on position
-            // This ensures the same triangulation is used on both sides of a chunk boundary
-            flipTriangulation = ((x + z) % 2 == 0);
-        }
-        else
-        {
-            // For interior faces, use the AO-based triangulation
-            if (Math.Abs(aoValues[0] - aoValues[2]) < Math.Abs(aoValues[1] - aoValues[3]))
-            {
-                flipTriangulation = true;
-            }
-        }
+        // Use a consistent triangulation pattern for all faces
+        // This is critical for avoiding seams at chunk boundaries
+        // We'll use a deterministic pattern based on world position, not local position
+        // This ensures the same triangulation is used on both sides of a chunk boundary
+        int worldX = chunk.Position.X * chunk.Size + x;
+        int worldZ = chunk.Position.Y * chunk.Size + z;
+
+        // Use a deterministic pattern based on world position
+        flipTriangulation = ((worldX + worldZ) % 2 == 0);
+
+        // For interior faces, we could use AO-based triangulation, but for consistency
+        // we'll use the same deterministic pattern everywhere
+        // This sacrifices some AO quality for seamless boundaries
 
         // Add vertices based on face direction
         switch (direction)
@@ -496,28 +557,9 @@ public class ChunkMeshGenerator
         bool side2Solid = IsVoxelSolidForAO(chunk, side2.X, side2.Y, side2.Z);
         bool cornerSolid = IsVoxelSolidForAO(chunk, corner.X, corner.Y, corner.Z);
 
-        // For chunk boundaries, we'll still calculate AO but with a more consistent approach
-        bool isAtBoundary = (x == 0 || x == chunk.Size - 1 || z == 0 || z == chunk.Size - 1);
-        if (isAtBoundary)
-        {
-            // Calculate occlusion level based on what we can see
-            int boundaryOcclusionLevel = 0;
-
-            // Count solid neighbors
-            if (side1Solid) boundaryOcclusionLevel++;
-            if (side2Solid) boundaryOcclusionLevel++;
-            if (cornerSolid) boundaryOcclusionLevel++;
-
-            // Use a more subtle AO effect at boundaries
-            switch (boundaryOcclusionLevel)
-            {
-                case 0: return 1.0f;      // No occlusion
-                case 1: return 0.9f;      // Slight occlusion
-                case 2: return 0.8f;      // Medium occlusion
-                case 3: return 0.7f;      // Maximum occlusion at boundaries
-                default: return 1.0f;
-            }
-        }
+        // We'll use the same AO calculation for both boundaries and interior
+        // to ensure consistent shading across chunk boundaries
+        // This is important to avoid visible seams
 
         // Calculate occlusion level
         int occlusionLevel = 0;
@@ -549,29 +591,33 @@ public class ChunkMeshGenerator
 
     private bool IsVoxelSolidForAO(VoxelChunk chunk, int x, int y, int z)
     {
-        // Check if the voxel is within bounds
-        if (x < 0 || x >= chunk.Size || y < 0 || y >= chunk.Height || z < 0 || z >= chunk.Size)
+        // First check if the coordinates are within this chunk
+        if (x >= 0 && x < chunk.Size && y >= 0 && y < chunk.Height && z >= 0 && z < chunk.Size)
         {
-            // For out-of-bounds positions in the Y direction
-            if (y < 0)
-            {
-                // Below the chunk is solid (ground)
-                return true;
-            }
-            else if (y >= chunk.Height)
-            {
-                // Above the chunk is air
-                return false;
-            }
+            // Use the chunk's own data for efficiency
+            return chunk.IsVoxelSolid(x, y, z);
+        }
 
-            // For out-of-bounds positions in X and Z, we'll assume air
-            // In a full implementation, you would query the world for the neighboring chunk
+        // For coordinates outside this chunk, convert to world coordinates
+        int worldX = chunk.Position.X * chunk.Size + x;
+        int worldY = y;
+        int worldZ = chunk.Position.Y * chunk.Size + z;
+
+        // Special case for Y bounds
+        if (worldY < 0)
+        {
+            // Below the world is solid (ground)
+            return true;
+        }
+        else if (worldY >= chunk.Height)
+        {
+            // Above the world is air
             return false;
         }
 
-        // For in-bounds voxels, check if it's solid
-        VoxelType type = chunk.GetVoxel(x, y, z);
-        return type != VoxelType.Air && type != VoxelType.Water;
+        // Use the ChunkManager to check if the voxel is solid in world coordinates
+        // This will handle cross-chunk lookups consistently
+        return _chunkManager.IsVoxelSolid(worldX, worldY, worldZ);
     }
 
     private enum FaceDirection

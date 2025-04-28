@@ -544,7 +544,7 @@ public partial class World : Node3D
 		AddChild(_player);
 
 		// Position player above the terrain at spawn point
-		Vector3 spawnPosition = new Vector3(0, 50, 0); // Halved for higher resolution voxels (was 100)
+		Vector3 spawnPosition = new Vector3(0, 100, 0); // Halved for higher resolution voxels (was 100)
 		_player.Position = spawnPosition;
 
 		GD.Print("Player spawned at position: " + spawnPosition);

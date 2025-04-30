@@ -40,6 +40,9 @@ public partial class World : Node3D
 
 	public override void _Ready()
 	{
+		// Initialize BiomeMaterials first to ensure materials are ready before any chunks are generated
+		BiomeMaterials.Initialize();
+
 		_worldGenerator = GetNode<WorldGenerator>("WorldGenerator");
 		_chunkManager = GetNode<ChunkManager>("WorldGenerator/ChunkManager");
 

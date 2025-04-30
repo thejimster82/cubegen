@@ -405,8 +405,40 @@ public class ChunkMeshGenerator
                 mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
 
                 // Set material based on biome and voxel type
-                Material material = BiomeMaterials.GetMaterial(biomeType, voxelType);
-                mesh.SurfaceSetMaterial(surfaceIndex, material);
+                try
+                {
+                    // Initialize BiomeMaterials if needed
+                    BiomeMaterials.Initialize();
+
+                    // Get material for this biome and voxel type
+                    Material material = BiomeMaterials.GetMaterial(biomeType, voxelType);
+
+                    // Apply the material to the surface
+                    if (material != null)
+                    {
+                        mesh.SurfaceSetMaterial(surfaceIndex, material);
+                    }
+                    else
+                    {
+                        GD.PrintErr($"Failed to get material for biome {biomeType} and voxel type {voxelType}");
+
+                        // Create a fallback material with a distinctive color
+                        StandardMaterial3D fallbackMaterial = new StandardMaterial3D();
+                        fallbackMaterial.AlbedoColor = new Color(1.0f, 0.0f, 1.0f); // Magenta
+                        fallbackMaterial.VertexColorUseAsAlbedo = true;
+                        mesh.SurfaceSetMaterial(surfaceIndex, fallbackMaterial);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    GD.PrintErr($"Error setting material: {ex.Message}");
+
+                    // Create an emergency fallback material
+                    StandardMaterial3D emergencyMaterial = new StandardMaterial3D();
+                    emergencyMaterial.AlbedoColor = new Color(1.0f, 0.0f, 0.0f); // Red for error
+                    emergencyMaterial.VertexColorUseAsAlbedo = true;
+                    mesh.SurfaceSetMaterial(surfaceIndex, emergencyMaterial);
+                }
 
                 // Add vertices and indices to collision data
                 allVertices.AddRange(vertices);

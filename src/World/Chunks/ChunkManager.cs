@@ -1,6 +1,7 @@
 using Godot;
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using System.Threading;
 
@@ -28,9 +29,8 @@ public partial class ChunkManager : Node3D
     [Export] public float ChunkUpdateCooldown { get; set; } = 0.5f;
     private float _timeSinceLastUpdate = 0.0f;
 
-    // Thread-safe queue for chunks that need to be requested
-    private List<(Vector2I, float)> _chunksToRequest = new List<(Vector2I, float)>();
-    private System.Threading.Mutex _chunksMutex = new System.Threading.Mutex();
+    // Thread-safe collection for chunks that need to be requested
+    private ConcurrentBag<(Vector2I, float)> _chunksToRequest = new ConcurrentBag<(Vector2I, float)>();
 
     // Background mesh generator
     private ChunkMeshGenerator _meshGenerator;
@@ -193,42 +193,25 @@ public partial class ChunkManager : Node3D
         }
     }
 
-    // List of chunks to remove, processed on the main thread
-    private List<Vector2I> _chunksToRemove = new List<Vector2I>();
-    private System.Threading.Mutex _removeMutex = new System.Threading.Mutex();
+    // Thread-safe collection for chunks to remove, processed on the main thread
+    private ConcurrentBag<Vector2I> _chunksToRemove = new ConcurrentBag<Vector2I>();
 
     public void RemoveChunk(Vector2I position)
     {
         // Add to the removal queue instead of removing directly
         // This ensures chunk removal happens on the main thread
-        _removeMutex.WaitOne();
-        try
-        {
-            _chunksToRemove.Add(position);
-        }
-        finally
-        {
-            _removeMutex.ReleaseMutex();
-        }
+        _chunksToRemove.Add(position);
     }
 
     private void ProcessChunkRemovals()
     {
-        // Get the list of chunks to remove in a thread-safe way
+        // Process all chunks in the removal queue
         List<Vector2I> chunksToRemove = new List<Vector2I>();
 
-        _removeMutex.WaitOne();
-        try
+        // Drain the concurrent bag into a local list
+        while (_chunksToRemove.TryTake(out Vector2I position))
         {
-            if (_chunksToRemove.Count > 0)
-            {
-                chunksToRemove.AddRange(_chunksToRemove);
-                _chunksToRemove.Clear();
-            }
-        }
-        finally
-        {
-            _removeMutex.ReleaseMutex();
+            chunksToRemove.Add(position);
         }
 
         // Now remove chunks on the main thread
@@ -274,18 +257,10 @@ public partial class ChunkManager : Node3D
         // Get the list of chunks to request in a thread-safe way
         List<(Vector2I, float)> chunksToRequest = new();
 
-        _chunksMutex.WaitOne();
-        try
+        // Drain the concurrent bag into a local list
+        while (_chunksToRequest.TryTake(out var chunk))
         {
-            if (_chunksToRequest.Count > 0)
-            {
-                chunksToRequest.AddRange(_chunksToRequest);
-                _chunksToRequest.Clear();
-            }
-        }
-        finally
-        {
-            _chunksMutex.ReleaseMutex();
+            chunksToRequest.Add(chunk);
         }
 
         // Sort chunks by distance (priority)
@@ -304,17 +279,9 @@ public partial class ChunkManager : Node3D
             if (chunksProcessed >= MaxChunksPerFrame)
             {
                 // Re-queue the remaining chunks for next frame
-                _chunksMutex.WaitOne();
-                try
+                for (int i = chunksProcessed; i < chunksToRequest.Count; i++)
                 {
-                    for (int i = chunksProcessed; i < chunksToRequest.Count; i++)
-                    {
-                        _chunksToRequest.Add(chunksToRequest[i]);
-                    }
-                }
-                finally
-                {
-                    _chunksMutex.ReleaseMutex();
+                    _chunksToRequest.Add(chunksToRequest[i]);
                 }
                 break;
             }
@@ -410,18 +377,10 @@ public partial class ChunkManager : Node3D
         // Sort chunks by priority (distance adjusted by direction)
         chunksToRequest.Sort((a, b) => a.Item2.CompareTo(b.Item2));
 
-        // Add chunks to the request queue
-        _chunksMutex.WaitOne();
-        try
+        // Add chunks to the thread-safe request queue
+        foreach (var chunk in chunksToRequest)
         {
-            foreach (var chunk in chunksToRequest)
-            {
-                _chunksToRequest.Add(chunk);
-            }
-        }
-        finally
-        {
-            _chunksMutex.ReleaseMutex();
+            _chunksToRequest.Add(chunk);
         }
 
         // Find chunks to unload (chunks that are too far from player)
@@ -472,31 +431,21 @@ public partial class ChunkManager : Node3D
     // Remove chunks from the request queue that are no longer needed
     private void CleanupRequestQueue(HashSet<Vector2I> activeChunks)
     {
-        _chunksMutex.WaitOne();
-        try
+        // Drain the concurrent bag into a local list
+        List<(Vector2I, float)> allChunks = new();
+        while (_chunksToRequest.TryTake(out var chunk))
         {
-            // Create a new list with only the chunks we still need
-            List<(Vector2I, float)> updatedRequests = new();
-
-            foreach (var (chunkPos, priority) in _chunksToRequest)
-            {
-                // Only keep chunks that are still active
-                if (activeChunks.Contains(chunkPos))
-                {
-                    updatedRequests.Add((chunkPos, priority));
-                }
-            }
-
-            // Replace the request queue with the filtered list
-            _chunksToRequest.Clear();
-            foreach (var chunk in updatedRequests)
-            {
-                _chunksToRequest.Add(chunk);
-            }
+            allChunks.Add(chunk);
         }
-        finally
+
+        // Filter and re-add only the chunks we still need
+        foreach (var (chunkPos, priority) in allChunks)
         {
-            _chunksMutex.ReleaseMutex();
+            // Only keep chunks that are still active
+            if (activeChunks.Contains(chunkPos))
+            {
+                _chunksToRequest.Add((chunkPos, priority));
+            }
         }
     }
 

@@ -1,18 +1,17 @@
 using Godot;
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Threading;
 using CubeGen.World.Common;
 
 public class ChunkMeshGenerator
 {
-    private Queue<VoxelChunk> _chunksToProcess = new Queue<VoxelChunk>();
-    private Queue<(VoxelChunk, ArrayMesh, List<Vector3>)> _completedMeshes = new Queue<(VoxelChunk, ArrayMesh, List<Vector3>)>();
-    private System.Threading.Mutex _queueMutex = new System.Threading.Mutex();
-    private System.Threading.Mutex _resultMutex = new System.Threading.Mutex();
-    private Thread _workerThread;
+    private ConcurrentQueue<VoxelChunk> _chunksToProcess = new ConcurrentQueue<VoxelChunk>();
+    private ConcurrentQueue<(VoxelChunk, ArrayMesh, List<Vector3>)> _completedMeshes = new ConcurrentQueue<(VoxelChunk, ArrayMesh, List<Vector3>)>();
+    private readonly Thread _workerThread;
     private bool _isRunning = true;
-    private ChunkManager _chunkManager; // Reference to the ChunkManager for cross-chunk lookups
+    private readonly ChunkManager _chunkManager; // Reference to the ChunkManager for cross-chunk lookups
 
     public ChunkMeshGenerator(ChunkManager chunkManager)
     {
@@ -25,48 +24,22 @@ public class ChunkMeshGenerator
 
     public void QueueChunk(VoxelChunk chunk)
     {
-        _queueMutex.WaitOne();
-        try
-        {
-            _chunksToProcess.Enqueue(chunk);
-        }
-        finally
-        {
-            _queueMutex.ReleaseMutex();
-        }
+        _chunksToProcess.Enqueue(chunk);
     }
 
     public bool HasCompletedMeshes()
     {
-        bool hasCompleted = false;
-        _resultMutex.WaitOne();
-        try
-        {
-            hasCompleted = _completedMeshes.Count > 0;
-        }
-        finally
-        {
-            _resultMutex.ReleaseMutex();
-        }
-        return hasCompleted;
+        return !_completedMeshes.IsEmpty;
     }
 
     public (VoxelChunk, ArrayMesh, List<Vector3>) GetNextCompletedMesh()
     {
         (VoxelChunk, ArrayMesh, List<Vector3>) result = (null, null, null);
-        _resultMutex.WaitOne();
-        try
+        if (_completedMeshes.TryDequeue(out result))
         {
-            if (_completedMeshes.Count > 0)
-            {
-                result = _completedMeshes.Dequeue();
-            }
+            return result;
         }
-        finally
-        {
-            _resultMutex.ReleaseMutex();
-        }
-        return result;
+        return (null, null, null);
     }
 
     public void Stop()
@@ -79,24 +52,8 @@ public class ChunkMeshGenerator
     {
         while (_isRunning)
         {
-            VoxelChunk chunkToProcess = null;
-
-            // Get the next chunk to process
-            _queueMutex.WaitOne();
-            try
-            {
-                if (_chunksToProcess.Count > 0)
-                {
-                    chunkToProcess = _chunksToProcess.Dequeue();
-                }
-            }
-            finally
-            {
-                _queueMutex.ReleaseMutex();
-            }
-
-            // Process the chunk if we have one
-            if (chunkToProcess != null)
+            // Try to get the next chunk to process
+            if (_chunksToProcess.TryDequeue(out VoxelChunk chunkToProcess))
             {
                 // Check if all neighboring chunks are available for proper AO calculation
                 bool canProcessChunk = AreNeighboringChunksAvailable(chunkToProcess);
@@ -106,30 +63,13 @@ public class ChunkMeshGenerator
                     // Generate the mesh data
                     (ArrayMesh mesh, List<Vector3> collisionFaces) = GenerateMesh(chunkToProcess);
 
-                    // Queue the completed mesh
-                    _resultMutex.WaitOne();
-                    try
-                    {
-                        _completedMeshes.Enqueue((chunkToProcess, mesh, collisionFaces));
-                    }
-                    finally
-                    {
-                        _resultMutex.ReleaseMutex();
-                    }
+                    // Queue the completed mesh - ConcurrentQueue is thread-safe
+                    _completedMeshes.Enqueue((chunkToProcess, mesh, collisionFaces));
                 }
                 else
                 {
                     // Re-queue the chunk for later processing when neighbors are available
-                    _queueMutex.WaitOne();
-                    try
-                    {
-                        // Put it at the back of the queue
-                        _chunksToProcess.Enqueue(chunkToProcess);
-                    }
-                    finally
-                    {
-                        _queueMutex.ReleaseMutex();
-                    }
+                    _chunksToProcess.Enqueue(chunkToProcess);
 
                     // Sleep a bit to avoid busy re-queueing
                     Thread.Sleep(50);

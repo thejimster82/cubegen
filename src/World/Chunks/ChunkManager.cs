@@ -99,19 +99,10 @@ public partial class ChunkManager : Node3D
         // First, store the chunk data regardless of whether we have a mesh for it
         _chunkData[chunk.Position] = chunk;
 
-        if (_chunks.ContainsKey(chunk.Position))
+        if (!_chunks.ContainsKey(chunk.Position))
         {
             // If chunk mesh already exists, queue it for update
             _meshGenerator.QueueChunk(chunk);
-        }
-        else
-        {
-            // Queue the chunk for mesh generation in the background
-            _meshGenerator.QueueChunk(chunk);
-
-            // Also queue any existing neighboring chunks for remeshing
-            // This ensures proper AO calculation at chunk boundaries
-            QueueNeighborsForRemeshing(chunk.Position);
         }
     }
 
@@ -196,26 +187,9 @@ public partial class ChunkManager : Node3D
     // Thread-safe collection for chunks to remove, processed on the main thread
     private ConcurrentBag<Vector2I> _chunksToRemove = new ConcurrentBag<Vector2I>();
 
-    public void RemoveChunk(Vector2I position)
-    {
-        // Add to the removal queue instead of removing directly
-        // This ensures chunk removal happens on the main thread
-        _chunksToRemove.Add(position);
-    }
-
     private void ProcessChunkRemovals()
     {
-        // Process all chunks in the removal queue
-        List<Vector2I> chunksToRemove = new List<Vector2I>();
-
-        // Drain the concurrent bag into a local list
         while (_chunksToRemove.TryTake(out Vector2I position))
-        {
-            chunksToRemove.Add(position);
-        }
-
-        // Now remove chunks on the main thread
-        foreach (Vector2I position in chunksToRemove)
         {
             // Remove chunk mesh if it exists
             if (_chunks.TryGetValue(position, out ChunkMesh chunkToRemove))
@@ -254,41 +228,19 @@ public partial class ChunkManager : Node3D
 
     private void ProcessChunkRequests()
     {
-        // Get the list of chunks to request in a thread-safe way
-        List<(Vector2I, float)> chunksToRequest = new();
-
-        // Drain the concurrent bag into a local list
-        while (_chunksToRequest.TryTake(out var chunk))
-        {
-            chunksToRequest.Add(chunk);
-        }
-
-        // Sort chunks by distance (priority)
-        chunksToRequest.Sort((a, b) => a.Item2.CompareTo(b.Item2));
-
         // Limit the number of chunks processed per frame
         int chunksProcessed = 0;
 
         // Now emit signals for each chunk on the main thread
-        foreach (var (chunkPos, _) in chunksToRequest)
+        while(_chunksToRequest.TryTake(out (Vector2I, float) chunkRequest))
         {
-            EmitSignal(SignalName.ChunkRequested, chunkPos);
-
+            EmitSignal(SignalName.ChunkRequested, chunkRequest.Item1);
             // Limit the number of chunks processed per frame
             chunksProcessed++;
-            if (chunksProcessed >= MaxChunksPerFrame)
-            {
-                // Re-queue the remaining chunks for next frame
-                for (int i = chunksProcessed; i < chunksToRequest.Count; i++)
-                {
-                    _chunksToRequest.Add(chunksToRequest[i]);
-                }
-                break;
-            }
         }
     }
 
-    public void UpdateChunksAroundPlayer(Vector3 playerPosition, int viewDistance, Vector3 playerMovementDirection = default)
+    public void UpdateChunksAroundPlayer(Vector3 playerPosition, int viewDistance)
     {
         GD.Print($"Started Updating Chunks");
         // Convert player position to chunk coordinates
@@ -305,12 +257,11 @@ public partial class ChunkManager : Node3D
 
         _lastPlayerChunk = playerChunk;
         _timeSinceLastUpdate = 0.0f;
+        ConcurrentBag<Vector2I> ChunksToRemove = new();
+        ConcurrentBag<(Vector2I, float)> ChunksToRequest = new();
 
         // Get list of chunks that should be active (within view distance)
         HashSet<Vector2I> activeChunks = new HashSet<Vector2I>();
-
-        // Store chunks to request with their priorities
-        List<(Vector2I, float)> chunksToRequest = new();
 
         // Use a circular pattern for better visual appearance
         int viewDistanceSquared = viewDistance * viewDistance;
@@ -331,122 +282,29 @@ public partial class ChunkManager : Node3D
                         // Calculate base distance from player for prioritization
                         float distanceSquared = x * x + z * z;
 
-                        // Apply direction-based prioritization if we have a movement direction
-                        if (playerMovementDirection != Vector3.Zero)
-                        {
-                            // Convert chunk offset to world direction
-                            Vector3 chunkDirection = new Vector3(x, 0, z);
-                            if (chunkDirection != Vector3.Zero)
-                            {
-                                chunkDirection = chunkDirection.Normalized();
-
-                                // Calculate dot product to determine if chunk is in front of player
-                                // Dot product ranges from -1 (behind) to 1 (in front)
-                                float directionFactor = playerMovementDirection.Dot(chunkDirection);
-
-                                // Adjust priority based on direction
-                                // Chunks in front get lower priority value (loaded first)
-                                // Chunks behind get higher priority value (loaded later)
-                                if (directionFactor > 0) // In front of player
-                                {
-                                    // Reduce distance (higher priority) for chunks in front
-                                    distanceSquared *= (1.0f - directionFactor * 0.5f);
-                                }
-                                else // Behind player
-                                {
-                                    // Increase distance (lower priority) for chunks behind
-                                    distanceSquared *= (1.0f + Math.Abs(directionFactor) * 2.0f);
-                                }
-                            }
-                        }
-                        else
-                        {
-                            // If no movement direction (e.g., at game start), use pure distance from center
-                            // This ensures chunks are generated in concentric circles
-                            // No adjustment needed, distanceSquared is already set correctly
-                            // GD.Print($"Using concentric circle pattern for chunk at {chunkPos}, distance: {Math.Sqrt(distanceSquared):F2}");
-                        }
-
                         // Add to the local request list
-                        chunksToRequest.Add((chunkPos, distanceSquared));
+                        ChunksToRequest.Add((chunkPos, distanceSquared));
                     }
                 }
             }
         }
 
-        // Sort chunks by priority (distance adjusted by direction)
-        chunksToRequest.Sort((a, b) => a.Item2.CompareTo(b.Item2));
-
-        // Add chunks to the thread-safe request queue
-        foreach (var chunk in chunksToRequest)
-        {
-            _chunksToRequest.Add(chunk);
-        }
-
-        // Find chunks to unload (chunks that are too far from player)
-        // Use a larger unload distance to prevent frequent loading/unloading
-        List<Vector2I> chunksToRemove = new List<Vector2I>();
-        int unloadDistanceSquared = UnloadDistance * UnloadDistance;
-
-        // Check both chunk data and chunk meshes for unloading
-        HashSet<Vector2I> allChunkPositions = new HashSet<Vector2I>();
-
-        // Add all chunk positions from both dictionaries
-        foreach (Vector2I pos in _chunks.Keys)
-        {
-            allChunkPositions.Add(pos);
-        }
-
-        foreach (Vector2I pos in _chunkData.Keys)
-        {
-            allChunkPositions.Add(pos);
-        }
-
         // Check each position for unloading
-        foreach (Vector2I chunkPos in allChunkPositions)
+        foreach (Vector2I chunkPos in activeChunks)
         {
             int dx = chunkPos.X - playerChunk.X;
             int dz = chunkPos.Y - playerChunk.Y;
             int distanceSquared = dx * dx + dz * dz;
 
             // Only unload chunks that are beyond the unload distance
-            if (distanceSquared > unloadDistanceSquared)
+            if (distanceSquared > viewDistanceSquared)
             {
-                chunksToRemove.Add(chunkPos);
+                ChunksToRemove.Add(chunkPos);
             }
         }
-
-        // Queue all chunks for removal - they'll be processed on the main thread
-        foreach (Vector2I chunkPos in chunksToRemove)
-        {
-            RemoveChunk(chunkPos);
-        }
-
-        // Also remove any chunks from the request queue that are no longer needed
-        CleanupRequestQueue(activeChunks);
-
+        _chunksToRemove = ChunksToRemove;
+        _chunksToRequest = ChunksToRequest;
         GD.Print($"Finished Updating Chunks");
-    }
-
-    // Remove chunks from the request queue that are no longer needed
-    private void CleanupRequestQueue(HashSet<Vector2I> activeChunks)
-    {
-        // Drain the concurrent bag into a local list
-        List<(Vector2I, float)> allChunks = new();
-        while (_chunksToRequest.TryTake(out var chunk))
-        {
-            allChunks.Add(chunk);
-        }
-
-        // Filter and re-add only the chunks we still need
-        foreach (var (chunkPos, priority) in allChunks)
-        {
-            // Only keep chunks that are still active
-            if (activeChunks.Contains(chunkPos))
-            {
-                _chunksToRequest.Add((chunkPos, priority));
-            }
-        }
     }
 
     public override void _ExitTree()

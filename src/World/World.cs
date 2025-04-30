@@ -3,8 +3,6 @@ using System;
 using System.Collections.Generic;
 using CubeGen.World.Common;
 using CubeGen.World.Generation;
-using System.Threading.Tasks;
-using System.Threading;
 
 public partial class World : Node3D
 {
@@ -644,9 +642,9 @@ public partial class World : Node3D
 			// Update last position
 			_lastPlayerPosition = playerPosition;
 
-			// Pass the captured position and movement direction to the thread
-			Thread t = new(() => _chunkManager.UpdateChunksAroundPlayer(playerPosition, ViewDistance));
-			t.Start();
+			// Call UpdateChunksAroundPlayer directly on the main thread
+			// This is now thread-safe with our ConcurrentDictionary implementation
+			_chunkManager.UpdateChunksAroundPlayer(playerPosition, ViewDistance);
 		}
 	}
 }

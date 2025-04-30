@@ -4,14 +4,16 @@ using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using System.Threading;
+using System.Linq;
 
 public partial class ChunkManager : Node3D
 {
     [Export] public PackedScene ChunkMeshScene { get; set; }
 
     // Store chunk meshes and chunk data separately
-    private Dictionary<Vector2I, ChunkMesh> _chunks = new Dictionary<Vector2I, ChunkMesh>();
-    private Dictionary<Vector2I, VoxelChunk> _chunkData = new Dictionary<Vector2I, VoxelChunk>();
+    // Using ConcurrentDictionary for thread safety
+    private ConcurrentDictionary<Vector2I, ChunkMesh> _chunks = new ConcurrentDictionary<Vector2I, ChunkMesh>();
+    private ConcurrentDictionary<Vector2I, VoxelChunk> _chunkData = new ConcurrentDictionary<Vector2I, VoxelChunk>();
 
     // Property to get the current number of active chunks
     public int ActiveChunkCount => _chunks.Count;
@@ -97,11 +99,12 @@ public partial class ChunkManager : Node3D
     public void AddChunk(VoxelChunk chunk)
     {
         // First, store the chunk data regardless of whether we have a mesh for it
-        _chunkData[chunk.Position] = chunk;
+        _chunkData.AddOrUpdate(chunk.Position, chunk, (key, oldValue) => chunk);
 
+        // Check if we have a mesh for this chunk
         if (!_chunks.ContainsKey(chunk.Position))
         {
-            // If chunk mesh already exists, queue it for update
+            // If chunk mesh doesn't exist, queue it for update
             _meshGenerator.QueueChunk(chunk);
         }
     }
@@ -176,7 +179,7 @@ public partial class ChunkManager : Node3D
                     newMesh.SetMeshFromArrayMesh(mesh, collisionFaces, chunk);
 
                     // Add to dictionary
-                    _chunks.Add(chunk.Position, newMesh);
+                    _chunks.TryAdd(chunk.Position, newMesh);
                 }
 
                 meshesProcessed++;
@@ -195,11 +198,11 @@ public partial class ChunkManager : Node3D
             if (_chunks.TryGetValue(position, out ChunkMesh chunkToRemove))
             {
                 chunkToRemove.QueueFree();
-                _chunks.Remove(position);
+                _chunks.TryRemove(position, out _);
             }
 
             // Also remove chunk data
-            _chunkData.Remove(position);
+            _chunkData.TryRemove(position, out _);
         }
     }
 
@@ -312,9 +315,20 @@ public partial class ChunkManager : Node3D
         // Create a combined list of all chunk positions from both dictionaries
         HashSet<Vector2I> allExistingChunks = new();
 
+        // Create thread-safe copies of the keys
+        var chunkKeys = _chunks.Keys.ToArray();
+        var chunkDataKeys = _chunkData.Keys.ToArray();
+
         // Add all chunk positions from both dictionaries
-        allExistingChunks.UnionWith(_chunks.Keys);
-        allExistingChunks.UnionWith(_chunkData.Keys);
+        foreach (var key in chunkKeys)
+        {
+            allExistingChunks.Add(key);
+        }
+
+        foreach (var key in chunkDataKeys)
+        {
+            allExistingChunks.Add(key);
+        }
 
         // Check each existing chunk to see if it's outside the view distance
         foreach (Vector2I chunkPos in allExistingChunks)

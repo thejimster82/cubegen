@@ -1,397 +1,415 @@
 using Godot;
 using System;
+using System.Collections.Generic;
 using CubeGen.World.Common;
 
 namespace CubeGen.World.Generation
 {
 public partial class WorldGenerator : Node3D
 {
-    [Export] public int Seed { get; set; } = 0;
-    [Export] public Vector2I WorldSize { get; set; } = new Vector2I(16, 16); // Size in chunks
-    [Export] public int ChunkSize { get; set; } = 16; // Size of each chunk in voxels
-    [Export] public int ChunkHeight { get; set; } = 128; // Maximum height of the world
-    [Export] public float VoxelScale { get; set; } = 0.5f; // Scale of each voxel (0.5 = double resolution)
+	[Export] public int Seed { get; set; } = 0;
+	[Export] public Vector2I WorldSize { get; set; } = new Vector2I(16, 16); // Size in chunks
+	[Export] public int ChunkSize { get; set; } = 16; // Size of each chunk in voxels
+	[Export] public int ChunkHeight { get; set; } = 128; // Maximum height of the world
+	[Export] public float VoxelScale { get; set; } = 0.5f; // Scale of each voxel (0.5 = double resolution)
+	public int ViewDistance { get; set; } = 5;
 
-    private FastNoiseLite _terrainNoise;
-    private FastNoiseLite _biomeNoise;
-    private ChunkManager _chunkManager;
 
-    public override void _Ready()
-    {
-        InitializeNoise();
-        _chunkManager = GetNode<ChunkManager>("ChunkManager");
+	private FastNoiseLite _terrainNoise;
+	private FastNoiseLite _biomeNoise;
+	private ChunkManager _chunkManager;
 
-        if (_chunkManager != null)
-        {
-            GD.Print("ChunkManager found, initializing...");
-            _chunkManager.Initialize(ChunkSize, ChunkHeight);
-            GenerateInitialChunks();
-        }
-        else
-        {
-            GD.PrintErr("ChunkManager not found!");
-        }
-    }
+	public override void _Ready()
+	{
+		InitializeNoise();
+		_chunkManager = GetNode<ChunkManager>("ChunkManager");
 
-    private void InitializeNoise()
-    {
-        // Initialize terrain noise with flatter settings
-        _terrainNoise = new FastNoiseLite();
-        _terrainNoise.Seed = Seed;
-        _terrainNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-        _terrainNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-        _terrainNoise.Frequency = 0.01f; // Doubled frequency for higher resolution (was 0.005f)
-        _terrainNoise.FractalOctaves = 2; // Fewer octaves for less detail and flatter terrain
+		if (_chunkManager != null)
+		{
+			GD.Print("ChunkManager found, initializing...");
+			_chunkManager.Initialize(ChunkSize, ChunkHeight);
+			GenerateInitialChunks(ViewDistance);
+		}
+		else
+		{
+			GD.PrintErr("ChunkManager not found!");
+		}
+	}
 
-        // Initialize biome noise (different settings for variety)
-        _biomeNoise = new FastNoiseLite();
-        _biomeNoise.Seed = Seed + 1000; // Different seed for biome variation
-        _biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-        _biomeNoise.Frequency = 0.006f; // Doubled frequency for higher resolution (was 0.003f)
+	private void InitializeNoise()
+	{
+		// Initialize terrain noise with flatter settings
+		_terrainNoise = new FastNoiseLite();
+		_terrainNoise.Seed = Seed;
+		_terrainNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+		_terrainNoise.FractalType = FastNoiseLite.FractalTypeEnum.Ridged;
+		_terrainNoise.Frequency = 0.01f; // Doubled frequency for higher resolution (was 0.005f)
+		_terrainNoise.FractalOctaves = 2; // Fewer octaves for less detail and flatter terrain
 
-        // Initialize static noise for use by other classes
-        InitializeStaticNoise(Seed);
-    }
+		// Initialize biome noise (different settings for variety)
+		_biomeNoise = new FastNoiseLite();
+		_biomeNoise.Seed = Seed + 1000; // Different seed for biome variation
+		_biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+		_biomeNoise.Frequency = 0.006f; // Doubled frequency for higher resolution (was 0.003f)
 
-    private void GenerateInitialChunks()
-    {
-        // Generate chunks around origin
-        int viewDistance = 12; // Number of chunks to generate in each direction
+		// Initialize static noise for use by other classes
+		InitializeStaticNoise(Seed);
+	}
 
-        GD.Print($"Generating initial chunks with view distance: {viewDistance}");
+	private void GenerateInitialChunks(int viewDistance)
+	{
+		// Generate chunks around origin
+		GD.Print($"Generating initial chunks with view distance: {viewDistance}");
 
-        // Use a circular pattern for better visual appearance
-        int viewDistanceSquared = viewDistance * viewDistance;
+		// Use a circular pattern for better visual appearance
+		int viewDistanceSquared = viewDistance * viewDistance;
 
-        for (int x = -viewDistance; x <= viewDistance; x++)
-        {
-            for (int z = -viewDistance; z <= viewDistance; z++)
-            {
-                // Use distance squared for a more circular pattern
-                if (x * x + z * z <= viewDistanceSquared)
-                {
-                    Vector2I chunkPos = new Vector2I(x, z);
-                    GD.Print($"Generating initial chunk at: {chunkPos}");
-                    GenerateChunk(chunkPos);
-                }
-            }
-        }
+		// Create a list of chunks to generate, sorted by distance from center
+		List<(Vector2I, float)> chunksToGenerate = new List<(Vector2I, float)>();
 
-        GD.Print("Initial chunk generation complete");
-    }
+		// First, collect all chunks within view distance
+		for (int x = -viewDistance; x <= viewDistance; x++)
+		{
+			for (int z = -viewDistance; z <= viewDistance; z++)
+			{
+				// Calculate distance squared from center
+				float distanceSquared = x * x + z * z;
 
-    public void GenerateChunk(Vector2I chunkPos)
-    {
-        if (_chunkManager == null) return;
+				// Use distance squared for a more circular pattern
+				if (distanceSquared <= viewDistanceSquared)
+				{
+					Vector2I chunkPos = new Vector2I(x, z);
+					chunksToGenerate.Add((chunkPos, distanceSquared));
+				}
+			}
+		}
 
-        // Create chunk data
-        VoxelChunk chunk = new VoxelChunk(ChunkSize, ChunkHeight, chunkPos, VoxelScale);
+		// Sort chunks by distance from center (closest first)
+		chunksToGenerate.Sort((a, b) => a.Item2.CompareTo(b.Item2));
 
-        // Generate terrain for the chunk
-        for (int x = 0; x < ChunkSize; x++)
-        {
-            for (int z = 0; z < ChunkSize; z++)
-            {
-                // Get world coordinates
-                int worldX = chunkPos.X * ChunkSize + x;
-                int worldZ = chunkPos.Y * ChunkSize + z;
+		// Generate chunks in order of distance from center
+		foreach ((Vector2I chunkPos, float distance) in chunksToGenerate)
+		{
+			GD.Print($"Generating initial chunk at: {chunkPos}, distance: {Math.Sqrt(distance):F2}");
+			GenerateChunk(chunkPos);
+		}
 
-                // Get biome type based on noise
-                BiomeType biomeType = GetBiomeTypeForChunk(worldX, worldZ);
+		GD.Print("Initial chunk generation complete");
+	}
 
-                // Generate terrain height based on noise
-                int terrainHeight = GenerateTerrainHeight(worldX, worldZ, biomeType);
+	public void GenerateChunk(Vector2I chunkPos)
+	{
+		if (_chunkManager == null) return;
 
-                // Fill voxels from bottom to terrain height
-                for (int y = 0; y < terrainHeight && y < ChunkHeight; y++)
-                {
-                    VoxelType voxelType = DetermineVoxelType(y, terrainHeight, biomeType);
-                    chunk.SetVoxel(x, y, z, voxelType);
-                }
-            }
-        }
+		// Create chunk data
+		VoxelChunk chunk = new VoxelChunk(ChunkSize, ChunkHeight, chunkPos, VoxelScale);
 
-        // Add objects like trees based on biome
-        AddBiomeObjects(chunk, chunkPos, ChunkSize);
+		// Generate terrain for the chunk
+		for (int x = 0; x < ChunkSize; x++)
+		{
+			for (int z = 0; z < ChunkSize; z++)
+			{
+				// Get world coordinates
+				int worldX = chunkPos.X * ChunkSize + x;
+				int worldZ = chunkPos.Y * ChunkSize + z;
 
-        // Send chunk to chunk manager for mesh generation
-        _chunkManager.AddChunk(chunk);
-    }
+				// Get biome type based on noise
+				BiomeType biomeType = GetBiomeTypeForChunk(worldX, worldZ);
 
-    // Static biome noise for use by other classes
-    private static FastNoiseLite _staticBiomeNoise;
+				// Generate terrain height based on noise
+				int terrainHeight = GenerateTerrainHeight(worldX, worldZ, biomeType);
 
-    // Initialize static noise
-    private static void InitializeStaticNoise(int seed)
-    {
-        if (_staticBiomeNoise == null)
-        {
-            _staticBiomeNoise = new FastNoiseLite();
-            _staticBiomeNoise.Seed = seed + 1000; // Different seed for biome variation
-            _staticBiomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-            _staticBiomeNoise.Frequency = 0.006f; // Doubled frequency for higher resolution (was 0.003f)
-        }
-    }
+				// Fill voxels from bottom to terrain height
+				for (int y = 0; y < terrainHeight && y < ChunkHeight; y++)
+				{
+					VoxelType voxelType = DetermineVoxelType(y, terrainHeight, biomeType);
+					chunk.SetVoxel(x, y, z, voxelType);
+				}
+			}
+		}
 
-    // Get biome type for a world position - instance method
-    private BiomeType GetBiomeTypeForChunk(int worldX, int worldZ)
-    {
-        float biomeValue = _biomeNoise.GetNoise2D(worldX, worldZ);
-        return GetBiomeTypeFromNoise(biomeValue);
-    }
+		// Add objects like trees based on biome
+		AddBiomeObjects(chunk, chunkPos, ChunkSize);
 
-    // Get biome type for a world position - static method for use by other classes
-    public static BiomeType GetBiomeType(int worldX, int worldZ)
-    {
-        if (_staticBiomeNoise == null)
-        {
-            // Use a default seed if not initialized
-            InitializeStaticNoise(0);
-        }
+		// First, add the chunk data to the chunk manager
+		// This makes the data available for neighboring chunks' AO calculations
+		_chunkManager.AddChunk(chunk);
+	}
 
-        float biomeValue = _staticBiomeNoise.GetNoise2D(worldX, worldZ);
-        return GetBiomeTypeFromNoise(biomeValue);
-    }
+	// Static biome noise for use by other classes
+	private static FastNoiseLite _staticBiomeNoise;
 
-    // Helper method to convert noise value to biome type
-    private static BiomeType GetBiomeTypeFromNoise(float biomeValue)
-    {
-        // Simple biome distribution based on noise value
-        if (biomeValue < -0.5f)
-            return BiomeType.Desert;
-        else if (biomeValue < -0.2f)
-            return BiomeType.Plains;
-        else if (biomeValue < 0.2f)
-            return BiomeType.Forest;
-        else if (biomeValue < 0.5f)
-            return BiomeType.Mountains;
-        else
-            return BiomeType.Tundra;
-    }
+	// Initialize static noise
+	private static void InitializeStaticNoise(int seed)
+	{
+		if (_staticBiomeNoise == null)
+		{
+			_staticBiomeNoise = new FastNoiseLite();
+			_staticBiomeNoise.Seed = seed + 1000; // Different seed for biome variation
+			_staticBiomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+			_staticBiomeNoise.Frequency = 0.006f; // Doubled frequency for higher resolution (was 0.003f)
+		}
+	}
 
-    private int GenerateTerrainHeight(int worldX, int worldZ, BiomeType biomeType)
-    {
-        // Base terrain height from noise
-        float heightNoise = _terrainNoise.GetNoise2D(worldX, worldZ);
+	// Get biome type for a world position - instance method
+	private BiomeType GetBiomeTypeForChunk(int worldX, int worldZ)
+	{
+		float biomeValue = _biomeNoise.GetNoise2D(worldX, worldZ);
+		return GetBiomeTypeFromNoise(biomeValue);
+	}
 
-        // Convert noise from [-1, 1] to [0, 1]
-        heightNoise = (heightNoise + 1f) * 0.5f;
+	// Get biome type for a world position - static method for use by other classes
+	public static BiomeType GetBiomeType(int worldX, int worldZ)
+	{
+		if (_staticBiomeNoise == null)
+		{
+			// Use a default seed if not initialized
+			InitializeStaticNoise(0);
+		}
 
-        // Apply biome-specific height modifications - much flatter for all biomes
-        // Add a consistent base height to ensure terrain is at a predictable level
-        float baseHeight = 0.3f; // Consistent base height for all terrain
+		float biomeValue = _staticBiomeNoise.GetNoise2D(worldX, worldZ);
+		return GetBiomeTypeFromNoise(biomeValue);
+	}
 
-        switch (biomeType)
-        {
-            case BiomeType.Desert:
-                heightNoise = heightNoise * 0.1f + baseHeight; // Very flat, low
-                break;
-            case BiomeType.Plains:
-                heightNoise = heightNoise * 0.15f + baseHeight; // Very flat
-                break;
-            case BiomeType.Forest:
-                heightNoise = heightNoise * 0.2f + baseHeight; // Slightly more varied but still flat
-                break;
-            case BiomeType.Mountains:
-                heightNoise = heightNoise * 0.3f + baseHeight; // Less mountainous, more like hills
-                break;
-            case BiomeType.Tundra:
-                heightNoise = heightNoise * 0.15f + baseHeight; // Very flat
-                break;
-        }
+	// Helper method to convert noise value to biome type
+	private static BiomeType GetBiomeTypeFromNoise(float biomeValue)
+	{
+		// Simple biome distribution based on noise value
+		if (biomeValue < -0.5f)
+			return BiomeType.Desert;
+		else if (biomeValue < -0.2f)
+			return BiomeType.Plains;
+		else if (biomeValue < 0.2f)
+			return BiomeType.Forest;
+		else if (biomeValue < 0.5f)
+			return BiomeType.Mountains;
+		else
+			return BiomeType.Tundra;
+	}
 
-        // Convert to actual height value
-        int height = Mathf.FloorToInt(heightNoise * ChunkHeight);
+	private int GenerateTerrainHeight(int worldX, int worldZ, BiomeType biomeType)
+	{
+		// Base terrain height from noise
+		float heightNoise = _terrainNoise.GetNoise2D(worldX, worldZ);
 
-        // Debug output for the first chunk to help understand terrain height
-        if (worldX == 0 && worldZ == 0)
-        {
-            GD.Print($"Terrain height at origin: {height}");
-        }
+		// Convert noise from [-1, 1] to [0, 1]
+		heightNoise = (heightNoise + 1f) * 0.5f;
 
-        return height;
-    }
+		// Apply biome-specific height modifications - much flatter for all biomes
+		// Add a consistent base height to ensure terrain is at a predictable level
+		float baseHeight = 0.3f; // Consistent base height for all terrain
 
-    private VoxelType DetermineVoxelType(int y, int terrainHeight, BiomeType biomeType)
-    {
-        // Bedrock at bottom
-        if (y == 0)
-            return VoxelType.Bedrock;
+		switch (biomeType)
+		{
+			case BiomeType.Desert:
+				heightNoise = heightNoise * 0.1f + baseHeight; // Very flat, low
+				break;
+			case BiomeType.Plains:
+				heightNoise = heightNoise * 0.15f + baseHeight; // Very flat
+				break;
+			case BiomeType.Forest:
+				heightNoise = heightNoise * 0.2f + baseHeight; // Slightly more varied but still flat
+				break;
+			case BiomeType.Mountains:
+				heightNoise = heightNoise * 0.3f + baseHeight; // Less mountainous, more like hills
+				break;
+			case BiomeType.Tundra:
+				heightNoise = heightNoise * 0.15f + baseHeight; // Very flat
+				break;
+		}
 
-        // Surface layer and layers just below
-        if (y == terrainHeight - 1)
-        {
-            // Top layer depends on biome
-            switch (biomeType)
-            {
-                case BiomeType.Desert:
-                    return VoxelType.Sand;
-                case BiomeType.Tundra:
-                    return VoxelType.Snow;
-                default:
-                    return VoxelType.Grass;
-            }
-        }
-        else if (y >= terrainHeight - 4)
-        {
-            // Layers just below surface
-            switch (biomeType)
-            {
-                case BiomeType.Desert:
-                    return VoxelType.Sand;
-                case BiomeType.Tundra:
-                    return VoxelType.Dirt;
-                default:
-                    return VoxelType.Dirt;
-            }
-        }
+		// Convert to actual height value
+		int height = Mathf.FloorToInt(heightNoise * ChunkHeight);
 
-        // Stone for deeper layers
-        if (y < terrainHeight * 0.6f)
-            return VoxelType.Stone;
+		// Debug output for the first chunk to help understand terrain height
+		if (worldX == 0 && worldZ == 0)
+		{
+			GD.Print($"Terrain height at origin: {height}");
+		}
 
-        return VoxelType.Dirt;
-    }
+		return height;
+	}
 
-    private void AddBiomeObjects(VoxelChunk chunk, Vector2I chunkPos, int chunkSize)
-    {
-        // Generate trees and other biome objects
-        Random random = new Random(Seed + chunkPos.X * 10000 + chunkPos.Y);
+	private VoxelType DetermineVoxelType(int y, int terrainHeight, BiomeType biomeType)
+	{
+		// Bedrock at bottom
+		if (y == 0)
+			return VoxelType.Bedrock;
 
-        for (int x = 0; x < chunkSize; x++)
-        {
-            for (int z = 0; z < chunkSize; z++)
-            {
-                int worldX = chunkPos.X * chunkSize + x;
-                int worldZ = chunkPos.Y * chunkSize + z;
+		// Surface layer and layers just below
+		if (y == terrainHeight - 1)
+		{
+			// Top layer depends on biome
+			switch (biomeType)
+			{
+				case BiomeType.Desert:
+					return VoxelType.Sand;
+				case BiomeType.Tundra:
+					return VoxelType.Snow;
+				default:
+					return VoxelType.Grass;
+			}
+		}
+		else if (y >= terrainHeight - 4)
+		{
+			// Layers just below surface
+			switch (biomeType)
+			{
+				case BiomeType.Desert:
+					return VoxelType.Sand;
+				case BiomeType.Tundra:
+					return VoxelType.Dirt;
+				default:
+					return VoxelType.Dirt;
+			}
+		}
 
-                BiomeType biomeType = GetBiomeType(worldX, worldZ);
+		// Stone for deeper layers
+		if (y < terrainHeight * 0.6f)
+			return VoxelType.Stone;
 
-                // Only add trees in Forest biome with reduced probability (more spaced out)
-                if (biomeType == BiomeType.Forest && random.NextDouble() < 0.008) // Reduced from 0.02 to 0.008
-                {
-                    // Find surface height
-                    int surfaceHeight = -1;
-                    for (int y = ChunkHeight - 1; y >= 0; y--)
-                    {
-                        if (chunk.GetVoxel(x, y, z) != VoxelType.Air)
-                        {
-                            surfaceHeight = y;
-                            break;
-                        }
-                    }
+		return VoxelType.Dirt;
+	}
 
-                    if (surfaceHeight >= 0 && chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass)
-                    {
-                        // Calculate max leaf radius for this tree (for boundary check)
-                        int maxLeafRadius = random.Next(4, 8);
+	private void AddBiomeObjects(VoxelChunk chunk, Vector2I chunkPos, int chunkSize)
+	{
+		// Generate trees and other biome objects
+		Random random = new Random(Seed + chunkPos.X * 10000 + chunkPos.Y);
 
-                        // Check if tree is too close to chunk boundary
-                        int safeDistance = maxLeafRadius + 2; // Add a small buffer
+		for (int x = 0; x < chunkSize; x++)
+		{
+			for (int z = 0; z < chunkSize; z++)
+			{
+				int worldX = chunkPos.X * chunkSize + x;
+				int worldZ = chunkPos.Y * chunkSize + z;
 
-                        // Only generate trees that are safely away from chunk boundaries
-                        if (x >= safeDistance && x < (chunkSize - safeDistance) &&
-                            z >= safeDistance && z < (chunkSize - safeDistance))
-                        {
-                            // Generate a detailed tree with trunk and leaves
-                            GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
-                        }
-                    }
-                }
-            }
-        }
-    }
+				BiomeType biomeType = GetBiomeType(worldX, worldZ);
 
-    private static void GenerateDetailedTree(VoxelChunk chunk, int x, int z, int surfaceHeight, Random random)
-    {
-        // Tree parameters - doubled for higher resolution
-        int trunkHeight = random.Next(12, 20); // Doubled height for higher resolution (was 6-10)
-        int leafRadius = random.Next(4, 8);    // Doubled radius for higher resolution (was 2-4)
-        int leafHeight = random.Next(8, 12);   // Doubled height for higher resolution (was 4-6)
+				// Only add trees in Forest biome with reduced probability (more spaced out)
+				if (biomeType == BiomeType.Forest && random.NextDouble() < 0.008) // Reduced from 0.02 to 0.008
+				{
+					// Find surface height
+					int surfaceHeight = -1;
+					for (int y = ChunkHeight - 1; y >= 0; y--)
+					{
+						if (chunk.GetVoxel(x, y, z) != VoxelType.Air)
+						{
+							surfaceHeight = y;
+							break;
+						}
+					}
 
-        // Generate trunk with more detail
-        // Make the trunk thicker at the base (2x2 for first few blocks)
-        for (int y = 1; y <= Math.Min(3, trunkHeight); y++)
-        {
-            // Create a 2x2 trunk base if there's room in the chunk
-            for (int dx = 0; dx <= 1; dx++)
-            {
-                for (int dz = 0; dz <= 1; dz++)
-                {
-                    int nx = x + dx;
-                    int nz = z + dz;
+					if (surfaceHeight >= 0 && chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass)
+					{
+						// Calculate max leaf radius for this tree (for boundary check)
+						int maxLeafRadius = random.Next(4, 8);
 
-                    // We already checked chunk boundaries in AddBiomeObjects, so this should be safe
-                    if (surfaceHeight + y < chunk.Height)
-                    {
-                        chunk.SetVoxel(nx, surfaceHeight + y, nz, VoxelType.Wood);
-                    }
-                }
-            }
-        }
+						// Check if tree is too close to chunk boundary
+						int safeDistance = maxLeafRadius + 2; // Add a small buffer
 
-        // Continue with a 1x1 trunk for the rest of the height
-        for (int y = 4; y <= trunkHeight; y++)
-        {
-            if (surfaceHeight + y < chunk.Height)
-            {
-                chunk.SetVoxel(x, surfaceHeight + y, z, VoxelType.Wood);
-            }
-        }
+						// Only generate trees that are safely away from chunk boundaries
+						if (x >= safeDistance && x < (chunkSize - safeDistance) &&
+							z >= safeDistance && z < (chunkSize - safeDistance))
+						{
+							// Generate a detailed tree with trunk and leaves
+							GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
+						}
+					}
+				}
+			}
+		}
+	}
 
-        // Generate leaf canopy (spherical/rounded shape)
-        int leafStartHeight = surfaceHeight + trunkHeight - leafHeight / 2;
+	private static void GenerateDetailedTree(VoxelChunk chunk, int x, int z, int surfaceHeight, Random random)
+	{
+		// Tree parameters - doubled for higher resolution
+		int trunkHeight = random.Next(12, 20); // Doubled height for higher resolution (was 6-10)
+		int leafRadius = random.Next(4, 8);    // Doubled radius for higher resolution (was 2-4)
+		int leafHeight = random.Next(8, 12);   // Doubled height for higher resolution (was 4-6)
 
-        // Create a more balanced, symmetrical leaf structure
-        for (int y = 0; y < leafHeight; y++)
-        {
-            // Calculate the radius at this height (ellipsoid shape)
-            // Maximum radius at the middle, smaller at top and bottom
-            float heightFactor = 1.0f - Math.Abs((y - leafHeight / 2.0f) / (leafHeight / 2.0f));
-            int currentRadius = (int)Math.Ceiling(leafRadius * heightFactor);
+		// Generate trunk with more detail
+		// Make the trunk thicker at the base (2x2 for first few blocks)
+		for (int y = 1; y <= Math.Min(3, trunkHeight); y++)
+		{
+			// Create a 2x2 trunk base if there's room in the chunk
+			for (int dx = 0; dx <= 1; dx++)
+			{
+				for (int dz = 0; dz <= 1; dz++)
+				{
+					int nx = x + dx;
+					int nz = z + dz;
 
-            // Add some randomness to the leaf shape but keep it symmetrical
-            float randomFactor = 0.8f + (float)random.NextDouble() * 0.4f; // 0.8 to 1.2
-            currentRadius = (int)Math.Ceiling(currentRadius * randomFactor);
+					// We already checked chunk boundaries in AddBiomeObjects, so this should be safe
+					if (surfaceHeight + y < chunk.Height)
+					{
+						chunk.SetVoxel(nx, surfaceHeight + y, nz, VoxelType.Wood);
+					}
+				}
+			}
+		}
 
-            for (int dx = -currentRadius; dx <= currentRadius; dx++)
-            {
-                for (int dz = -currentRadius; dz <= currentRadius; dz++)
-                {
-                    // Create a rounded shape by checking distance from center
-                    float distance = (float)Math.Sqrt(dx * dx + dz * dz);
+		// Continue with a 1x1 trunk for the rest of the height
+		for (int y = 4; y <= trunkHeight; y++)
+		{
+			if (surfaceHeight + y < chunk.Height)
+			{
+				chunk.SetVoxel(x, surfaceHeight + y, z, VoxelType.Wood);
+			}
+		}
 
-                    // Add some noise to the leaf edge for a more natural look
-                    float edgeNoise = (float)random.NextDouble() * 0.8f;
-                    float effectiveRadius = currentRadius + edgeNoise;
+		// Generate leaf canopy (spherical/rounded shape)
+		int leafStartHeight = surfaceHeight + trunkHeight - leafHeight / 2;
 
-                    if (distance <= effectiveRadius)
-                    {
-                        int nx = x + dx;
-                        int nz = z + dz;
-                        int ny = leafStartHeight + y;
+		// Create a more balanced, symmetrical leaf structure
+		for (int y = 0; y < leafHeight; y++)
+		{
+			// Calculate the radius at this height (ellipsoid shape)
+			// Maximum radius at the middle, smaller at top and bottom
+			float heightFactor = 1.0f - Math.Abs((y - leafHeight / 2.0f) / (leafHeight / 2.0f));
+			int currentRadius = (int)Math.Ceiling(leafRadius * heightFactor);
 
-                        // We already checked chunk boundaries in AddBiomeObjects, so this should be safe
-                        if (ny < chunk.Height)
-                        {
-                            // Don't overwrite the trunk
-                            if (chunk.GetVoxel(nx, ny, nz) != VoxelType.Wood)
-                            {
-                                // Add some randomness to make leaves less uniform
-                                // But ensure the tree still looks full and balanced
-                                if (distance > effectiveRadius - 0.8f && random.NextDouble() < 0.3f)
-                                {
-                                    // Skip some edge leaves randomly
-                                    continue;
-                                }
+			// Add some randomness to the leaf shape but keep it symmetrical
+			float randomFactor = 0.8f + (float)random.NextDouble() * 0.4f; // 0.8 to 1.2
+			currentRadius = (int)Math.Ceiling(currentRadius * randomFactor);
 
-                                chunk.SetVoxel(nx, ny, nz, VoxelType.Leaves);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+			for (int dx = -currentRadius; dx <= currentRadius; dx++)
+			{
+				for (int dz = -currentRadius; dz <= currentRadius; dz++)
+				{
+					// Create a rounded shape by checking distance from center
+					float distance = (float)Math.Sqrt(dx * dx + dz * dz);
+
+					// Add some noise to the leaf edge for a more natural look
+					float edgeNoise = (float)random.NextDouble() * 0.8f;
+					float effectiveRadius = currentRadius + edgeNoise;
+
+					if (distance <= effectiveRadius)
+					{
+						int nx = x + dx;
+						int nz = z + dz;
+						int ny = leafStartHeight + y;
+
+						// We already checked chunk boundaries in AddBiomeObjects, so this should be safe
+						if (ny < chunk.Height)
+						{
+							// Don't overwrite the trunk
+							if (chunk.GetVoxel(nx, ny, nz) != VoxelType.Wood)
+							{
+								// Add some randomness to make leaves less uniform
+								// But ensure the tree still looks full and balanced
+								if (distance > effectiveRadius - 0.8f && random.NextDouble() < 0.3f)
+								{
+									// Skip some edge leaves randomly
+									continue;
+								}
+
+								chunk.SetVoxel(nx, ny, nz, VoxelType.Leaves);
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 }
 }

@@ -3,6 +3,8 @@ using System;
 using System.Collections.Generic;
 using CubeGen.World.Common;
 using CubeGen.World.Generation;
+using System.Threading.Tasks;
+using System.Threading;
 
 public partial class World : Node3D
 {
@@ -23,13 +25,20 @@ public partial class World : Node3D
 	private ChunkManager _chunkManager;
 	private CloudGenerator _cloudGenerator;
 	private Player _player;
-	private Timer _chunkUpdateTimer;
+	private Godot.Timer _chunkUpdateTimer;
 	private Camera3D _mapCamera;
 	private Node3D _mapVisualizer;
 	private Control _mapUI;
 	private Label _biomeLabel;
 	private Label _controlsLabel;
 	private bool _isMapMode = false;
+
+	// Store camera rotation to preserve it during movement and zooming
+	private Basis _mapCameraRotation;
+
+	// Track player movement for direction-based chunk loading
+	private Vector3 _lastPlayerPosition = Vector3.Zero;
+	private Vector3 _playerMovementDirection = Vector3.Zero;
 
 	public override void _Ready()
 	{
@@ -47,6 +56,7 @@ public partial class World : Node3D
 			Seed = random.Next();
 		}
 		_worldGenerator.Seed = Seed;
+		_worldGenerator.ViewDistance = ViewDistance;
 
 		// Set the same seed for cloud generator
 		if (_cloudGenerator != null)
@@ -61,7 +71,7 @@ public partial class World : Node3D
 		SpawnPlayer();
 
 		// Create timer for chunk updates
-		_chunkUpdateTimer = new Timer();
+		_chunkUpdateTimer = new Godot.Timer();
 		_chunkUpdateTimer.WaitTime = 0.2f; // Update chunks more frequently
 		_chunkUpdateTimer.Timeout += OnChunkUpdateTimerTimeout;
 		AddChild(_chunkUpdateTimer);
@@ -79,6 +89,41 @@ public partial class World : Node3D
 		// Handle map input when in map mode
 		if (_isMapMode && _mapCamera != null)
 		{
+			// Handle camera rotation with Q and E keys
+			if (@event is InputEventKey rotateKeyEvent && rotateKeyEvent.Pressed)
+			{
+				// Rotate left with Q key
+				if (rotateKeyEvent.Keycode == Key.Q)
+				{
+					// Rotate the camera basis around the Y axis (15 degrees counterclockwise)
+					_mapCameraRotation = _mapCameraRotation.Rotated(Vector3.Up, Mathf.DegToRad(15));
+
+					// Apply the rotation to the camera
+					_mapCamera.GlobalTransform = new Transform3D(_mapCameraRotation, _mapCamera.Position);
+
+					// Update the controls label
+					if (_controlsLabel != null)
+					{
+						_controlsLabel.Text = "WASD: Move | Q/E: Rotate | Shift: Fast Move | +/-: Zoom | M: Exit Map";
+					}
+				}
+				// Rotate right with E key
+				else if (rotateKeyEvent.Keycode == Key.E)
+				{
+					// Rotate the camera basis around the Y axis (15 degrees clockwise)
+					_mapCameraRotation = _mapCameraRotation.Rotated(Vector3.Up, Mathf.DegToRad(-15));
+
+					// Apply the rotation to the camera
+					_mapCamera.GlobalTransform = new Transform3D(_mapCameraRotation, _mapCamera.Position);
+
+					// Update the controls label
+					if (_controlsLabel != null)
+					{
+						_controlsLabel.Text = "WASD: Move | Q/E: Rotate | Shift: Fast Move | +/-: Zoom | M: Exit Map";
+					}
+				}
+			}
+
 			// Handle zooming with keys (+ and - keys)
 			if (@event is InputEventKey zoomKeyEvent && zoomKeyEvent.Pressed)
 			{
@@ -104,9 +149,11 @@ public partial class World : Node3D
 					float heightRatio = _mapCamera.Position.Y / currentDistance;
 					newPosition.Y = lookTarget.Y + newDistance * heightRatio;
 
-					// Update camera position
+					// Update camera position while preserving rotation
 					_mapCamera.Position = newPosition;
-					_mapCamera.LookAt(lookTarget, Vector3.Up);
+
+					// Apply the stored rotation instead of using LookAt
+					_mapCamera.GlobalTransform = new Transform3D(_mapCameraRotation, newPosition);
 
 					// Update the controls label
 					if (_controlsLabel != null)
@@ -129,9 +176,11 @@ public partial class World : Node3D
 					float heightRatio = _mapCamera.Position.Y / currentDistance;
 					newPosition.Y = lookTarget.Y + newDistance * heightRatio;
 
-					// Update camera position
+					// Update camera position while preserving rotation
 					_mapCamera.Position = newPosition;
-					_mapCamera.LookAt(lookTarget, Vector3.Up);
+
+					// Apply the stored rotation instead of using LookAt
+					_mapCamera.GlobalTransform = new Transform3D(_mapCameraRotation, newPosition);
 
 					// Update the controls label
 					if (_controlsLabel != null)
@@ -183,21 +232,19 @@ public partial class World : Node3D
 				// Move the camera
 				Vector3 newPosition = _mapCamera.Position + moveDirection * currentSpeed * (float)delta;
 
-				// Update camera position and keep it looking at the center point
+				// Update camera position while preserving rotation
 				_mapCamera.Position = newPosition;
 
-				// Calculate the point to look at (ground point below camera)
-				Vector3 lookTarget = new Vector3(newPosition.X, 0, newPosition.Z);
-				_mapCamera.LookAt(lookTarget, Vector3.Up);
+				// Apply the stored rotation instead of using LookAt
+				_mapCamera.GlobalTransform = new Transform3D(_mapCameraRotation, newPosition);
 			}
 
 			// Update biome label
 			if (_biomeLabel != null)
 			{
-				// Use the point the camera is looking at for biome determination
-				Vector3 lookPoint = -_mapCamera.GlobalTransform.Basis.Z * 100 + _mapCamera.Position;
-				int worldX = (int)lookPoint.X;
-				int worldZ = (int)lookPoint.Z;
+				// Use the point directly below the camera for biome determination
+				int worldX = (int)_mapCamera.Position.X;
+				int worldZ = (int)_mapCamera.Position.Z;
 				BiomeType biomeType = WorldGenerator.GetBiomeType(worldX, worldZ);
 				_biomeLabel.Text = $"Biome: {biomeType} | Position: ({worldX}, {worldZ})";
 			}
@@ -308,9 +355,6 @@ public partial class World : Node3D
 		// Position the camera to achieve approximately 45-degree viewing angle
 		_mapCamera.Position = new Vector3(-MapHeight * 0.7f, MapHeight * 0.7f, MapHeight * 0.7f);
 
-		// Look at the center of the map
-		_mapCamera.LookAt(Vector3.Zero, Vector3.Up);
-
 		// Use perspective projection for better 3D view
 		_mapCamera.Projection = Camera3D.ProjectionType.Perspective;
 		_mapCamera.Fov = 40.0f; // Narrower FOV for less distortion
@@ -320,6 +364,38 @@ public partial class World : Node3D
 
 		// Add to scene
 		AddChild(_mapCamera);
+
+		// We need to wait until the camera is added to the scene tree before calling LookAt
+		// Use CallDeferred to ensure the node is properly added to the tree first
+		CallDeferred(nameof(SetupMapCameraLookAt));
+	}
+
+	private void SetupMapCameraLookAt()
+	{
+		// This method is called after the camera is added to the scene tree
+		if (_mapCamera != null && _mapCamera.IsInsideTree())
+		{
+			// Look at the center of the map
+			// Check if camera position would cause colinear vectors
+			Vector3 cameraToTarget = Vector3.Zero - _mapCamera.Position;
+			cameraToTarget = cameraToTarget.Normalized();
+			float dotProduct = cameraToTarget.Dot(Vector3.Up);
+
+			// If the camera is looking almost straight down or up, use a different up vector
+			if (Math.Abs(dotProduct) > 0.99f)
+			{
+				// Use a different up vector
+				_mapCamera.LookAt(Vector3.Zero, Vector3.Forward);
+			}
+			else
+			{
+				// Normal case
+				_mapCamera.LookAt(Vector3.Zero, Vector3.Up);
+			}
+
+			// Store the initial camera rotation to preserve it during movement and zooming
+			_mapCameraRotation = _mapCamera.GlobalTransform.Basis;
+		}
 	}
 
 	private void CreateMapVisualizer()
@@ -334,9 +410,16 @@ public partial class World : Node3D
 
 		// Add a directional light for better terrain visualization
 		DirectionalLight3D light = new DirectionalLight3D();
-		light.LightEnergy = 1.5f;
+		light.LightEnergy = 0.8f;
 		light.LightColor = new Color(1.0f, 0.98f, 0.9f); // Slightly warm light
 		light.ShadowEnabled = true;
+		light.ShadowBlur = 6.0f;
+		light.ShadowNormalBias = 3.0f;
+		light.DirectionalShadowBlendSplits = true;
+		light.DirectionalShadowFadeStart = 0.8f;
+		light.DirectionalShadowMaxDistance = 1000.0f;
+		light.DirectionalShadowPancakeSize = 40.0f;
+		light.LightAngularDistance = 0.5f;
 
 		// Position the light to cast shadows that highlight terrain features
 		light.RotationDegrees = new Vector3(50, -30, 0);
@@ -523,7 +606,7 @@ public partial class World : Node3D
 		// Create controls label
 		_controlsLabel = new Label();
 		_controlsLabel.Position = new Vector2(20, 50);
-		_controlsLabel.Text = "WASD: Move | Shift: Fast Move | +/-: Zoom | M: Exit Map";
+		_controlsLabel.Text = "WASD: Move | Q/E: Rotate | Shift: Fast Move | +/-: Zoom | M: Exit Map";
 		_mapUI.AddChild(_controlsLabel);
 
 		// Add to scene
@@ -536,7 +619,7 @@ public partial class World : Node3D
 		AddChild(_player);
 
 		// Position player above the terrain at spawn point
-		Vector3 spawnPosition = new Vector3(0, 50, 0); // Halved for higher resolution voxels (was 100)
+		Vector3 spawnPosition = new Vector3(0, 60, 0); // Halved for higher resolution voxels (was 100)
 		_player.Position = spawnPosition;
 
 		GD.Print("Player spawned at position: " + spawnPosition);
@@ -548,18 +631,43 @@ public partial class World : Node3D
 		_worldGenerator.GenerateChunk(chunkPosition);
 
 		// Debug output to confirm chunk generation
-		GD.Print($"Generated chunk at position: {chunkPosition}");
+		// GD.Print($"Generated chunk at position: {chunkPosition}");
 	}
 
 	private void OnChunkUpdateTimerTimeout()
 	{
 		if (_player != null && _chunkManager != null)
 		{
-			// Update chunks around player
-			_chunkManager.UpdateChunksAroundPlayer(_player.Position, ViewDistance);
+			// Capture player position on the main thread
+			Vector3 playerPosition = _player.Position;
 
-			// Uncomment for debugging chunk loading
-			// GD.Print($"Player position: {_player.Position}, Active chunks: {_chunkManager.ActiveChunkCount}");
+			// Calculate player movement direction
+			if (_lastPlayerPosition != Vector3.Zero)
+			{
+				Vector3 movement = playerPosition - _lastPlayerPosition;
+
+				// Only update direction if the player has moved significantly
+				if (movement.Length() > 0.1f)
+				{
+					// Get horizontal movement direction (ignore Y)
+					movement.Y = 0;
+					_playerMovementDirection = movement.Normalized();
+				}
+			}
+			else
+			{
+				// First update after player spawn - use a default direction
+				// This ensures chunks are generated in concentric circles at game start
+				_playerMovementDirection = Vector3.Zero;
+				GD.Print("First chunk update after player spawn - using concentric circle pattern");
+			}
+
+			// Update last position
+			_lastPlayerPosition = playerPosition;
+
+			// Pass the captured position and movement direction to the thread
+			Thread t = new(() => _chunkManager.UpdateChunksAroundPlayer(playerPosition, ViewDistance, _playerMovementDirection));
+			t.Start();
 		}
 	}
 }

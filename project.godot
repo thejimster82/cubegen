@@ -12,12 +12,20 @@ config_version=5
 
 config/name="CubeGen"
 run/main_scene="res://src/World/World.tscn"
-config/features=PackedStringArray("4.4", "C#", "Forward Plus")
+config/features=PackedStringArray("4.4", "Forward Plus")
 config/icon="res://icon.svg"
 
 [dotnet]
 
 project/assembly_name="CubeGen"
+
+[rendering]
+
+shadows/directional_shadow/soft_shadow_filter_quality=4
+shadows/positional_shadow/soft_shadow_filter_quality=4
+anti_aliasing/quality/msaa_3d=2
+shadows/directional_shadow/size=8192
+shadows/positional_shadow/atlas_size=8192
 
 [input]
 

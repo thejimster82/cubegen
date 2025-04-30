@@ -58,8 +58,24 @@ public class VoxelChunk
 
     public bool IsVoxelSolid(int x, int y, int z)
     {
-        VoxelType type = GetVoxel(x, y, z);
-        return type != VoxelType.Air && type != VoxelType.Water;
+        // First, handle in-bounds voxels directly
+        if (IsInBounds(x, y, z))
+        {
+            VoxelType type = _voxels[x][y][z];
+            return type != VoxelType.Air && type != VoxelType.Water;
+        }
+
+        // For out-of-bounds positions in the Y direction
+        if (y < 0 || y >= Height)
+        {
+            // Below the chunk is solid (ground), above is air
+            return y < 0;
+        }
+
+        // For out-of-bounds positions in X and Z, we need to check if this would be
+        // a neighboring chunk. For now, we'll assume air at chunk boundaries.
+        // In a full implementation, you would query the world for the neighboring chunk.
+        return false;
     }
 
     // Get world position of this chunk

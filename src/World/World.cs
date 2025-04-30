@@ -3,8 +3,6 @@ using System;
 using System.Collections.Generic;
 using CubeGen.World.Common;
 using CubeGen.World.Generation;
-using System.Threading.Tasks;
-using System.Threading;
 
 public partial class World : Node3D
 {
@@ -42,6 +40,9 @@ public partial class World : Node3D
 
 	public override void _Ready()
 	{
+		// Initialize BiomeMaterials first to ensure materials are ready before any chunks are generated
+		BiomeMaterials.Initialize();
+
 		_worldGenerator = GetNode<WorldGenerator>("WorldGenerator");
 		_chunkManager = GetNode<ChunkManager>("WorldGenerator/ChunkManager");
 
@@ -72,7 +73,7 @@ public partial class World : Node3D
 
 		// Create timer for chunk updates
 		_chunkUpdateTimer = new Godot.Timer();
-		_chunkUpdateTimer.WaitTime = 0.2f; // Update chunks more frequently
+		_chunkUpdateTimer.WaitTime = 0.3f; // Reduced from 1.0f for much faster chunk updates
 		_chunkUpdateTimer.Timeout += OnChunkUpdateTimerTimeout;
 		AddChild(_chunkUpdateTimer);
 		_chunkUpdateTimer.Start();
@@ -641,33 +642,12 @@ public partial class World : Node3D
 			// Capture player position on the main thread
 			Vector3 playerPosition = _player.Position;
 
-			// Calculate player movement direction
-			if (_lastPlayerPosition != Vector3.Zero)
-			{
-				Vector3 movement = playerPosition - _lastPlayerPosition;
-
-				// Only update direction if the player has moved significantly
-				if (movement.Length() > 0.1f)
-				{
-					// Get horizontal movement direction (ignore Y)
-					movement.Y = 0;
-					_playerMovementDirection = movement.Normalized();
-				}
-			}
-			else
-			{
-				// First update after player spawn - use a default direction
-				// This ensures chunks are generated in concentric circles at game start
-				_playerMovementDirection = Vector3.Zero;
-				GD.Print("First chunk update after player spawn - using concentric circle pattern");
-			}
-
 			// Update last position
 			_lastPlayerPosition = playerPosition;
 
-			// Pass the captured position and movement direction to the thread
-			Thread t = new(() => _chunkManager.UpdateChunksAroundPlayer(playerPosition, ViewDistance, _playerMovementDirection));
-			t.Start();
+			// Call UpdateChunksAroundPlayer directly on the main thread
+			// This is now thread-safe with our ConcurrentDictionary implementation
+			_chunkManager.UpdateChunksAroundPlayer(playerPosition, ViewDistance);
 		}
 	}
 }

@@ -1,18 +1,17 @@
 using Godot;
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Threading;
 using CubeGen.World.Common;
 
 public class ChunkMeshGenerator
 {
-    private Queue<VoxelChunk> _chunksToProcess = new Queue<VoxelChunk>();
-    private Queue<(VoxelChunk, ArrayMesh, List<Vector3>)> _completedMeshes = new Queue<(VoxelChunk, ArrayMesh, List<Vector3>)>();
-    private System.Threading.Mutex _queueMutex = new System.Threading.Mutex();
-    private System.Threading.Mutex _resultMutex = new System.Threading.Mutex();
-    private Thread _workerThread;
+    private ConcurrentQueue<VoxelChunk> _chunksToProcess = new ConcurrentQueue<VoxelChunk>();
+    private ConcurrentQueue<(VoxelChunk, ArrayMesh, List<Vector3>)> _completedMeshes = new ConcurrentQueue<(VoxelChunk, ArrayMesh, List<Vector3>)>();
+    private readonly Thread _workerThread;
     private bool _isRunning = true;
-    private ChunkManager _chunkManager; // Reference to the ChunkManager for cross-chunk lookups
+    private readonly ChunkManager _chunkManager; // Reference to the ChunkManager for cross-chunk lookups
 
     public ChunkMeshGenerator(ChunkManager chunkManager)
     {
@@ -25,48 +24,22 @@ public class ChunkMeshGenerator
 
     public void QueueChunk(VoxelChunk chunk)
     {
-        _queueMutex.WaitOne();
-        try
-        {
-            _chunksToProcess.Enqueue(chunk);
-        }
-        finally
-        {
-            _queueMutex.ReleaseMutex();
-        }
+        _chunksToProcess.Enqueue(chunk);
     }
 
     public bool HasCompletedMeshes()
     {
-        bool hasCompleted = false;
-        _resultMutex.WaitOne();
-        try
-        {
-            hasCompleted = _completedMeshes.Count > 0;
-        }
-        finally
-        {
-            _resultMutex.ReleaseMutex();
-        }
-        return hasCompleted;
+        return !_completedMeshes.IsEmpty;
     }
 
     public (VoxelChunk, ArrayMesh, List<Vector3>) GetNextCompletedMesh()
     {
         (VoxelChunk, ArrayMesh, List<Vector3>) result = (null, null, null);
-        _resultMutex.WaitOne();
-        try
+        if (_completedMeshes.TryDequeue(out result))
         {
-            if (_completedMeshes.Count > 0)
-            {
-                result = _completedMeshes.Dequeue();
-            }
+            return result;
         }
-        finally
-        {
-            _resultMutex.ReleaseMutex();
-        }
-        return result;
+        return (null, null, null);
     }
 
     public void Stop()
@@ -77,27 +50,18 @@ public class ChunkMeshGenerator
 
     private void ProcessChunks()
     {
+        // Dictionary to track chunks that are waiting for neighbors
+        Dictionary<Vector2I, int> waitingChunks = new();
+
         while (_isRunning)
         {
-            VoxelChunk chunkToProcess = null;
+            bool didWork = false;
 
-            // Get the next chunk to process
-            _queueMutex.WaitOne();
-            try
+            // Try to get the next chunk to process
+            if (_chunksToProcess.TryDequeue(out VoxelChunk chunkToProcess))
             {
-                if (_chunksToProcess.Count > 0)
-                {
-                    chunkToProcess = _chunksToProcess.Dequeue();
-                }
-            }
-            finally
-            {
-                _queueMutex.ReleaseMutex();
-            }
+                didWork = true;
 
-            // Process the chunk if we have one
-            if (chunkToProcess != null)
-            {
                 // Check if all neighboring chunks are available for proper AO calculation
                 bool canProcessChunk = AreNeighboringChunksAvailable(chunkToProcess);
 
@@ -106,39 +70,48 @@ public class ChunkMeshGenerator
                     // Generate the mesh data
                     (ArrayMesh mesh, List<Vector3> collisionFaces) = GenerateMesh(chunkToProcess);
 
-                    // Queue the completed mesh
-                    _resultMutex.WaitOne();
-                    try
-                    {
-                        _completedMeshes.Enqueue((chunkToProcess, mesh, collisionFaces));
-                    }
-                    finally
-                    {
-                        _resultMutex.ReleaseMutex();
-                    }
+                    // Queue the completed mesh - ConcurrentQueue is thread-safe
+                    _completedMeshes.Enqueue((chunkToProcess, mesh, collisionFaces));
+
+                    // Remove from waiting chunks if it was there
+                    waitingChunks.Remove(chunkToProcess.Position);
                 }
                 else
                 {
-                    // Re-queue the chunk for later processing when neighbors are available
-                    _queueMutex.WaitOne();
-                    try
+                    // Track how many times we've tried to process this chunk
+                    if (!waitingChunks.TryGetValue(chunkToProcess.Position, out int attempts))
                     {
-                        // Put it at the back of the queue
-                        _chunksToProcess.Enqueue(chunkToProcess);
-                    }
-                    finally
-                    {
-                        _queueMutex.ReleaseMutex();
+                        attempts = 0;
                     }
 
-                    // Sleep a bit to avoid busy re-queueing
-                    Thread.Sleep(50);
+                    // If we've tried too many times, process it anyway without all neighbors
+                    if (attempts >= 5)
+                    {
+                        // Generate the mesh data anyway
+                        (ArrayMesh mesh, List<Vector3> collisionFaces) = GenerateMesh(chunkToProcess);
+
+                        // Queue the completed mesh
+                        _completedMeshes.Enqueue((chunkToProcess, mesh, collisionFaces));
+
+                        // Remove from waiting chunks
+                        waitingChunks.Remove(chunkToProcess.Position);
+                    }
+                    else
+                    {
+                        // Increment attempts and re-queue
+                        waitingChunks[chunkToProcess.Position] = attempts + 1;
+
+                        // Re-queue the chunk for later processing when neighbors are available
+                        _chunksToProcess.Enqueue(chunkToProcess);
+                    }
                 }
             }
-            else
+
+            // Sleep only if we didn't do any work
+            if (!didWork)
             {
-                // Sleep a bit to avoid busy waiting
-                Thread.Sleep(10);
+                // Use a shorter sleep time to be more responsive
+                Thread.Sleep(5);
             }
         }
     }
@@ -149,37 +122,32 @@ public class ChunkMeshGenerator
         // Get the position of the chunk
         Vector2I pos = chunk.Position;
 
-        // Check all 8 neighboring chunks
-        Vector2I[] neighbors = new Vector2I[]
+        // Only check the 4 direct neighbors (left, right, top, bottom)
+        // This is a compromise that still gives decent AO but loads faster
+        Vector2I[] neighbors = new[]
         {
-            new Vector2I(pos.X - 1, pos.Y - 1), // Bottom-left
             new Vector2I(pos.X - 1, pos.Y),     // Left
-            new Vector2I(pos.X - 1, pos.Y + 1), // Top-left
+            new Vector2I(pos.X + 1, pos.Y),     // Right
             new Vector2I(pos.X, pos.Y - 1),     // Bottom
             new Vector2I(pos.X, pos.Y + 1),     // Top
-            new Vector2I(pos.X + 1, pos.Y - 1), // Bottom-right
-            new Vector2I(pos.X + 1, pos.Y),     // Right
-            new Vector2I(pos.X + 1, pos.Y + 1)  // Top-right
         };
 
-        // Check if all neighbors exist
+        // Count how many neighbors exist
+        int availableNeighbors = 0;
+
         foreach (Vector2I neighborPos in neighbors)
         {
-            // Skip chunks that are too far away (outside the world bounds)
-            if (Math.Abs(neighborPos.X - pos.X) > 1 || Math.Abs(neighborPos.Y - pos.Y) > 1)
-                continue;
-
             // Check if the neighbor data exists in the chunk manager
-            // We only need the chunk data for AO calculation, not the full mesh
-            if (!_chunkManager.HasChunkData(neighborPos))
+            if (_chunkManager.HasChunkData(neighborPos))
             {
-                // If any neighbor data is missing, return false
-                return false;
+                availableNeighbors++;
             }
         }
 
-        // All necessary neighbors are available
-        return true;
+        // If at least 3 of 4 neighbors are available, we can proceed
+        // This is a compromise that allows faster loading while still
+        // maintaining decent AO quality
+        return availableNeighbors >= 3;
     }
 
     private (ArrayMesh, List<Vector3>) GenerateMesh(VoxelChunk chunk)
@@ -437,8 +405,40 @@ public class ChunkMeshGenerator
                 mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
 
                 // Set material based on biome and voxel type
-                Material material = BiomeMaterials.GetMaterial(biomeType, voxelType);
-                mesh.SurfaceSetMaterial(surfaceIndex, material);
+                try
+                {
+                    // Initialize BiomeMaterials if needed
+                    BiomeMaterials.Initialize();
+
+                    // Get material for this biome and voxel type
+                    Material material = BiomeMaterials.GetMaterial(biomeType, voxelType);
+
+                    // Apply the material to the surface
+                    if (material != null)
+                    {
+                        mesh.SurfaceSetMaterial(surfaceIndex, material);
+                    }
+                    else
+                    {
+                        GD.PrintErr($"Failed to get material for biome {biomeType} and voxel type {voxelType}");
+
+                        // Create a fallback material with a distinctive color
+                        StandardMaterial3D fallbackMaterial = new StandardMaterial3D();
+                        fallbackMaterial.AlbedoColor = new Color(1.0f, 0.0f, 1.0f); // Magenta
+                        fallbackMaterial.VertexColorUseAsAlbedo = true;
+                        mesh.SurfaceSetMaterial(surfaceIndex, fallbackMaterial);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    GD.PrintErr($"Error setting material: {ex.Message}");
+
+                    // Create an emergency fallback material
+                    StandardMaterial3D emergencyMaterial = new StandardMaterial3D();
+                    emergencyMaterial.AlbedoColor = new Color(1.0f, 0.0f, 0.0f); // Red for error
+                    emergencyMaterial.VertexColorUseAsAlbedo = true;
+                    mesh.SurfaceSetMaterial(surfaceIndex, emergencyMaterial);
+                }
 
                 // Add vertices and indices to collision data
                 allVertices.AddRange(vertices);

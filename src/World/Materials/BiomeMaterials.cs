@@ -6,10 +6,20 @@ using CubeGen.World.Common;
 public static class BiomeMaterials
 {
     private static Dictionary<BiomeType, Dictionary<VoxelType, Material>> _materials;
+    private static bool _isInitialized = false;
+    private static readonly object _initLock = new object();
 
     public static void Initialize()
     {
-        _materials = new Dictionary<BiomeType, Dictionary<VoxelType, Material>>();
+        // Use a lock to ensure thread safety during initialization
+        lock (_initLock)
+        {
+            // Only initialize once
+            if (_isInitialized)
+                return;
+
+            GD.Print("Initializing BiomeMaterials...");
+            _materials = new Dictionary<BiomeType, Dictionary<VoxelType, Material>>();
 
         // Initialize materials for each biome
         foreach (BiomeType biomeType in Enum.GetValues(typeof(BiomeType)))
@@ -50,6 +60,10 @@ public static class BiomeMaterials
 
                 _materials[biomeType][voxelType] = material;
             }
+        }
+
+        _isInitialized = true;
+        GD.Print("BiomeMaterials initialization complete.");
         }
     }
 
@@ -270,19 +284,43 @@ public static class BiomeMaterials
 
     public static Material GetMaterial(BiomeType biomeType, VoxelType voxelType)
     {
-        if (_materials == null)
+        if (_materials == null || !_isInitialized)
         {
             Initialize();
         }
 
-        if (_materials.ContainsKey(biomeType) && _materials[biomeType].ContainsKey(voxelType))
+        try
         {
-            return _materials[biomeType][voxelType];
+            if (_materials.ContainsKey(biomeType) && _materials[biomeType].ContainsKey(voxelType))
+            {
+                return _materials[biomeType][voxelType];
+            }
+            else
+            {
+                // Log the missing material
+                GD.PrintErr($"Missing material for biome {biomeType} and voxel type {voxelType}. Using fallback material.");
+
+                // Try to get a material for this voxel type from any biome
+                foreach (var biome in _materials.Keys)
+                {
+                    if (_materials[biome].ContainsKey(voxelType))
+                    {
+                        GD.Print($"Using material from biome {biome} for voxel type {voxelType}");
+                        return _materials[biome][voxelType];
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            GD.PrintErr($"Error getting material: {ex.Message}");
         }
 
-        // Fallback to a default material
+        // Fallback to a default material with a distinctive color to make it obvious
         StandardMaterial3D defaultMaterial = new StandardMaterial3D();
-        defaultMaterial.AlbedoColor = new Color(1.0f, 1.0f, 1.0f);
+        defaultMaterial.AlbedoColor = new Color(1.0f, 0.0f, 1.0f); // Magenta for visibility
+        defaultMaterial.VertexColorUseAsAlbedo = true;
+        GD.PrintErr($"Using magenta fallback material for biome {biomeType} and voxel type {voxelType}");
         return defaultMaterial;
     }
 }

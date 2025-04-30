@@ -13,6 +13,9 @@ transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 1, 0)
 floor_max_angle = 0.872665
 floor_snap_length = 1.0
 script = ExtResource("1_yvnqm")
+Speed = 5.0
+JumpVelocity = 3.0
+MaxStepHeight = 100.0
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.75, 0)

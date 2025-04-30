@@ -50,11 +50,18 @@ public class ChunkMeshGenerator
 
     private void ProcessChunks()
     {
+        // Dictionary to track chunks that are waiting for neighbors
+        Dictionary<Vector2I, int> waitingChunks = new();
+
         while (_isRunning)
         {
+            bool didWork = false;
+
             // Try to get the next chunk to process
             if (_chunksToProcess.TryDequeue(out VoxelChunk chunkToProcess))
             {
+                didWork = true;
+
                 // Check if all neighboring chunks are available for proper AO calculation
                 bool canProcessChunk = AreNeighboringChunksAvailable(chunkToProcess);
 
@@ -65,20 +72,46 @@ public class ChunkMeshGenerator
 
                     // Queue the completed mesh - ConcurrentQueue is thread-safe
                     _completedMeshes.Enqueue((chunkToProcess, mesh, collisionFaces));
+
+                    // Remove from waiting chunks if it was there
+                    waitingChunks.Remove(chunkToProcess.Position);
                 }
                 else
                 {
-                    // Re-queue the chunk for later processing when neighbors are available
-                    _chunksToProcess.Enqueue(chunkToProcess);
+                    // Track how many times we've tried to process this chunk
+                    if (!waitingChunks.TryGetValue(chunkToProcess.Position, out int attempts))
+                    {
+                        attempts = 0;
+                    }
 
-                    // Sleep a bit to avoid busy re-queueing
-                    Thread.Sleep(50);
+                    // If we've tried too many times, process it anyway without all neighbors
+                    if (attempts >= 5)
+                    {
+                        // Generate the mesh data anyway
+                        (ArrayMesh mesh, List<Vector3> collisionFaces) = GenerateMesh(chunkToProcess);
+
+                        // Queue the completed mesh
+                        _completedMeshes.Enqueue((chunkToProcess, mesh, collisionFaces));
+
+                        // Remove from waiting chunks
+                        waitingChunks.Remove(chunkToProcess.Position);
+                    }
+                    else
+                    {
+                        // Increment attempts and re-queue
+                        waitingChunks[chunkToProcess.Position] = attempts + 1;
+
+                        // Re-queue the chunk for later processing when neighbors are available
+                        _chunksToProcess.Enqueue(chunkToProcess);
+                    }
                 }
             }
-            else
+
+            // Sleep only if we didn't do any work
+            if (!didWork)
             {
-                // Sleep a bit to avoid busy waiting
-                Thread.Sleep(10);
+                // Use a shorter sleep time to be more responsive
+                Thread.Sleep(5);
             }
         }
     }
@@ -89,37 +122,32 @@ public class ChunkMeshGenerator
         // Get the position of the chunk
         Vector2I pos = chunk.Position;
 
-        // Check all 8 neighboring chunks
-        Vector2I[] neighbors = new Vector2I[]
+        // Only check the 4 direct neighbors (left, right, top, bottom)
+        // This is a compromise that still gives decent AO but loads faster
+        Vector2I[] neighbors = new[]
         {
-            new Vector2I(pos.X - 1, pos.Y - 1), // Bottom-left
             new Vector2I(pos.X - 1, pos.Y),     // Left
-            new Vector2I(pos.X - 1, pos.Y + 1), // Top-left
+            new Vector2I(pos.X + 1, pos.Y),     // Right
             new Vector2I(pos.X, pos.Y - 1),     // Bottom
             new Vector2I(pos.X, pos.Y + 1),     // Top
-            new Vector2I(pos.X + 1, pos.Y - 1), // Bottom-right
-            new Vector2I(pos.X + 1, pos.Y),     // Right
-            new Vector2I(pos.X + 1, pos.Y + 1)  // Top-right
         };
 
-        // Check if all neighbors exist
+        // Count how many neighbors exist
+        int availableNeighbors = 0;
+
         foreach (Vector2I neighborPos in neighbors)
         {
-            // Skip chunks that are too far away (outside the world bounds)
-            if (Math.Abs(neighborPos.X - pos.X) > 1 || Math.Abs(neighborPos.Y - pos.Y) > 1)
-                continue;
-
             // Check if the neighbor data exists in the chunk manager
-            // We only need the chunk data for AO calculation, not the full mesh
-            if (!_chunkManager.HasChunkData(neighborPos))
+            if (_chunkManager.HasChunkData(neighborPos))
             {
-                // If any neighbor data is missing, return false
-                return false;
+                availableNeighbors++;
             }
         }
 
-        // All necessary neighbors are available
-        return true;
+        // If at least 3 of 4 neighbors are available, we can proceed
+        // This is a compromise that allows faster loading while still
+        // maintaining decent AO quality
+        return availableNeighbors >= 3;
     }
 
     private (ArrayMesh, List<Vector3>) GenerateMesh(VoxelChunk chunk)

@@ -72,7 +72,7 @@ public partial class World : Node3D
 
 		// Create timer for chunk updates
 		_chunkUpdateTimer = new Godot.Timer();
-		_chunkUpdateTimer.WaitTime = 1.0f; // Update chunks more frequently
+		_chunkUpdateTimer.WaitTime = 0.3f; // Reduced from 1.0f for much faster chunk updates
 		_chunkUpdateTimer.Timeout += OnChunkUpdateTimerTimeout;
 		AddChild(_chunkUpdateTimer);
 		_chunkUpdateTimer.Start();

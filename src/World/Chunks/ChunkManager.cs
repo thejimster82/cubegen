@@ -26,7 +26,7 @@ public partial class ChunkManager : Node3D
     [Export] public int UnloadDistance { get; set; } = 20;
 
     // Minimum time between chunk updates to prevent too frequent updates
-    [Export] public float ChunkUpdateCooldown { get; set; } = 0.5f;
+    [Export] public float ChunkUpdateCooldown { get; set; } = 0.1f; // Reduced from 0.5f for faster updates
     private float _timeSinceLastUpdate = 0.0f;
 
     // Thread-safe collection for chunks that need to be requested
@@ -36,7 +36,7 @@ public partial class ChunkManager : Node3D
     private ChunkMeshGenerator _meshGenerator;
 
     // Maximum number of chunks to process per frame
-    private const int MaxChunksPerFrame = 3;
+    private const int MaxChunksPerFrame = 8; // Increased from 3 to process more chunks each frame
 
     public void Initialize(int chunkSize, int chunkHeight)
     {
@@ -230,12 +230,31 @@ public partial class ChunkManager : Node3D
     {
         // Limit the number of chunks processed per frame
         int chunksProcessed = 0;
+        int maxChunksToRequest = 12; // Process more chunks per frame
 
-        // Now emit signals for each chunk on the main thread
+        // Sort chunks by distance before processing
+        List<(Vector2I, float)> sortedChunks = new();
+
+        // Collect all chunks to request
         while(_chunksToRequest.TryTake(out (Vector2I, float) chunkRequest))
         {
+            sortedChunks.Add(chunkRequest);
+        }
+
+        // Sort by distance (closest first)
+        sortedChunks.Sort((a, b) => a.Item2.CompareTo(b.Item2));
+
+        // Process chunks in order of distance
+        foreach (var chunkRequest in sortedChunks)
+        {
+            if (chunksProcessed >= maxChunksToRequest)
+            {
+                // Re-queue remaining chunks for next frame
+                _chunksToRequest.Add(chunkRequest);
+                continue;
+            }
+
             EmitSignal(SignalName.ChunkRequested, chunkRequest.Item1);
-            // Limit the number of chunks processed per frame
             chunksProcessed++;
         }
     }

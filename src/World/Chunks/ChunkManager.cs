@@ -289,22 +289,31 @@ public partial class ChunkManager : Node3D
             }
         }
 
-        // Check each position for unloading
-        foreach (Vector2I chunkPos in activeChunks)
+        // Check ALL existing chunks for unloading, not just active ones
+        // Create a combined list of all chunk positions from both dictionaries
+        HashSet<Vector2I> allExistingChunks = new();
+
+        // Add all chunk positions from both dictionaries
+        allExistingChunks.UnionWith(_chunks.Keys);
+        allExistingChunks.UnionWith(_chunkData.Keys);
+
+        // Check each existing chunk to see if it's outside the view distance
+        foreach (Vector2I chunkPos in allExistingChunks)
         {
             int dx = chunkPos.X - playerChunk.X;
             int dz = chunkPos.Y - playerChunk.Y;
             int distanceSquared = dx * dx + dz * dz;
 
-            // Only unload chunks that are beyond the unload distance
+            // If the chunk is outside the view distance, mark it for removal
             if (distanceSquared > viewDistanceSquared)
             {
                 ChunksToRemove.Add(chunkPos);
             }
         }
+
         _chunksToRemove = ChunksToRemove;
         _chunksToRequest = ChunksToRequest;
-        GD.Print($"Finished Updating Chunks");
+        GD.Print($"Finished Updating Chunks - Active: {activeChunks.Count}, To Remove: {ChunksToRemove.Count}, To Request: {ChunksToRequest.Count}");
     }
 
     public override void _ExitTree()

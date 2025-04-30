@@ -18,6 +18,7 @@ public partial class WorldGenerator : Node3D
 	private FastNoiseLite _terrainNoise;
 	private FastNoiseLite _biomeNoise;
 	private ChunkManager _chunkManager;
+	private BiomeRegionGenerator _biomeRegionGenerator;
 
 	public override void _Ready()
 	{
@@ -51,6 +52,9 @@ public partial class WorldGenerator : Node3D
 		_biomeNoise.Seed = Seed + 1000; // Different seed for biome variation
 		_biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
 		_biomeNoise.Frequency = 0.006f; // Doubled frequency for higher resolution (was 0.003f)
+
+		// Initialize biome region generator with smaller regions for debugging
+		_biomeRegionGenerator = new BiomeRegionGenerator(Seed, 50, 0.002f);
 
 		// Initialize static noise for use by other classes
 		InitializeStaticNoise(Seed);
@@ -149,42 +153,41 @@ public partial class WorldGenerator : Node3D
 			_staticBiomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
 			_staticBiomeNoise.Frequency = 0.006f; // Doubled frequency for higher resolution (was 0.003f)
 		}
+
+		// Also initialize the static biome region generator
+		InitializeStaticBiomeRegionGenerator(seed);
 	}
 
 	// Get biome type for a world position - instance method
 	private BiomeType GetBiomeTypeForChunk(int worldX, int worldZ)
 	{
-		float biomeValue = _biomeNoise.GetNoise2D(worldX, worldZ);
-		return GetBiomeTypeFromNoise(biomeValue);
+		// Use the region-based biome generator
+		return _biomeRegionGenerator.GetBiomeType(worldX, worldZ);
 	}
+
+	// Static instance of the biome region generator for use by other classes
+	private static BiomeRegionGenerator _staticBiomeRegionGenerator;
 
 	// Get biome type for a world position - static method for use by other classes
 	public static BiomeType GetBiomeType(int worldX, int worldZ)
 	{
-		if (_staticBiomeNoise == null)
+		if (_staticBiomeRegionGenerator == null)
 		{
 			// Use a default seed if not initialized
-			InitializeStaticNoise(0);
+			_staticBiomeRegionGenerator = new BiomeRegionGenerator(0, 50, 0.002f);
 		}
 
-		float biomeValue = _staticBiomeNoise.GetNoise2D(worldX, worldZ);
-		return GetBiomeTypeFromNoise(biomeValue);
+		return _staticBiomeRegionGenerator.GetBiomeType(worldX, worldZ);
 	}
 
-	// Helper method to convert noise value to biome type
-	private static BiomeType GetBiomeTypeFromNoise(float biomeValue)
+	// Initialize static biome region generator
+	private static void InitializeStaticBiomeRegionGenerator(int seed)
 	{
-		// Simple biome distribution based on noise value
-		if (biomeValue < -0.5f)
-			return BiomeType.Desert;
-		else if (biomeValue < -0.2f)
-			return BiomeType.Plains;
-		else if (biomeValue < 0.2f)
-			return BiomeType.Forest;
-		else if (biomeValue < 0.5f)
-			return BiomeType.Mountains;
-		else
-			return BiomeType.Tundra;
+		if (_staticBiomeRegionGenerator == null)
+		{
+			// Use smaller regions for debugging
+			_staticBiomeRegionGenerator = new BiomeRegionGenerator(seed, 50, 0.002f);
+		}
 	}
 
 	private int GenerateTerrainHeight(int worldX, int worldZ, BiomeType biomeType)

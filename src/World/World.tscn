@@ -6,7 +6,7 @@
 [ext_resource type="PackedScene" uid="uid://dxnqpj5l2ykbw" path="res://src/World/ChunkMesh.tscn" id="4_yvnqm"]
 [ext_resource type="PackedScene" uid="uid://bqnvlj8jx8g7y" path="res://src/Player/Player.tscn" id="5_yvnqm"]
 [ext_resource type="Environment" uid="uid://b4e3ckxsxo8gq" path="res://src/World/Environment/WorldEnvironment.tres" id="6_yvnqm"]
-[ext_resource type="PackedScene" path="res://src/World/Environment/CloudGenerator.tscn" id="7_yvnqm"]
+[ext_resource type="PackedScene" uid="uid://b8jn5dpo0eyko" path="res://src/World/Environment/CloudGenerator.tscn" id="7_yvnqm"]
 
 [node name="World" type="Node3D"]
 script = ExtResource("1_yvnqm")

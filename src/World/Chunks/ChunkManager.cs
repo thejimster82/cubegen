@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using System.Threading;
 using System.Linq;
+using CubeGen.World.Common;
 
 public partial class ChunkManager : Node3D
 {
@@ -66,6 +67,17 @@ public partial class ChunkManager : Node3D
         // First check if we have the chunk data directly
         if (_chunkData.TryGetValue(chunkPos, out VoxelChunk chunk))
         {
+            // Get the voxel type first
+            VoxelType voxelType = chunk.GetVoxel(localX, localY, localZ);
+
+            // Special case: don't consider grass types as solid for visibility calculations
+            if (voxelType == VoxelType.MicroGrass ||
+                voxelType == VoxelType.SmallGrass ||
+                voxelType == VoxelType.TinyGrass)
+            {
+                return false;
+            }
+
             return chunk.IsVoxelSolid(localX, localY, localZ);
         }
 
@@ -76,6 +88,17 @@ public partial class ChunkManager : Node3D
             chunk = chunkMesh.GetChunk();
             if (chunk != null)
             {
+                // Get the voxel type first
+                VoxelType voxelType = chunk.GetVoxel(localX, localY, localZ);
+
+                // Special case: don't consider grass types as solid for visibility calculations
+                if (voxelType == VoxelType.MicroGrass ||
+                    voxelType == VoxelType.SmallGrass ||
+                    voxelType == VoxelType.TinyGrass)
+                {
+                    return false;
+                }
+
                 return chunk.IsVoxelSolid(localX, localY, localZ);
             }
         }

@@ -267,8 +267,22 @@ public class ChunkMeshGenerator
                     // Create mesh data for this voxel
                     MeshData meshData = new MeshData();
 
+                    // Special handling for grass types
+                    bool isGrassType = voxelType == VoxelType.SmallGrass ||
+                                      voxelType == VoxelType.TinyGrass ||
+                                      voxelType == VoxelType.MicroGrass;
+
                     // Check each face and add to mesh data
-                    AddVoxelFaces(chunk, x, y, z, voxelType, meshData);
+                    if (isGrassType)
+                    {
+                        // For small grass types, we'll create a cross-shaped mesh instead of a cube
+                        AddGrassFaces(chunk, x, y, z, voxelType, meshData);
+                    }
+                    else
+                    {
+                        // Regular voxel faces for non-grass types
+                        AddVoxelFaces(chunk, x, y, z, voxelType, meshData);
+                    }
 
                     // Add mesh data to the appropriate list if it has any vertices
                     if (meshData.Vertices.Count > 0)
@@ -320,8 +334,22 @@ public class ChunkMeshGenerator
                     // Create mesh data for this voxel
                     MeshData meshData = new MeshData();
 
+                    // Special handling for grass types
+                    bool isGrassType = voxelType == VoxelType.SmallGrass ||
+                                      voxelType == VoxelType.TinyGrass ||
+                                      voxelType == VoxelType.MicroGrass;
+
                     // Check each face and add to mesh data
-                    AddVoxelFaces(chunk, x, y, z, voxelType, meshData);
+                    if (isGrassType)
+                    {
+                        // For small grass types, we'll create a cross-shaped mesh instead of a cube
+                        AddGrassFaces(chunk, x, y, z, voxelType, meshData);
+                    }
+                    else
+                    {
+                        // Regular voxel faces for non-grass types
+                        AddVoxelFaces(chunk, x, y, z, voxelType, meshData);
+                    }
 
                     // Add mesh data to the appropriate list if it has any vertices
                     if (meshData.Vertices.Count > 0)
@@ -522,10 +550,26 @@ public class ChunkMeshGenerator
 
         // Add vertices, normals, and UVs based on face direction
         // Get scale from the chunk
-        float scale = chunk.Scale;
+        float chunkScale = chunk.Scale;
         int x = (int)position.X;
         int y = (int)position.Y;
         int z = (int)position.Z;
+
+        // Get voxel-specific scale factor
+        float voxelScaleFactor = VoxelScaleHelper.GetScaleFactor(voxelType);
+
+        // Calculate the final scale (chunk scale * voxel scale factor)
+        float finalScale = chunkScale * voxelScaleFactor;
+
+        // Calculate offset to center smaller voxels within the full voxel space
+        Vector3 centeringOffset = Vector3.Zero;
+        if (voxelScaleFactor < 1.0f)
+        {
+            centeringOffset = VoxelScaleHelper.GetCenteringOffset(voxelType);
+        }
+
+        // Calculate the base position with chunk scale
+        Vector3 basePosition = position * chunkScale;
 
         // Calculate AO values for each vertex of this face
         float[] aoValues = new float[4];
@@ -555,45 +599,45 @@ public class ChunkMeshGenerator
         switch (direction)
         {
             case FaceDirection.Top:
-                meshData.Vertices.Add(new Vector3(0, 1, 0) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(1, 1, 0) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(1, 1, 1) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(0, 1, 1) * scale + position * scale);
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X, 1, centeringOffset.Z) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X + voxelScaleFactor, 1, centeringOffset.Z) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X + voxelScaleFactor, 1, centeringOffset.Z + voxelScaleFactor) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X, 1, centeringOffset.Z + voxelScaleFactor) * finalScale));
                 for (int i = 0; i < 4; i++) meshData.Normals.Add(Vector3.Up);
                 break;
             case FaceDirection.Bottom:
-                meshData.Vertices.Add(new Vector3(0, 0, 0) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(0, 0, 1) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(1, 0, 1) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(1, 0, 0) * scale + position * scale);
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X, 0, centeringOffset.Z) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X, 0, centeringOffset.Z + voxelScaleFactor) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X + voxelScaleFactor, 0, centeringOffset.Z + voxelScaleFactor) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X + voxelScaleFactor, 0, centeringOffset.Z) * finalScale));
                 for (int i = 0; i < 4; i++) meshData.Normals.Add(Vector3.Down);
                 break;
             case FaceDirection.Front:
-                meshData.Vertices.Add(new Vector3(0, 0, 1) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(0, 1, 1) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(1, 1, 1) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(1, 0, 1) * scale + position * scale);
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X, 0, centeringOffset.Z + voxelScaleFactor) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X, 1, centeringOffset.Z + voxelScaleFactor) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X + voxelScaleFactor, 1, centeringOffset.Z + voxelScaleFactor) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X + voxelScaleFactor, 0, centeringOffset.Z + voxelScaleFactor) * finalScale));
                 for (int i = 0; i < 4; i++) meshData.Normals.Add(Vector3.Forward);
                 break;
             case FaceDirection.Back:
-                meshData.Vertices.Add(new Vector3(0, 0, 0) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(1, 0, 0) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(1, 1, 0) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(0, 1, 0) * scale + position * scale);
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X, 0, centeringOffset.Z) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X + voxelScaleFactor, 0, centeringOffset.Z) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X + voxelScaleFactor, 1, centeringOffset.Z) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X, 1, centeringOffset.Z) * finalScale));
                 for (int i = 0; i < 4; i++) meshData.Normals.Add(Vector3.Back);
                 break;
             case FaceDirection.Right:
-                meshData.Vertices.Add(new Vector3(1, 0, 0) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(1, 0, 1) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(1, 1, 1) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(1, 1, 0) * scale + position * scale);
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X + voxelScaleFactor, 0, centeringOffset.Z) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X + voxelScaleFactor, 0, centeringOffset.Z + voxelScaleFactor) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X + voxelScaleFactor, 1, centeringOffset.Z + voxelScaleFactor) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X + voxelScaleFactor, 1, centeringOffset.Z) * finalScale));
                 for (int i = 0; i < 4; i++) meshData.Normals.Add(Vector3.Right);
                 break;
             case FaceDirection.Left:
-                meshData.Vertices.Add(new Vector3(0, 0, 0) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(0, 1, 0) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(0, 1, 1) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(0, 0, 1) * scale + position * scale);
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X, 0, centeringOffset.Z) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X, 1, centeringOffset.Z) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X, 1, centeringOffset.Z + voxelScaleFactor) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X, 0, centeringOffset.Z + voxelScaleFactor) * finalScale));
                 for (int i = 0; i < 4; i++) meshData.Normals.Add(Vector3.Left);
                 break;
         }
@@ -726,6 +770,18 @@ public class ChunkMeshGenerator
         // First check if the coordinates are within this chunk
         if (x >= 0 && x < chunk.Size && y >= 0 && y < chunk.Height && z >= 0 && z < chunk.Size)
         {
+            // Get the voxel type
+            VoxelType voxelType = chunk.GetVoxel(x, y, z);
+
+            // Special case: don't consider micro grass types as solid for AO calculations
+            // This ensures grass blocks remain visible even with grass on top
+            if (voxelType == VoxelType.MicroGrass ||
+                voxelType == VoxelType.SmallGrass ||
+                voxelType == VoxelType.TinyGrass)
+            {
+                return false;
+            }
+
             // Use the chunk's own data for efficiency
             return chunk.IsVoxelSolid(x, y, z);
         }
@@ -766,6 +822,116 @@ public class ChunkMeshGenerator
 
         // If all faces are covered by solid voxels, this voxel is not visible
         return topSolid && bottomSolid && frontSolid && backSolid && rightSolid && leftSolid;
+    }
+
+    private void AddGrassFaces(VoxelChunk chunk, int x, int y, int z, VoxelType voxelType, MeshData meshData)
+    {
+        // Get current vertex count
+        int vertexCount = meshData.Vertices.Count;
+
+        // Get UV coordinates based on voxel type
+        Vector2[] faceUVs = GetUVsForVoxelType(voxelType, FaceDirection.Top);
+
+        // Get scale from the chunk
+        float chunkScale = chunk.Scale;
+
+        // Get voxel-specific scale factor
+        float voxelScaleFactor = VoxelScaleHelper.GetScaleFactor(voxelType);
+
+        // Calculate the final scale (chunk scale * voxel scale factor)
+        float finalScale = chunkScale * voxelScaleFactor;
+
+        // Calculate the base position with chunk scale
+        Vector3 basePosition = new Vector3(x, y, z) * chunkScale;
+
+        // Calculate offset to center smaller voxels within the full voxel space
+        Vector3 centeringOffset = VoxelScaleHelper.GetCenteringOffset(voxelType);
+
+        // Calculate AO values - use a simplified version for grass
+        float aoValue = 1.0f; // No AO for grass to keep it bright
+
+        // Create two crossed planes for grass
+        // First plane (X-shaped when viewed from above)
+        AddGrassPlane(meshData, basePosition, centeringOffset, finalScale, voxelScaleFactor, 0, faceUVs, aoValue, vertexCount);
+
+        // Second plane (rotated 90 degrees, +-shaped when viewed from above)
+        AddGrassPlane(meshData, basePosition, centeringOffset, finalScale, voxelScaleFactor, 90, faceUVs, aoValue, vertexCount + 4);
+    }
+
+    private void AddGrassPlane(MeshData meshData, Vector3 basePosition, Vector3 centeringOffset, float finalScale,
+                              float voxelScaleFactor, float rotationDegrees, Vector2[] faceUVs, float aoValue, int vertexOffset)
+    {
+        // Convert rotation to radians
+        float rotationRadians = Mathf.DegToRad(rotationDegrees);
+
+        // Calculate height of the grass - make it taller
+        float height = 1.5f;
+
+        // Calculate half width for the grass blade - make it wider
+        float halfWidth = voxelScaleFactor * 0.7f;
+
+        // Calculate center point for the grass
+        float centerX = centeringOffset.X + (voxelScaleFactor * 0.5f);
+        float centerZ = centeringOffset.Z + (voxelScaleFactor * 0.5f);
+
+        // Calculate vertices for a vertical plane
+        Vector3 bottomLeft, bottomRight, topRight, topLeft;
+
+        // Apply rotation to create the X-pattern
+        if (rotationDegrees < 1.0f) // First plane (no rotation)
+        {
+            // Create a diagonal plane from bottom-left to top-right
+            bottomLeft = new Vector3(centerX - halfWidth, 0, centerZ - halfWidth);
+            bottomRight = new Vector3(centerX + halfWidth, 0, centerZ + halfWidth);
+            topRight = new Vector3(centerX + halfWidth, height, centerZ + halfWidth);
+            topLeft = new Vector3(centerX - halfWidth, height, centerZ - halfWidth);
+        }
+        else // Second plane (90 degree rotation)
+        {
+            // Create a diagonal plane from bottom-right to top-left
+            bottomLeft = new Vector3(centerX - halfWidth, 0, centerZ + halfWidth);
+            bottomRight = new Vector3(centerX + halfWidth, 0, centerZ - halfWidth);
+            topRight = new Vector3(centerX + halfWidth, height, centerZ - halfWidth);
+            topLeft = new Vector3(centerX - halfWidth, height, centerZ + halfWidth);
+        }
+
+        // Add vertices
+        meshData.Vertices.Add(basePosition + (bottomLeft * finalScale));
+        meshData.Vertices.Add(basePosition + (bottomRight * finalScale));
+        meshData.Vertices.Add(basePosition + (topRight * finalScale));
+        meshData.Vertices.Add(basePosition + (topLeft * finalScale));
+
+        // Add normals (use up vector for simplicity)
+        for (int i = 0; i < 4; i++)
+        {
+            meshData.Normals.Add(Vector3.Up);
+        }
+
+        // Add UVs
+        for (int i = 0; i < 4; i++)
+        {
+            meshData.UVs.Add(faceUVs[i]);
+            meshData.AmbientOcclusion.Add(aoValue);
+        }
+
+        // Add indices for both sides of the plane (make it visible from both sides)
+        // Front face
+        meshData.Indices.Add(vertexOffset);
+        meshData.Indices.Add(vertexOffset + 1);
+        meshData.Indices.Add(vertexOffset + 2);
+
+        meshData.Indices.Add(vertexOffset);
+        meshData.Indices.Add(vertexOffset + 2);
+        meshData.Indices.Add(vertexOffset + 3);
+
+        // Back face (reverse winding order)
+        meshData.Indices.Add(vertexOffset);
+        meshData.Indices.Add(vertexOffset + 3);
+        meshData.Indices.Add(vertexOffset + 2);
+
+        meshData.Indices.Add(vertexOffset);
+        meshData.Indices.Add(vertexOffset + 2);
+        meshData.Indices.Add(vertexOffset + 1);
     }
 
     private enum FaceDirection

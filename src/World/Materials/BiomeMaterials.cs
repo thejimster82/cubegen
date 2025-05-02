@@ -74,6 +74,15 @@ public static class BiomeMaterials
             case VoxelType.Grass:
                 material.AlbedoColor = new Color(0.4f, 0.83f, 0.3f); // Bright green
                 break;
+            case VoxelType.SmallGrass:
+                material.AlbedoColor = new Color(0.45f, 0.85f, 0.35f); // Slightly brighter green for small grass
+                break;
+            case VoxelType.TinyGrass:
+                material.AlbedoColor = new Color(0.5f, 0.87f, 0.4f); // Even brighter green for tiny grass
+                break;
+            case VoxelType.MicroGrass:
+                material.AlbedoColor = new Color(0.55f, 0.9f, 0.45f); // Brightest green for micro grass
+                break;
             case VoxelType.Dirt:
                 material.AlbedoColor = new Color(0.6f, 0.4f, 0.2f); // Brown
                 break;

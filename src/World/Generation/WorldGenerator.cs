@@ -285,20 +285,42 @@ public partial class WorldGenerator : Node3D
 
 				BiomeType biomeType = GetBiomeType(worldX, worldZ);
 
+				// Find surface height
+				int surfaceHeight = -1;
+				for (int y = ChunkHeight - 1; y >= 0; y--)
+				{
+					if (chunk.GetVoxel(x, y, z) != VoxelType.Air)
+					{
+						surfaceHeight = y;
+						break;
+					}
+				}
+
+				// Only proceed if we found a surface
+				if (surfaceHeight < 0)
+					continue;
+
+				// Add small grass in Plains biome
+				if (biomeType == BiomeType.Plains && chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass)
+				{
+					// Add micro (1/8) grass with a certain probability
+					if (random.NextDouble() < 0.3) // 30% chance for micro grass
+					{
+						// Keep the grass block and add micro grass on top
+						if (surfaceHeight + 1 < chunk.Height)
+						{
+							// Only place micro grass if the block above is air
+							if (chunk.GetVoxel(x, surfaceHeight + 1, z) == VoxelType.Air)
+							{
+								chunk.SetVoxel(x, surfaceHeight + 1, z, VoxelType.MicroGrass);
+							}
+						}
+					}
+				}
+
 				// Only add trees in Forest biome with reduced probability (more spaced out)
 				if (biomeType == BiomeType.Forest && random.NextDouble() < 0.008) // Reduced from 0.02 to 0.008
 				{
-					// Find surface height
-					int surfaceHeight = -1;
-					for (int y = ChunkHeight - 1; y >= 0; y--)
-					{
-						if (chunk.GetVoxel(x, y, z) != VoxelType.Air)
-						{
-							surfaceHeight = y;
-							break;
-						}
-					}
-
 					if (surfaceHeight >= 0 && chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass)
 					{
 						// Calculate max leaf radius for this tree (for boundary check)

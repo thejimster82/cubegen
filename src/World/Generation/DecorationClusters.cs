@@ -7,14 +7,14 @@ namespace CubeGen.World.Generation
 {
     public static class DecorationClusters
     {
-        // Cluster density parameters
-        private const float CLUSTER_RADIUS_MIN = 2.0f;
-        private const float CLUSTER_RADIUS_MAX = 5.0f;
-        private const int MIN_ITEMS_PER_CLUSTER = 3;
-        private const int MAX_ITEMS_PER_CLUSTER = 8;
+        // Cluster density parameters - further increased radius for extremely sparse distribution
+        private const float CLUSTER_RADIUS_MIN = 5.0f;  // Increased from 3.0f
+        private const float CLUSTER_RADIUS_MAX = 10.0f; // Increased from 7.0f
+        private const int MIN_ITEMS_PER_CLUSTER = 2;    // Reduced from 3
+        private const int MAX_ITEMS_PER_CLUSTER = 5;    // Reduced from 8
 
-        // Cluster center probability (chance to start a new cluster)
-        private const float CLUSTER_CENTER_PROBABILITY = 0.02f; // 2% chance for a cluster center
+        // Cluster center probability (chance to start a new cluster) - drastically reduced for extremely sparse clusters
+        private const float CLUSTER_CENTER_PROBABILITY = 0.0025f; // Reduced by 4x from 0.01f (0.25% chance instead of 1%)
 
         // Dictionary to track cluster centers
         private static Dictionary<Vector2I, List<ClusterInfo>> _clusterCenters = new Dictionary<Vector2I, List<ClusterInfo>>();
@@ -167,9 +167,9 @@ namespace CubeGen.World.Generation
 
                     float radius = baseRadius * typeMultiplier;
 
-                    // Vary the item count based on radius and add some randomness
-                    int baseItemCount = (int)(radius * 1.5f);
-                    int itemCount = baseItemCount + random.Next(-2, 3); // Add -2 to +2 randomness
+                    // Vary the item count based on radius and add some randomness - reduced multiplier for fewer items
+                    int baseItemCount = (int)(radius * 0.8f); // Reduced from 1.5f
+                    int itemCount = baseItemCount + random.Next(-1, 2); // Add -1 to +1 randomness (reduced from -2 to +2)
 
                     // Ensure item count is within bounds
                     itemCount = Math.Clamp(itemCount, MIN_ITEMS_PER_CLUSTER, MAX_ITEMS_PER_CLUSTER);
@@ -243,11 +243,11 @@ namespace CubeGen.World.Generation
                             // Add noise to the probability (±20%)
                             float noiseAmount = (float)(probRandom.NextDouble() * 0.4 - 0.2);
 
-                            // Base probability with noise
-                            float probability = (0.7f * distanceFactor) + noiseAmount;
+                            // Base probability with noise - drastically reduced base probability for extremely sparse distribution
+                            float probability = (0.3f * distanceFactor) + noiseAmount; // Reduced from 0.5f
 
-                            // Clamp probability to valid range
-                            probability = Mathf.Clamp(probability, 0.05f, 0.95f);
+                            // Clamp probability to valid range - further reduced upper limit
+                            probability = Mathf.Clamp(probability, 0.03f, 0.4f); // Reduced from 0.05f-0.7f
 
                             // Use noise to create natural-looking patterns within the cluster
                             float noiseX = worldPos.X * 0.1f + cluster.Position.X * 0.05f;
@@ -339,23 +339,23 @@ namespace CubeGen.World.Generation
             }
         }
 
-        // Get cluster probability based on biome
+        // Get cluster probability based on biome - drastically reduced all probabilities for extremely sparse distribution
         private static float GetClusterProbabilityForBiome(BiomeType biomeType)
         {
             switch (biomeType)
             {
                 case BiomeType.Plains:
-                    return 0.8f; // High probability for grass clusters
+                    return 0.2f; // Reduced by ~2.5x from 0.5f - Low probability for grass clusters
                 case BiomeType.Forest:
-                    return 0.7f; // High probability for mushroom/stick clusters
+                    return 0.15f; // Reduced by ~2.7x from 0.4f - Low probability for mushroom/stick clusters
                 case BiomeType.Desert:
-                    return 0.4f; // Lower probability for rock clusters
+                    return 0.08f; // Reduced by 2.5x from 0.2f - Very low probability for rock clusters
                 case BiomeType.Tundra:
-                    return 0.3f; // Lower probability for rock clusters
+                    return 0.05f; // Reduced by 3x from 0.15f - Extremely low probability for rock clusters
                 case BiomeType.Mountains:
-                    return 0.2f; // Low probability for any clusters
+                    return 0.03f; // Reduced by ~3.3x from 0.1f - Extremely low probability for any clusters
                 default:
-                    return 0.5f;
+                    return 0.1f; // Reduced by 3x from 0.3f
             }
         }
 

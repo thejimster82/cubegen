@@ -469,10 +469,19 @@ public class ChunkMeshGenerator
                 }
 
                 // Add vertices and indices to collision data
-                allVertices.AddRange(vertices);
-                foreach (int index in indices)
+                // Skip collision data for grass types
+                bool isGrassType = voxelType == VoxelType.SmallGrass ||
+                                  voxelType == VoxelType.TinyGrass ||
+                                  voxelType == VoxelType.MicroGrass;
+
+                if (!isGrassType)
                 {
-                    allIndices.Add(index + globalVertexOffset);
+                    // Only add collision data for non-grass types
+                    allVertices.AddRange(vertices);
+                    foreach (int index in indices)
+                    {
+                        allIndices.Add(index + globalVertexOffset);
+                    }
                 }
                 globalVertexOffset += vertices.Count;
 
@@ -864,11 +873,11 @@ public class ChunkMeshGenerator
         // Convert rotation to radians
         float rotationRadians = Mathf.DegToRad(rotationDegrees);
 
-        // Calculate height of the grass - make it taller
-        float height = 1.5f;
+        // Calculate height of the grass - make it significantly taller
+        float height = 3.5f;
 
         // Calculate half width for the grass blade - make it wider
-        float halfWidth = voxelScaleFactor * 0.7f;
+        float halfWidth = voxelScaleFactor * 0.8f;
 
         // Calculate center point for the grass
         float centerX = centeringOffset.X + (voxelScaleFactor * 0.5f);

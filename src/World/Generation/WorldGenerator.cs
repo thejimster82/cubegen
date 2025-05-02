@@ -303,16 +303,16 @@ public partial class WorldGenerator : Node3D
 				// Add small grass in Plains biome
 				if (biomeType == BiomeType.Plains && chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass)
 				{
-					// Add micro (1/8) grass with a certain probability
-					if (random.NextDouble() < 0.3) // 30% chance for micro grass
+					// Add tiny (1/4) grass with a reduced probability
+					if (random.NextDouble() < 0.15) // 15% chance for grass (reduced from 30%)
 					{
-						// Keep the grass block and add micro grass on top
+						// Keep the grass block and add tiny grass on top
 						if (surfaceHeight + 1 < chunk.Height)
 						{
-							// Only place micro grass if the block above is air
+							// Only place tiny grass if the block above is air
 							if (chunk.GetVoxel(x, surfaceHeight + 1, z) == VoxelType.Air)
 							{
-								chunk.SetVoxel(x, surfaceHeight + 1, z, VoxelType.MicroGrass);
+								chunk.SetVoxel(x, surfaceHeight + 1, z, VoxelType.TinyGrass);
 							}
 						}
 					}

@@ -280,8 +280,8 @@ namespace CubeGen.World.Generation
                                 // Generate random rotation (0 to 360 degrees)
                                 float rotation = (float)(random.NextDouble() * 360.0);
 
-                                // Generate random scale variation (0.8 to 1.2)
-                                float scale = 0.8f + (float)(random.NextDouble() * 0.4);
+                                // Generate random scale variation (1.0 to 1.5) - increased for larger decorations
+                                float scale = 1.0f + (float)(random.NextDouble() * 0.5);
 
                                 // Create the decoration placement
                                 placement = new DecorationPlacement(

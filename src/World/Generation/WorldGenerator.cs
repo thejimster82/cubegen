@@ -14,6 +14,9 @@ public partial class WorldGenerator : Node3D
 	[Export] public float VoxelScale { get; set; } = 0.5f; // Scale of each voxel (0.5 = double resolution)
 	public int ViewDistance { get; set; } = 5;
 
+	// Public constant for chunk size to be used by other classes
+	public const int CHUNK_SIZE = 16;
+
 
 	private FastNoiseLite _terrainNoise;
 	private FastNoiseLite _biomeNoise;
@@ -276,6 +279,9 @@ public partial class WorldGenerator : Node3D
 		// Generate trees and other biome objects
 		Random random = new Random(Seed + chunkPos.X * 10000 + chunkPos.Y);
 
+		// Initialize decoration clusters for this chunk
+		DecorationClusters.InitializeChunkClusters(chunkPos, chunkSize, random);
+
 		for (int x = 0; x < chunkSize; x++)
 		{
 			for (int z = 0; z < chunkSize; z++)
@@ -300,58 +306,62 @@ public partial class WorldGenerator : Node3D
 				if (surfaceHeight < 0)
 					continue;
 
-				// Add decorations based on biome type
+				// Add decorations based on clusters
 				if (chunk.GetVoxel(x, surfaceHeight, z) != VoxelType.Air && surfaceHeight + 1 < chunk.Height)
 				{
 					// Only place decorations if the block above is air
 					if (chunk.GetVoxel(x, surfaceHeight + 1, z) == VoxelType.Air)
 					{
-						// Different decorations based on biome
-						switch (biomeType)
+						// Use the already calculated world position
+						Vector2I worldPos = new Vector2I(worldX, worldZ);
+
+						// Check if this position should have a decoration based on clusters
+						VoxelType decorationType;
+						if (DecorationClusters.ShouldPlaceDecoration(worldPos, out decorationType, random))
 						{
-							case BiomeType.Plains:
-								// Add tall grass in Plains biome on grass blocks
-								if (chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass && random.NextDouble() < 0.15)
-								{
-									chunk.SetVoxel(x, surfaceHeight + 1, z, VoxelType.TallGrass);
-								}
-								// Add flowers in Plains biome on grass blocks (more rare)
-								else if (chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass && random.NextDouble() < 0.02)
-								{
-									chunk.SetVoxel(x, surfaceHeight + 1, z, VoxelType.Flower);
-								}
-								break;
+							// Check if the decoration is appropriate for the surface block
+							bool canPlace = false;
 
-							case BiomeType.Forest:
-								// Add mushrooms in Forest biome on grass or dirt blocks (rare)
-								if ((chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass ||
-									chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Dirt) &&
-									random.NextDouble() < 0.01)
-								{
-									chunk.SetVoxel(x, surfaceHeight + 1, z, VoxelType.Mushroom);
-								}
-								// Add sticks in Forest biome (more common)
-								else if (random.NextDouble() < 0.03)
-								{
-									chunk.SetVoxel(x, surfaceHeight + 1, z, VoxelType.Stick);
-								}
-								break;
+							switch (decorationType)
+							{
+								case VoxelType.TallGrass:
+								case VoxelType.Flower:
+									// Grass and flowers only on grass blocks
+									canPlace = chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass;
+									break;
 
-							case BiomeType.Desert:
-								// Add rocks in Desert biome on sand blocks
-								if (chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Sand && random.NextDouble() < 0.03)
-								{
-									chunk.SetVoxel(x, surfaceHeight + 1, z, VoxelType.Rock);
-								}
-								break;
+								case VoxelType.Mushroom:
+									// Mushrooms on grass or dirt
+									canPlace = chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass ||
+											  chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Dirt;
+									break;
 
-							case BiomeType.Tundra:
-								// Add rocks in Tundra biome
-								if (random.NextDouble() < 0.02)
-								{
-									chunk.SetVoxel(x, surfaceHeight + 1, z, VoxelType.Rock);
-								}
-								break;
+								case VoxelType.Rock:
+									// Rocks can go on any surface
+									canPlace = true;
+									break;
+
+								case VoxelType.Stick:
+									// Sticks primarily in forests on grass or dirt
+									canPlace = chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass ||
+											  chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Dirt;
+									break;
+
+								case VoxelType.Seashell:
+									// Seashells only on sand
+									canPlace = chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Sand;
+									break;
+
+								default:
+									canPlace = false;
+									break;
+							}
+
+							// Place the decoration if appropriate
+							if (canPlace)
+							{
+								chunk.SetVoxel(x, surfaceHeight + 1, z, decorationType);
+							}
 						}
 					}
 				}

@@ -19,7 +19,6 @@ public partial class WorldGenerator : Node3D
 
 
 	private FastNoiseLite _terrainNoise;
-	private FastNoiseLite _biomeNoise;
 	private ChunkManager _chunkManager;
 
 	public override void _Ready()
@@ -48,12 +47,6 @@ public partial class WorldGenerator : Node3D
 		_terrainNoise.FractalType = FastNoiseLite.FractalTypeEnum.Ridged;
 		_terrainNoise.Frequency = 0.01f; // Doubled frequency for higher resolution (was 0.005f)
 		_terrainNoise.FractalOctaves = 2; // Fewer octaves for less detail and flatter terrain
-
-		// Initialize biome noise (different settings for variety)
-		_biomeNoise = new FastNoiseLite();
-		_biomeNoise.Seed = Seed + 1000; // Different seed for biome variation
-		_biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-		_biomeNoise.Frequency = 0.006f; // Doubled frequency for higher resolution (was 0.003f)
 
 		// Initialize static noise for use by other classes
 		InitializeStaticNoise(Seed);
@@ -157,24 +150,18 @@ public partial class WorldGenerator : Node3D
 	// Get biome type for a world position - instance method
 	private BiomeType GetBiomeTypeForChunk(int worldX, int worldZ)
 	{
-		float biomeValue = _biomeNoise.GetNoise2D(worldX, worldZ);
-		return GetBiomeTypeFromNoise(biomeValue);
+		// Use the BiomeRegionGenerator for biome determination
+		return BiomeRegionGenerator.Instance.GetBiomeType(worldX, worldZ);
 	}
 
 	// Get biome type for a world position - static method for use by other classes
 	public static BiomeType GetBiomeType(int worldX, int worldZ)
 	{
-		if (_staticBiomeNoise == null)
-		{
-			// Use a default seed if not initialized
-			InitializeStaticNoise(0);
-		}
-
-		float biomeValue = _staticBiomeNoise.GetNoise2D(worldX, worldZ);
-		return GetBiomeTypeFromNoise(biomeValue);
+		// Use the BiomeRegionGenerator for biome determination
+		return BiomeRegionGenerator.Instance.GetBiomeType(worldX, worldZ);
 	}
 
-	// Helper method to convert noise value to biome type
+	// Helper method to convert noise value to biome type (kept for backward compatibility)
 	private static BiomeType GetBiomeTypeFromNoise(float biomeValue)
 	{
 		// Simple biome distribution based on noise value
@@ -192,34 +179,22 @@ public partial class WorldGenerator : Node3D
 
 	private int GenerateTerrainHeight(int worldX, int worldZ, BiomeType biomeType)
 	{
-		// Base terrain height from noise
-		float heightNoise = _terrainNoise.GetNoise2D(worldX, worldZ);
+		// Create a temporary noise instance for biome-specific noise settings
+		FastNoiseLite biomeNoise = new FastNoiseLite();
+		biomeNoise = _terrainNoise;
+
+		// Get noise value with biome-specific settings
+		float heightNoise = biomeNoise.GetNoise2D(worldX, worldZ);
 
 		// Convert noise from [-1, 1] to [0, 1]
 		heightNoise = (heightNoise + 1f) * 0.5f;
 
-		// Apply biome-specific height modifications - much flatter for all biomes
-		// Add a consistent base height to ensure terrain is at a predictable level
-		float baseHeight = 0.3f; // Consistent base height for all terrain
+		// Apply a consistent base height for all biomes
+		float baseHeight = 0.3f;
+		float noiseContribution = 0.15f; // How much the noise affects the final height
 
-		switch (biomeType)
-		{
-			case BiomeType.Desert:
-				heightNoise = heightNoise * 0.1f + baseHeight; // Very flat, low
-				break;
-			case BiomeType.Plains:
-				heightNoise = heightNoise * 0.15f + baseHeight; // Very flat
-				break;
-			case BiomeType.Forest:
-				heightNoise = heightNoise * 0.2f + baseHeight; // Slightly more varied but still flat
-				break;
-			case BiomeType.Mountains:
-				heightNoise = heightNoise * 0.3f + baseHeight; // Less mountainous, more like hills
-				break;
-			case BiomeType.Tundra:
-				heightNoise = heightNoise * 0.15f + baseHeight; // Very flat
-				break;
-		}
+		// Combine base height with noise contribution
+		heightNoise = baseHeight + (heightNoise * noiseContribution);
 
 		// Convert to actual height value
 		int height = Mathf.FloorToInt(heightNoise * ChunkHeight);
@@ -227,7 +202,7 @@ public partial class WorldGenerator : Node3D
 		// Debug output for the first chunk to help understand terrain height
 		if (worldX == 0 && worldZ == 0)
 		{
-			GD.Print($"Terrain height at origin: {height}");
+			GD.Print($"Terrain height at origin: {height}, biome: {biomeType}");
 		}
 
 		return height;

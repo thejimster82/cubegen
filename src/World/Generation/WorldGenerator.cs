@@ -62,8 +62,7 @@ public partial class WorldGenerator : Node3D
 
 		// Set region scale - adjust this value to control region size
 		// Smaller values create larger regions
-		// Using a consistent value to create more uniformly sized biome regions
-		_biomeRegionGenerator.SetRegionScale(0.0008f);
+		_biomeRegionGenerator.SetRegionScale(0.0005f);
 
 		// Initialize static noise for use by other classes
 		InitializeStaticNoise(Seed);

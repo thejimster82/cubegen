@@ -41,17 +41,9 @@ namespace CubeGen.World.Generation
             _voronoiNoise.Seed = seed;
             _voronoiNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Cellular;
             _voronoiNoise.Frequency = _regionScale;
-
-            // Use Manhattan distance function which tends to create more uniformly sized cells
-            // compared to Euclidean distance
-            _voronoiNoise.CellularDistanceFunction = FastNoiseLite.CellularDistanceFunctionEnum.Manhattan;
-
-            // Use CellValue return type to get stable cell IDs
+            _voronoiNoise.CellularDistanceFunction = FastNoiseLite.CellularDistanceFunctionEnum.Euclidean;
             _voronoiNoise.CellularReturnType = FastNoiseLite.CellularReturnTypeEnum.CellValue;
-
-            // Set jitter to a very low value (0.1-0.2) to create much more uniform, grid-like cells
-            // This will eliminate the tiny biomes by making all cells more consistent in size
-            _voronoiNoise.CellularJitter = 0.15f; // Very low jitter for extremely uniform cells
+            _voronoiNoise.CellularJitter = 1.0f; // 1.0 = standard jitter
 
             // Initialize noise for determining biome type for each cell
             _biomeTypeNoise = new FastNoiseLite();
@@ -134,9 +126,6 @@ namespace CubeGen.World.Generation
         // Find neighboring cells by sampling points around the given cell
         private List<int> FindNeighboringCells(int cellId)
         {
-            // With Manhattan distance and low jitter, cells are arranged in a more grid-like pattern
-            // We can use a more structured approach to find neighbors
-
             // Convert cell ID back to approximate world coordinates
             // This is an approximation since we don't store the exact coordinates
             float cellValue = (cellId / 1000.0f) - 1.0f;
@@ -144,37 +133,22 @@ namespace CubeGen.World.Generation
             // Use the cell value to seed a random generator for this cell
             Random random = new Random(_seed + cellId);
 
-            // Generate a position within this cell
-            // With low jitter, cells are more predictably positioned
+            // Generate a random position within this cell
+            // The scale factor should match the one used in the noise frequency
             float sampleX = random.Next(-10000, 10000);
             float sampleZ = random.Next(-10000, 10000);
 
-            // Sample points in a grid pattern around this position to find neighbors
+            // Sample points in a circle around this position to find neighbors
             List<int> neighbors = new List<int>();
+            int sampleCount = 16; // Number of samples to take
+            float radius = 1.0f / _regionScale; // Radius based on region scale
 
-            // With Manhattan distance, we need to check in a diamond pattern
-            // Calculate cell size based on region scale (approximate)
-            float cellSize = 1.0f / _regionScale;
-
-            // Check in all 8 directions (N, NE, E, SE, S, SW, W, NW)
-            // This works better with Manhattan distance and grid-like cells
-            int[][] directions = new int[][]
+            for (int i = 0; i < sampleCount; i++)
             {
-                new int[] { 0, 1 },   // North
-                new int[] { 1, 1 },   // Northeast
-                new int[] { 1, 0 },   // East
-                new int[] { 1, -1 },  // Southeast
-                new int[] { 0, -1 },  // South
-                new int[] { -1, -1 }, // Southwest
-                new int[] { -1, 0 },  // West
-                new int[] { -1, 1 }   // Northwest
-            };
-
-            foreach (int[] dir in directions)
-            {
-                // Sample at a distance that's guaranteed to be in the neighboring cell
-                float x = sampleX + dir[0] * cellSize;
-                float z = sampleZ + dir[1] * cellSize;
+                // Calculate position on the circle
+                float angle = i * (2.0f * Mathf.Pi / sampleCount);
+                float x = sampleX + radius * Mathf.Cos(angle);
+                float z = sampleZ + radius * Mathf.Sin(angle);
 
                 // Get the cell value at this position
                 float neighborCellValue = _voronoiNoise.GetNoise2D(x, z);
@@ -209,30 +183,21 @@ namespace CubeGen.World.Generation
         // Check if a position is near a region boundary
         public bool IsNearBoundary(int worldX, int worldZ, float threshold = 0.05f)
         {
-            // Get cell value at this position
-            float cellValue = _voronoiNoise.GetNoise2D(worldX, worldZ);
-
-            // With Manhattan distance and low jitter, boundaries are more grid-like
-            // We need a smaller sampling radius but more precise threshold
-            int sampleRadius = 1; // Reduced radius since boundaries are sharper with Manhattan distance
-
             // Sample points in a small radius around the position
-            for (int dx = -sampleRadius; dx <= sampleRadius; dx++)
+            for (int dx = -1; dx <= 1; dx++)
             {
-                for (int dz = -sampleRadius; dz <= sampleRadius; dz++)
+                for (int dz = -1; dz <= 1; dz++)
                 {
-                    // Skip the center point
                     if (dx == 0 && dz == 0) continue;
+
+                    // Get cell value at this position
+                    float cellValue = _voronoiNoise.GetNoise2D(worldX, worldZ);
 
                     // Get cell value at the nearby position
                     float nearbyCellValue = _voronoiNoise.GetNoise2D(worldX + dx, worldZ + dz);
 
-                    // With Manhattan distance, the threshold needs to be smaller
-                    // to accurately detect the sharper boundaries
-                    float boundaryThreshold = threshold * 0.5f;
-
                     // If the cell values are different, we're near a boundary
-                    if (Math.Abs(cellValue - nearbyCellValue) > boundaryThreshold)
+                    if (Math.Abs(cellValue - nearbyCellValue) > threshold)
                     {
                         return true;
                     }
@@ -245,67 +210,32 @@ namespace CubeGen.World.Generation
         // Get distance to the nearest region boundary
         public float GetDistanceToBoundary(int worldX, int worldZ)
         {
-            // With Manhattan distance and low jitter, boundaries are more grid-like
-            // and we can use a more efficient approach
+            // This is a simplified approach - for a more accurate distance,
+            // you would need to implement a more sophisticated algorithm
 
             // Get the cell value at this position
             float cellValue = _voronoiNoise.GetNoise2D(worldX, worldZ);
 
-            // Calculate approximate cell size based on region scale
-            float cellSize = 1.0f / _regionScale;
-
-            // With Manhattan distance, we can search in a grid pattern
-            // which is more efficient for finding boundaries
+            // Sample in a circle to find the nearest boundary
             float minDistance = float.MaxValue;
+            int sampleCount = 16;
 
-            // Maximum search radius (in cells)
-            int maxRadius = 10;
-
-            // Search in expanding squares
-            for (int radius = 1; radius <= maxRadius; radius++)
+            for (int radius = 1; radius <= 20; radius++)
             {
                 bool foundBoundary = false;
 
-                // Check the perimeter of a square with this radius
-                // Top and bottom edges
-                for (int dx = -radius; dx <= radius; dx++)
+                for (int i = 0; i < sampleCount; i++)
                 {
-                    // Top edge
-                    float topCellValue = _voronoiNoise.GetNoise2D(worldX + dx, worldZ + radius);
-                    if (Math.Abs(cellValue - topCellValue) > 0.001f)
-                    {
-                        float distance = Mathf.Sqrt(dx * dx + radius * radius);
-                        minDistance = Mathf.Min(minDistance, distance);
-                        foundBoundary = true;
-                    }
+                    float angle = i * (2.0f * Mathf.Pi / sampleCount);
+                    int dx = (int)(radius * Mathf.Cos(angle));
+                    int dz = (int)(radius * Mathf.Sin(angle));
 
-                    // Bottom edge
-                    float bottomCellValue = _voronoiNoise.GetNoise2D(worldX + dx, worldZ - radius);
-                    if (Math.Abs(cellValue - bottomCellValue) > 0.001f)
-                    {
-                        float distance = Mathf.Sqrt(dx * dx + radius * radius);
-                        minDistance = Mathf.Min(minDistance, distance);
-                        foundBoundary = true;
-                    }
-                }
+                    float sampleCellValue = _voronoiNoise.GetNoise2D(worldX + dx, worldZ + dz);
 
-                // Left and right edges (excluding corners which were already checked)
-                for (int dz = -radius + 1; dz <= radius - 1; dz++)
-                {
-                    // Left edge
-                    float leftCellValue = _voronoiNoise.GetNoise2D(worldX - radius, worldZ + dz);
-                    if (Math.Abs(cellValue - leftCellValue) > 0.001f)
+                    // If we've crossed a boundary
+                    if (Math.Abs(cellValue - sampleCellValue) > 0.01f)
                     {
-                        float distance = Mathf.Sqrt(radius * radius + dz * dz);
-                        minDistance = Mathf.Min(minDistance, distance);
-                        foundBoundary = true;
-                    }
-
-                    // Right edge
-                    float rightCellValue = _voronoiNoise.GetNoise2D(worldX + radius, worldZ + dz);
-                    if (Math.Abs(cellValue - rightCellValue) > 0.001f)
-                    {
-                        float distance = Mathf.Sqrt(radius * radius + dz * dz);
+                        float distance = Mathf.Sqrt(dx * dx + dz * dz);
                         minDistance = Mathf.Min(minDistance, distance);
                         foundBoundary = true;
                     }

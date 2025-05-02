@@ -19,7 +19,6 @@ public partial class WorldGenerator : Node3D
 
 
 	private FastNoiseLite _terrainNoise;
-	private FastNoiseLite _biomeNoise;
 	private ChunkManager _chunkManager;
 
 	public override void _Ready()
@@ -48,12 +47,6 @@ public partial class WorldGenerator : Node3D
 		_terrainNoise.FractalType = FastNoiseLite.FractalTypeEnum.Ridged;
 		_terrainNoise.Frequency = 0.01f; // Doubled frequency for higher resolution (was 0.005f)
 		_terrainNoise.FractalOctaves = 2; // Fewer octaves for less detail and flatter terrain
-
-		// Initialize biome noise (different settings for variety)
-		_biomeNoise = new FastNoiseLite();
-		_biomeNoise.Seed = Seed + 1000; // Different seed for biome variation
-		_biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-		_biomeNoise.Frequency = 0.006f; // Doubled frequency for higher resolution (was 0.003f)
 
 		// Initialize static noise for use by other classes
 		InitializeStaticNoise(Seed);
@@ -188,14 +181,7 @@ public partial class WorldGenerator : Node3D
 	{
 		// Create a temporary noise instance for biome-specific noise settings
 		FastNoiseLite biomeNoise = new FastNoiseLite();
-		biomeNoise.Seed = _terrainNoise.Seed;
-		
-		biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-		biomeNoise.Frequency = 0.01f;
-		biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-		biomeNoise.FractalOctaves = 2;
-		biomeNoise.FractalLacunarity = 2.0f;
-		biomeNoise.FractalGain = 0.4f;
+		biomeNoise = _terrainNoise;
 
 		// Get noise value with biome-specific settings
 		float heightNoise = biomeNoise.GetNoise2D(worldX, worldZ);

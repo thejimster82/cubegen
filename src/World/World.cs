@@ -62,6 +62,9 @@ public partial class World : Node3D
 		// Initialize the BiomeRegionGenerator with the same seed
 		BiomeRegionGenerator.Instance.Initialize(Seed);
 
+		// Initialize the EnvironmentalFeatureGeneratorStatic with the same seed
+		EnvironmentalFeatureGeneratorStatic.Initialize(Seed);
+
 		// Set the same seed for cloud generator
 		if (_cloudGenerator != null)
 		{
@@ -488,13 +491,45 @@ public partial class World : Node3D
 				// Get color for this biome
 				Color biomeColor = biomeColors[biomeType];
 
+				// Check if this is a water tile (river or lake)
+				bool isWater = false;
+				int terrainHeight = (int)((heightNW + heightNE + heightSE + heightSW) / 4.0f / heightScale);
+
+				// Check if any of the corners should have water
+				if (EnvironmentalFeatureGeneratorStatic.ShouldPlaceWater(sampleX, sampleZ, terrainHeight + 1, terrainHeight, biomeType) ||
+					EnvironmentalFeatureGeneratorStatic.ShouldPlaceWater(sampleX + (int)MapTileSize, sampleZ, terrainHeight + 1, terrainHeight, biomeType) ||
+					EnvironmentalFeatureGeneratorStatic.ShouldPlaceWater(sampleX + (int)MapTileSize, sampleZ + (int)MapTileSize, terrainHeight + 1, terrainHeight, biomeType) ||
+					EnvironmentalFeatureGeneratorStatic.ShouldPlaceWater(sampleX, sampleZ + (int)MapTileSize, terrainHeight + 1, terrainHeight, biomeType))
+				{
+					isWater = true;
+					// Use water color
+					biomeColor = new Color(0.2f, 0.4f, 0.8f, 0.8f);
+				}
+
 				// Add vertices for a quad with height information
 				int baseIndex = vertices.Count;
 
-				vertices.Add(new Vector3(worldX, heightNW, worldZ));                           // NW
-				vertices.Add(new Vector3(worldX + MapTileSize, heightNE, worldZ));             // NE
-				vertices.Add(new Vector3(worldX + MapTileSize, heightSE, worldZ + MapTileSize)); // SE
-				vertices.Add(new Vector3(worldX, heightSW, worldZ + MapTileSize));             // SW
+				// If it's water, set all vertices to the same height for a flat water surface
+				if (isWater)
+				{
+					// Find the highest point for water level
+					float waterHeight = Mathf.Max(Mathf.Max(heightNW, heightNE), Mathf.Max(heightSE, heightSW));
+
+					// Add a small offset to ensure water is visible above terrain
+					waterHeight += 0.5f;
+
+					vertices.Add(new Vector3(worldX, waterHeight, worldZ));                           // NW
+					vertices.Add(new Vector3(worldX + MapTileSize, waterHeight, worldZ));             // NE
+					vertices.Add(new Vector3(worldX + MapTileSize, waterHeight, worldZ + MapTileSize)); // SE
+					vertices.Add(new Vector3(worldX, waterHeight, worldZ + MapTileSize));             // SW
+				}
+				else
+				{
+					vertices.Add(new Vector3(worldX, heightNW, worldZ));                           // NW
+					vertices.Add(new Vector3(worldX + MapTileSize, heightNE, worldZ));             // NE
+					vertices.Add(new Vector3(worldX + MapTileSize, heightSE, worldZ + MapTileSize)); // SE
+					vertices.Add(new Vector3(worldX, heightSW, worldZ + MapTileSize));             // SW
+				}
 
 				// Calculate normal for this quad (for proper lighting)
 				Vector3 edge1 = vertices[baseIndex + 1] - vertices[baseIndex];     // NE - NW
@@ -542,6 +577,7 @@ public partial class World : Node3D
 		material.VertexColorUseAsAlbedo = true;
 		material.ShadingMode = BaseMaterial3D.ShadingModeEnum.PerPixel; // Use per-pixel shading for better terrain features
 		material.CullMode = BaseMaterial3D.CullModeEnum.Back; // Cull back faces
+		material.Transparency = BaseMaterial3D.TransparencyEnum.Alpha; // Enable transparency for water
 
 		// Set material
 		mapMesh.MaterialOverride = material;
@@ -553,63 +589,17 @@ public partial class World : Node3D
 	// Helper method to get terrain height for map visualization
 	private float GetTerrainHeight(int worldX, int worldZ, BiomeType biomeType)
 	{
-		// Create a temporary noise instance for biome-specific noise settings
+		// Create a temporary noise instance with consistent settings for all biomes
 		FastNoiseLite biomeNoise = new FastNoiseLite();
 		biomeNoise.Seed = Seed;
 
-		// Set biome-specific noise characteristics - match the settings in WorldGenerator
-		switch (biomeType)
-		{
-			case BiomeType.Desert:
-				// Desert: Low frequency, low octaves for smooth dunes
-				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				biomeNoise.Frequency = 0.008f;
-				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-				biomeNoise.FractalOctaves = 1;
-				biomeNoise.FractalLacunarity = 2.0f;
-				biomeNoise.FractalGain = 0.5f;
-				break;
-
-			case BiomeType.Plains:
-				// Plains: Medium-low frequency, low octaves for gentle rolling hills
-				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				biomeNoise.Frequency = 0.01f;
-				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-				biomeNoise.FractalOctaves = 2;
-				biomeNoise.FractalLacunarity = 2.0f;
-				biomeNoise.FractalGain = 0.4f;
-				break;
-
-			case BiomeType.Forest:
-				// Forest: Medium frequency, medium octaves for varied terrain
-				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				biomeNoise.Frequency = 0.012f;
-				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-				biomeNoise.FractalOctaves = 3;
-				biomeNoise.FractalLacunarity = 2.0f;
-				biomeNoise.FractalGain = 0.5f;
-				break;
-
-			case BiomeType.Mountains:
-				// Mountains: Medium-high frequency, ridged fractal for more dramatic terrain
-				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				biomeNoise.Frequency = 0.015f;
-				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Ridged;
-				biomeNoise.FractalOctaves = 4;
-				biomeNoise.FractalLacunarity = 2.2f;
-				biomeNoise.FractalGain = 0.6f;
-				break;
-
-			case BiomeType.Tundra:
-				// Tundra: Medium frequency, low gain for flatter terrain with occasional features
-				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				biomeNoise.Frequency = 0.011f;
-				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-				biomeNoise.FractalOctaves = 2;
-				biomeNoise.FractalLacunarity = 1.8f;
-				biomeNoise.FractalGain = 0.3f;
-				break;
-		}
+		// Use consistent noise settings for all biomes to ensure a uniform base height
+		biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+		biomeNoise.Frequency = 0.01f;
+		biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Ridged;
+		biomeNoise.FractalOctaves = 2;
+		biomeNoise.FractalLacunarity = 2.0f;
+		biomeNoise.FractalGain = 0.5f;
 
 		// Get noise value with biome-specific settings
 		float heightNoise = biomeNoise.GetNoise2D(worldX, worldZ);
@@ -624,8 +614,15 @@ public partial class World : Node3D
 		// Combine base height with noise contribution
 		heightNoise = baseHeight + (heightNoise * noiseContribution);
 
-		// Return height value scaled for visualization
-		return heightNoise * 100.0f; // Scale to a reasonable height for visualization
+		// Convert to actual height value
+		int baseTerrainHeight = Mathf.FloorToInt(heightNoise * 100.0f);
+
+		// Apply environmental features to modify the terrain height
+		int modifiedHeight = baseTerrainHeight;
+		modifiedHeight = EnvironmentalFeatureGeneratorStatic.ModifyTerrainHeight(worldX, worldZ, baseTerrainHeight, biomeType, 100);
+
+		// Return the modified height
+		return modifiedHeight;
 	}
 
 	private void CreateMapUI()

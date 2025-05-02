@@ -20,6 +20,7 @@ public partial class WorldGenerator : Node3D
 
 	private FastNoiseLite _terrainNoise;
 	private ChunkManager _chunkManager;
+	private EnvironmentalFeatureGenerator _featureGenerator;
 
 	public override void _Ready()
 	{
@@ -47,6 +48,9 @@ public partial class WorldGenerator : Node3D
 		_terrainNoise.FractalType = FastNoiseLite.FractalTypeEnum.Ridged;
 		_terrainNoise.Frequency = 0.01f; // Doubled frequency for higher resolution (was 0.005f)
 		_terrainNoise.FractalOctaves = 2; // Fewer octaves for less detail and flatter terrain
+
+		// Initialize environmental feature generator
+		_featureGenerator = new EnvironmentalFeatureGenerator(Seed);
 
 		// Initialize static noise for use by other classes
 		InitializeStaticNoise(Seed);
@@ -116,10 +120,42 @@ public partial class WorldGenerator : Node3D
 				int terrainHeight = GenerateTerrainHeight(worldX, worldZ, biomeType);
 
 				// Fill voxels from bottom to terrain height
-				for (int y = 0; y < terrainHeight && y < ChunkHeight; y++)
+				for (int y = 0; y < ChunkHeight; y++)
 				{
-					VoxelType voxelType = DetermineVoxelType(y, terrainHeight, biomeType);
-					chunk.SetVoxel(x, y, z, voxelType);
+					if (y < terrainHeight)
+					{
+						// For terrain voxels
+						VoxelType voxelType = DetermineVoxelType(y, terrainHeight, biomeType);
+
+						// Check if this should be a water voxel (for rivers or lakes)
+						if (_featureGenerator != null && _featureGenerator.ShouldPlaceWater(worldX, worldZ, y, terrainHeight, biomeType))
+						{
+							// Replace the top few layers with water
+							if (y >= terrainHeight - 3)
+							{
+								voxelType = VoxelType.Water;
+							}
+						}
+
+						chunk.SetVoxel(x, y, z, voxelType);
+					}
+					else if (_featureGenerator != null && y <= terrainHeight + 3)
+					{
+						// Check for water above terrain (for rivers and lakes)
+						if (_featureGenerator.ShouldPlaceWater(worldX, worldZ, y, terrainHeight, biomeType))
+						{
+							chunk.SetVoxel(x, y, z, VoxelType.Water);
+						}
+						else
+						{
+							chunk.SetVoxel(x, y, z, VoxelType.Air);
+						}
+					}
+					else
+					{
+						// Air above terrain
+						chunk.SetVoxel(x, y, z, VoxelType.Air);
+					}
 				}
 			}
 		}
@@ -197,15 +233,22 @@ public partial class WorldGenerator : Node3D
 		heightNoise = baseHeight + (heightNoise * noiseContribution);
 
 		// Convert to actual height value
-		int height = Mathf.FloorToInt(heightNoise * ChunkHeight);
+		int baseTerrainHeight = Mathf.FloorToInt(heightNoise * ChunkHeight);
+
+		// Apply environmental features to modify the terrain height
+		int modifiedHeight = baseTerrainHeight;
+		if (_featureGenerator != null)
+		{
+			modifiedHeight = _featureGenerator.ModifyTerrainHeight(worldX, worldZ, baseTerrainHeight, biomeType, ChunkHeight);
+		}
 
 		// Debug output for the first chunk to help understand terrain height
 		if (worldX == 0 && worldZ == 0)
 		{
-			GD.Print($"Terrain height at origin: {height}, biome: {biomeType}");
+			GD.Print($"Terrain height at origin: Base={baseTerrainHeight}, Modified={modifiedHeight}, biome: {biomeType}");
 		}
 
-		return height;
+		return modifiedHeight;
 	}
 
 	private VoxelType DetermineVoxelType(int y, int terrainHeight, BiomeType biomeType)
@@ -287,60 +330,73 @@ public partial class WorldGenerator : Node3D
 					// Only place decorations if the block above is air
 					if (chunk.GetVoxel(x, surfaceHeight + 1, z) == VoxelType.Air)
 					{
-						// Use the already calculated world position
-						Vector2I worldPos = new Vector2I(worldX, worldZ);
-
-						// Check if this position should have a decoration based on clusters
-						DecorationClusters.DecorationPlacement placement;
-						if (DecorationClusters.ShouldPlaceDecoration(worldPos, out placement, random))
+						// Check if this position is in water (don't place decorations in rivers/lakes)
+						bool isInWater = false;
+						if (_featureGenerator != null)
 						{
-							// Check if the decoration is appropriate for the surface block
-							bool canPlace = false;
+							int decorationWorldX = worldX;
+							int decorationWorldZ = worldZ;
+							isInWater = _featureGenerator.ShouldPlaceWater(decorationWorldX, decorationWorldZ, surfaceHeight + 1, surfaceHeight, biomeType);
+						}
 
-							switch (placement.Type)
+						// Don't place regular decorations in water
+						if (!isInWater)
+						{
+							// Use the already calculated world position
+							Vector2I worldPos = new Vector2I(worldX, worldZ);
+
+							// Check if this position should have a decoration based on clusters
+							DecorationClusters.DecorationPlacement placement;
+							if (DecorationClusters.ShouldPlaceDecoration(worldPos, out placement, random))
 							{
-								case VoxelType.TallGrass:
-								case VoxelType.Flower:
-									// Grass and flowers only on grass blocks
-									canPlace = chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass;
-									break;
+								// Check if the decoration is appropriate for the surface block
+								bool canPlace = false;
 
-								case VoxelType.Mushroom:
-									// Mushrooms on grass or dirt
-									canPlace = chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass ||
-											  chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Dirt;
-									break;
+								switch (placement.Type)
+								{
+									case VoxelType.TallGrass:
+									case VoxelType.Flower:
+										// Grass and flowers only on grass blocks
+										canPlace = chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass;
+										break;
 
-								case VoxelType.Rock:
-									// Rocks can go on any surface
-									canPlace = true;
-									break;
+									case VoxelType.Mushroom:
+										// Mushrooms on grass or dirt
+										canPlace = chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass ||
+												  chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Dirt;
+										break;
 
-								case VoxelType.Stick:
-									// Sticks primarily in forests on grass or dirt
-									canPlace = chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass ||
-											  chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Dirt;
-									break;
+									case VoxelType.Rock:
+										// Rocks can go on any surface
+										canPlace = true;
+										break;
 
-								case VoxelType.Seashell:
-									// Seashells only on sand
-									canPlace = chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Sand;
-									break;
+									case VoxelType.Stick:
+										// Sticks primarily in forests on grass or dirt
+										canPlace = chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass ||
+												  chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Dirt;
+										break;
 
-								default:
-									canPlace = false;
-									break;
-							}
+									case VoxelType.Seashell:
+										// Seashells only on sand
+										canPlace = chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Sand;
+										break;
 
-							// Place the decoration if appropriate
-							if (canPlace)
-							{
-								// Store the decoration type in the voxel data
-								chunk.SetVoxel(x, surfaceHeight + 1, z, placement.Type);
+									default:
+										canPlace = false;
+										break;
+								}
 
-								// Store the placement information in the chunk's metadata
-								// This will be used by the mesh generator to position the decoration
-								chunk.SetDecorationPlacement(x, surfaceHeight + 1, z, placement);
+								// Place the decoration if appropriate
+								if (canPlace)
+								{
+									// Store the decoration type in the voxel data
+									chunk.SetVoxel(x, surfaceHeight + 1, z, placement.Type);
+
+									// Store the placement information in the chunk's metadata
+									// This will be used by the mesh generator to position the decoration
+									chunk.SetDecorationPlacement(x, surfaceHeight + 1, z, placement);
+								}
 							}
 						}
 					}
@@ -351,18 +407,30 @@ public partial class WorldGenerator : Node3D
 				{
 					if (surfaceHeight >= 0 && chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass)
 					{
-						// Calculate max leaf radius for this tree (for boundary check)
-						int maxLeafRadius = random.Next(4, 8);
-
-						// Check if tree is too close to chunk boundary
-						int safeDistance = maxLeafRadius + 2; // Add a small buffer
-
-						// Only generate trees that are safely away from chunk boundaries
-						if (x >= safeDistance && x < (chunkSize - safeDistance) &&
-							z >= safeDistance && z < (chunkSize - safeDistance))
+						// Check if this position is in water (don't place trees in rivers/lakes)
+						bool isInWater = false;
+						if (_featureGenerator != null)
 						{
-							// Generate a detailed tree with trunk and leaves
-							GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
+							int treeWorldX = chunkPos.X * chunkSize + x;
+							int treeWorldZ = chunkPos.Y * chunkSize + z;
+							isInWater = _featureGenerator.ShouldPlaceWater(treeWorldX, treeWorldZ, surfaceHeight + 1, surfaceHeight, biomeType);
+						}
+
+						if (!isInWater)
+						{
+							// Calculate max leaf radius for this tree (for boundary check)
+							int maxLeafRadius = random.Next(4, 8);
+
+							// Check if tree is too close to chunk boundary
+							int safeDistance = maxLeafRadius + 2; // Add a small buffer
+
+							// Only generate trees that are safely away from chunk boundaries
+							if (x >= safeDistance && x < (chunkSize - safeDistance) &&
+								z >= safeDistance && z < (chunkSize - safeDistance))
+							{
+								// Generate a detailed tree with trunk and leaves
+								GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
+							}
 						}
 					}
 				}

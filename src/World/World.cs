@@ -22,6 +22,7 @@ public partial class World : Node3D
 	private WorldGenerator _worldGenerator;
 	private ChunkManager _chunkManager;
 	private CloudGenerator _cloudGenerator;
+	private BiomeRegionGenerator _biomeRegionGenerator;
 	private Player _player;
 	private Godot.Timer _chunkUpdateTimer;
 	private Camera3D _mapCamera;
@@ -48,6 +49,9 @@ public partial class World : Node3D
 
 		// Get cloud generator
 		_cloudGenerator = GetNode<CloudGenerator>("CloudGenerator");
+
+		// Get the biome region generator singleton
+		_biomeRegionGenerator = BiomeRegionGenerator.Instance;
 
 		// Set seed
 		if (Seed == 0)
@@ -246,8 +250,13 @@ public partial class World : Node3D
 				// Use the point directly below the camera for biome determination
 				int worldX = (int)_mapCamera.Position.X;
 				int worldZ = (int)_mapCamera.Position.Z;
-				BiomeType biomeType = WorldGenerator.GetBiomeType(worldX, worldZ);
-				_biomeLabel.Text = $"Biome: {biomeType} | Position: ({worldX}, {worldZ})";
+				BiomeType biomeType = _biomeRegionGenerator.GetBiomeType(worldX, worldZ);
+
+				// Check if we're near a boundary
+				bool nearBoundary = _biomeRegionGenerator.IsNearBoundary(worldX, worldZ);
+				string boundaryText = nearBoundary ? " (Near Boundary)" : "";
+
+				_biomeLabel.Text = $"Biome: {biomeType}{boundaryText} | Position: ({worldX}, {worldZ})";
 			}
 		}
 	}
@@ -474,7 +483,7 @@ public partial class World : Node3D
 				// Get biome type for this position
 				int sampleX = (int)(worldX);
 				int sampleZ = (int)(worldZ);
-				BiomeType biomeType = WorldGenerator.GetBiomeType(sampleX, sampleZ);
+				BiomeType biomeType = _biomeRegionGenerator.GetBiomeType(sampleX, sampleZ);
 
 				// Get terrain height for each corner of the quad
 				float heightNW = GetTerrainHeight(sampleX, sampleZ, biomeType) * heightScale;
@@ -563,6 +572,13 @@ public partial class World : Node3D
 
 		// Convert noise from [-1, 1] to [0, 1]
 		heightNoise = (heightNoise + 1f) * 0.5f;
+
+		// Check if we're near a biome boundary and adjust height for visualization
+		if (_biomeRegionGenerator.IsNearBoundary(worldX, worldZ, 0.05f))
+		{
+			// Slightly lower the terrain at biome boundaries to create visible "borders"
+			heightNoise *= 0.9f;
+		}
 
 		// Apply biome-specific height modifications
 		float baseHeight = 0.3f; // Consistent base height for all terrain

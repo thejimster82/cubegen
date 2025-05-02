@@ -8,12 +8,18 @@ public partial class BiomeMapVisualizer : Node3D
 {
     [Export] public int MapSize { get; set; } = 100;
     [Export] public float TileSize { get; set; } = 10.0f;
+    [Export] public bool ShowBiomeBoundaries { get; set; } = true;
+    [Export] public float BoundaryThickness { get; set; } = 0.05f;
 
     private Dictionary<BiomeType, Color> _biomeColors = new Dictionary<BiomeType, Color>();
     private MeshInstance3D _mapMesh;
+    private BiomeRegionGenerator _biomeRegionGenerator;
 
     public override void _Ready()
     {
+        // Get the biome region generator
+        _biomeRegionGenerator = BiomeRegionGenerator.Instance;
+
         // Initialize biome colors
         InitializeBiomeColors();
 
@@ -60,10 +66,17 @@ public partial class BiomeMapVisualizer : Node3D
                 // Get biome type for this position
                 int sampleX = (int)(worldX);
                 int sampleZ = (int)(worldZ);
-                BiomeType biomeType = WorldGenerator.GetBiomeType(sampleX, sampleZ);
+                BiomeType biomeType = _biomeRegionGenerator.GetBiomeType(sampleX, sampleZ);
 
                 // Get color for this biome
                 Color biomeColor = _biomeColors[biomeType];
+
+                // Check if we're near a biome boundary
+                if (ShowBiomeBoundaries && _biomeRegionGenerator.IsNearBoundary(sampleX, sampleZ, BoundaryThickness))
+                {
+                    // Darken the color to show the boundary
+                    biomeColor = biomeColor.Darkened(0.3f);
+                }
 
                 // Add vertices for a quad (flat on XZ plane)
                 int baseIndex = vertices.Count;

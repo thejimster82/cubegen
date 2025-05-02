@@ -157,24 +157,18 @@ public partial class WorldGenerator : Node3D
 	// Get biome type for a world position - instance method
 	private BiomeType GetBiomeTypeForChunk(int worldX, int worldZ)
 	{
-		float biomeValue = _biomeNoise.GetNoise2D(worldX, worldZ);
-		return GetBiomeTypeFromNoise(biomeValue);
+		// Use the BiomeRegionGenerator for biome determination
+		return BiomeRegionGenerator.Instance.GetBiomeType(worldX, worldZ);
 	}
 
 	// Get biome type for a world position - static method for use by other classes
 	public static BiomeType GetBiomeType(int worldX, int worldZ)
 	{
-		if (_staticBiomeNoise == null)
-		{
-			// Use a default seed if not initialized
-			InitializeStaticNoise(0);
-		}
-
-		float biomeValue = _staticBiomeNoise.GetNoise2D(worldX, worldZ);
-		return GetBiomeTypeFromNoise(biomeValue);
+		// Use the BiomeRegionGenerator for biome determination
+		return BiomeRegionGenerator.Instance.GetBiomeType(worldX, worldZ);
 	}
 
-	// Helper method to convert noise value to biome type
+	// Helper method to convert noise value to biome type (kept for backward compatibility)
 	private static BiomeType GetBiomeTypeFromNoise(float biomeValue)
 	{
 		// Simple biome distribution based on noise value

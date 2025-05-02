@@ -830,9 +830,6 @@ public class ChunkMeshGenerator
         // Get current vertex count
         int vertexCount = meshData.Vertices.Count;
 
-        // Get UV coordinates based on voxel type
-        Vector2[] faceUVs = GetUVsForVoxelType(voxelType, FaceDirection.Top);
-
         // Get scale from the chunk
         float chunkScale = chunk.Scale;
 
@@ -848,141 +845,134 @@ public class ChunkMeshGenerator
         // Calculate offset to center smaller voxels within the full voxel space
         Vector3 centeringOffset = VoxelProperties.GetCenteringOffset(voxelType);
 
-        // Calculate AO values - use a simplified version for decorations
-        float aoValue = 1.0f; // No AO for decorations to keep them bright
+        // Get biome type for this position
+        int worldX = chunk.Position.X * chunk.Size + x;
+        int worldZ = chunk.Position.Y * chunk.Size + z;
+        BiomeType biomeType = CubeGen.World.Generation.WorldGenerator.GetBiomeType(worldX, worldZ);
 
-        // Create two crossed planes for the decoration
-        // First plane (X-shaped when viewed from above)
-        AddDecorationPlane(meshData, basePosition, centeringOffset, finalScale, voxelScaleFactor, 0, faceUVs, aoValue, vertexCount, voxelType);
+        // Get the material color for this voxel type and biome
+        Color baseColor = GetColorForVoxelType(voxelType, biomeType);
 
-        // Second plane (rotated 90 degrees, +-shaped when viewed from above)
-        AddDecorationPlane(meshData, basePosition, centeringOffset, finalScale, voxelScaleFactor, 90, faceUVs, aoValue, vertexCount + 4, voxelType);
+        // Get the decoration model
+        List<DecorationModels.DecorationVoxel> decorationVoxels = DecorationModels.GetDecorationModel(voxelType, baseColor);
+
+        // Add each voxel in the decoration model
+        foreach (var decorationVoxel in decorationVoxels)
+        {
+            // Calculate the position for this decoration voxel
+            Vector3 voxelPosition = basePosition + centeringOffset + decorationVoxel.Position * finalScale;
+
+            // Add a cube for this decoration voxel
+            AddDecorationCube(meshData, voxelPosition, decorationVoxel.Scale * finalScale, decorationVoxel.Color, vertexCount);
+
+            // Update vertex count for the next cube
+            vertexCount += 24; // 24 vertices per cube (4 vertices per face * 6 faces)
+        }
     }
 
-    private void AddDecorationPlane(MeshData meshData, Vector3 basePosition, Vector3 centeringOffset, float finalScale,
-                              float voxelScaleFactor, float rotationDegrees, Vector2[] faceUVs, float aoValue, int vertexOffset, VoxelType voxelType)
+    // Helper method to get the color for a voxel type in a specific biome
+    private Color GetColorForVoxelType(VoxelType voxelType, BiomeType biomeType)
     {
-        // Convert rotation to radians
-        float rotationRadians = Mathf.DegToRad(rotationDegrees);
+        // Default color (white)
+        Color color = new Color(1.0f, 1.0f, 1.0f);
 
-        // Calculate height based on decoration type
-        float height = 3.5f; // Default tall height for grass
+        // Get the material for this voxel type and biome
+        Material material = BiomeMaterials.GetMaterial(biomeType, voxelType);
 
-        // Adjust height based on decoration type
-        switch (voxelType)
+        // Try to get the albedo color from the material
+        if (material is StandardMaterial3D standardMaterial)
         {
-            case VoxelType.TallGrass:
-                height = 3.5f; // Tall grass
-                break;
-            case VoxelType.Flower:
-                height = 2.0f; // Shorter than grass
-                break;
-            case VoxelType.Mushroom:
-                height = 1.5f; // Short mushroom
-                break;
-            case VoxelType.Rock:
-                height = 0.8f; // Very short rock
-                break;
-            case VoxelType.Stick:
-                height = 0.5f; // Very short stick
-                break;
-            case VoxelType.Seashell:
-                height = 0.4f; // Very short seashell
-                break;
-            default:
-                height = 1.0f; // Default height
-                break;
+            color = standardMaterial.AlbedoColor;
         }
 
-        // Calculate half width for the decoration - adjust based on type
-        float halfWidth = voxelScaleFactor * 0.8f;
-
-        // Adjust width based on decoration type
-        switch (voxelType)
-        {
-            case VoxelType.TallGrass:
-                halfWidth = voxelScaleFactor * 0.8f; // Thin grass
-                break;
-            case VoxelType.Flower:
-                halfWidth = voxelScaleFactor * 0.9f; // Wider flower
-                break;
-            case VoxelType.Mushroom:
-                halfWidth = voxelScaleFactor * 1.0f; // Wide mushroom
-                break;
-            case VoxelType.Rock:
-                halfWidth = voxelScaleFactor * 1.2f; // Wide rock
-                break;
-            case VoxelType.Stick:
-                halfWidth = voxelScaleFactor * 0.6f; // Thin stick
-                break;
-            case VoxelType.Seashell:
-                halfWidth = voxelScaleFactor * 0.7f; // Medium seashell
-                break;
-        }
-
-        // Calculate center point for the decoration
-        float centerX = centeringOffset.X + (voxelScaleFactor * 0.5f);
-        float centerZ = centeringOffset.Z + (voxelScaleFactor * 0.5f);
-
-        // Calculate vertices for a vertical plane
-        Vector3 bottomLeft, bottomRight, topRight, topLeft;
-
-        // Apply rotation to create the X-pattern
-        if (rotationDegrees < 1.0f) // First plane (no rotation)
-        {
-            // Create a diagonal plane from bottom-left to top-right
-            bottomLeft = new Vector3(centerX - halfWidth, 0, centerZ - halfWidth);
-            bottomRight = new Vector3(centerX + halfWidth, 0, centerZ + halfWidth);
-            topRight = new Vector3(centerX + halfWidth, height, centerZ + halfWidth);
-            topLeft = new Vector3(centerX - halfWidth, height, centerZ - halfWidth);
-        }
-        else // Second plane (90 degree rotation)
-        {
-            // Create a diagonal plane from bottom-right to top-left
-            bottomLeft = new Vector3(centerX - halfWidth, 0, centerZ + halfWidth);
-            bottomRight = new Vector3(centerX + halfWidth, 0, centerZ - halfWidth);
-            topRight = new Vector3(centerX + halfWidth, height, centerZ - halfWidth);
-            topLeft = new Vector3(centerX - halfWidth, height, centerZ + halfWidth);
-        }
-
-        // Add vertices
-        meshData.Vertices.Add(basePosition + (bottomLeft * finalScale));
-        meshData.Vertices.Add(basePosition + (bottomRight * finalScale));
-        meshData.Vertices.Add(basePosition + (topRight * finalScale));
-        meshData.Vertices.Add(basePosition + (topLeft * finalScale));
-
-        // Add normals (use up vector for simplicity)
-        for (int i = 0; i < 4; i++)
-        {
-            meshData.Normals.Add(Vector3.Up);
-        }
-
-        // Add UVs
-        for (int i = 0; i < 4; i++)
-        {
-            meshData.UVs.Add(faceUVs[i]);
-            meshData.AmbientOcclusion.Add(aoValue);
-        }
-
-        // Add indices for both sides of the plane (make it visible from both sides)
-        // Front face
-        meshData.Indices.Add(vertexOffset);
-        meshData.Indices.Add(vertexOffset + 1);
-        meshData.Indices.Add(vertexOffset + 2);
-
-        meshData.Indices.Add(vertexOffset);
-        meshData.Indices.Add(vertexOffset + 2);
-        meshData.Indices.Add(vertexOffset + 3);
-
-        // Back face (reverse winding order)
-        meshData.Indices.Add(vertexOffset);
-        meshData.Indices.Add(vertexOffset + 3);
-        meshData.Indices.Add(vertexOffset + 2);
-
-        meshData.Indices.Add(vertexOffset);
-        meshData.Indices.Add(vertexOffset + 2);
-        meshData.Indices.Add(vertexOffset + 1);
+        return color;
     }
+
+    // Add a cube for a decoration voxel
+    private void AddDecorationCube(MeshData meshData, Vector3 position, float scale, Color color, int vertexOffset)
+    {
+        // Calculate half size for the cube
+        float halfSize = scale * 0.5f;
+
+        // Define the 8 corners of the cube
+        Vector3 v0 = position + new Vector3(-halfSize, -halfSize, -halfSize); // Bottom back left
+        Vector3 v1 = position + new Vector3(halfSize, -halfSize, -halfSize);  // Bottom back right
+        Vector3 v2 = position + new Vector3(halfSize, -halfSize, halfSize);   // Bottom front right
+        Vector3 v3 = position + new Vector3(-halfSize, -halfSize, halfSize);  // Bottom front left
+        Vector3 v4 = position + new Vector3(-halfSize, halfSize, -halfSize);  // Top back left
+        Vector3 v5 = position + new Vector3(halfSize, halfSize, -halfSize);   // Top back right
+        Vector3 v6 = position + new Vector3(halfSize, halfSize, halfSize);    // Top front right
+        Vector3 v7 = position + new Vector3(-halfSize, halfSize, halfSize);   // Top front left
+
+        // Define the 6 faces of the cube (each face has 4 vertices)
+        // Bottom face
+        AddQuad(meshData, v0, v1, v2, v3, color, vertexOffset);
+
+        // Top face
+        AddQuad(meshData, v7, v6, v5, v4, color, vertexOffset + 4);
+
+        // Front face
+        AddQuad(meshData, v3, v2, v6, v7, color, vertexOffset + 8);
+
+        // Back face
+        AddQuad(meshData, v4, v5, v1, v0, color, vertexOffset + 12);
+
+        // Left face
+        AddQuad(meshData, v0, v3, v7, v4, color, vertexOffset + 16);
+
+        // Right face
+        AddQuad(meshData, v1, v5, v6, v2, color, vertexOffset + 20);
+    }
+
+    // Add a quad (4 vertices and 2 triangles)
+    private void AddQuad(MeshData meshData, Vector3 v0, Vector3 v1, Vector3 v2, Vector3 v3, Color color, int vertexOffset)
+    {
+        // Add vertices
+        meshData.Vertices.Add(v0);
+        meshData.Vertices.Add(v1);
+        meshData.Vertices.Add(v2);
+        meshData.Vertices.Add(v3);
+
+        // Calculate normal from vertices
+        Vector3 edge1 = v1 - v0;
+        Vector3 edge2 = v3 - v0;
+        Vector3 normal = edge1.Cross(edge2).Normalized();
+
+        // Add normals
+        meshData.Normals.Add(normal);
+        meshData.Normals.Add(normal);
+        meshData.Normals.Add(normal);
+        meshData.Normals.Add(normal);
+
+        // Add colors
+        meshData.Colors.Add(color);
+        meshData.Colors.Add(color);
+        meshData.Colors.Add(color);
+        meshData.Colors.Add(color);
+
+        // Add UVs (simple mapping)
+        meshData.UVs.Add(new Vector2(0, 0));
+        meshData.UVs.Add(new Vector2(1, 0));
+        meshData.UVs.Add(new Vector2(1, 1));
+        meshData.UVs.Add(new Vector2(0, 1));
+
+        // Add ambient occlusion values (full brightness for decorations)
+        meshData.AmbientOcclusion.Add(1.0f);
+        meshData.AmbientOcclusion.Add(1.0f);
+        meshData.AmbientOcclusion.Add(1.0f);
+        meshData.AmbientOcclusion.Add(1.0f);
+
+        // Add indices for two triangles
+        meshData.Indices.Add(vertexOffset);
+        meshData.Indices.Add(vertexOffset + 1);
+        meshData.Indices.Add(vertexOffset + 2);
+
+        meshData.Indices.Add(vertexOffset);
+        meshData.Indices.Add(vertexOffset + 2);
+        meshData.Indices.Add(vertexOffset + 3);
+    }
+
+
 
     private enum FaceDirection
     {
@@ -1002,4 +992,5 @@ public class MeshData
     public List<Vector2> UVs { get; private set; } = new List<Vector2>();
     public List<int> Indices { get; private set; } = new List<int>();
     public List<float> AmbientOcclusion { get; private set; } = new List<float>();
+    public List<Color> Colors { get; private set; } = new List<Color>();
 }

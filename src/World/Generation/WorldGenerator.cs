@@ -257,6 +257,10 @@ public partial class WorldGenerator : Node3D
 		// Initialize decoration clusters for this chunk
 		DecorationClusters.InitializeChunkClusters(chunkPos, chunkSize, random);
 
+		// Create a 2D array to track where features have been placed
+		// true = feature exists at this position, false = no feature
+		bool[,] featureMap = new bool[chunkSize, chunkSize];
+
 		for (int x = 0; x < chunkSize; x++)
 		{
 			for (int z = 0; z < chunkSize; z++)
@@ -360,8 +364,16 @@ public partial class WorldGenerator : Node3D
 							{
 								if (surfaceHeight >= 0)
 								{
-									// More lenient check - allow trees on any solid surface in forest biome
-									GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
+									// Check if we can place a tree here (no overlap with other features)
+									// Trees need a larger radius (6) to prevent overlap
+									if (CanPlaceFeature(featureMap, x, z, 6, chunkSize))
+									{
+										// More lenient check - allow trees on any solid surface in forest biome
+										GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
+
+										// Mark the area as occupied
+										MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
+									}
 								}
 							}
 							break;
@@ -372,8 +384,16 @@ public partial class WorldGenerator : Node3D
 							{
 								if (surfaceHeight >= 0)
 								{
-									// More lenient check - allow cacti on any solid surface in desert biome
-									GenerateCactus(chunk, x, z, surfaceHeight, random);
+									// Check if we can place a cactus here (no overlap with other features)
+									// Cacti need a medium radius (4) to prevent overlap
+									if (CanPlaceFeature(featureMap, x, z, 4, chunkSize))
+									{
+										// More lenient check - allow cacti on any solid surface in desert biome
+										GenerateCactus(chunk, x, z, surfaceHeight, random);
+
+										// Mark the area as occupied
+										MarkFeaturePosition(featureMap, x, z, 4, chunkSize);
+									}
 								}
 							}
 							// Add rock formations in Desert biome
@@ -381,8 +401,16 @@ public partial class WorldGenerator : Node3D
 							{
 								if (surfaceHeight >= 0)
 								{
-									// More lenient check - allow rock formations on any solid surface in desert biome
-									GenerateRockFormation(chunk, x, z, surfaceHeight, random);
+									// Check if we can place a rock formation here (no overlap with other features)
+									// Rock formations need a medium radius (5) to prevent overlap
+									if (CanPlaceFeature(featureMap, x, z, 5, chunkSize))
+									{
+										// More lenient check - allow rock formations on any solid surface in desert biome
+										GenerateRockFormation(chunk, x, z, surfaceHeight, random);
+
+										// Mark the area as occupied
+										MarkFeaturePosition(featureMap, x, z, 5, chunkSize);
+									}
 								}
 							}
 							break;
@@ -393,8 +421,16 @@ public partial class WorldGenerator : Node3D
 							{
 								if (surfaceHeight >= 0)
 								{
-									// More lenient check - allow bushes on any solid surface in plains biome
-									GenerateBush(chunk, x, z, surfaceHeight, random);
+									// Check if we can place a bush here (no overlap with other features)
+									// Bushes need a small radius (3) to prevent overlap
+									if (CanPlaceFeature(featureMap, x, z, 3, chunkSize))
+									{
+										// More lenient check - allow bushes on any solid surface in plains biome
+										GenerateBush(chunk, x, z, surfaceHeight, random);
+
+										// Mark the area as occupied
+										MarkFeaturePosition(featureMap, x, z, 3, chunkSize);
+									}
 								}
 							}
 							// Add occasional lone trees in Plains biome
@@ -402,8 +438,16 @@ public partial class WorldGenerator : Node3D
 							{
 								if (surfaceHeight >= 0)
 								{
-									// More lenient check - allow trees on any solid surface in plains biome
-									GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
+									// Check if we can place a tree here (no overlap with other features)
+									// Trees need a larger radius (6) to prevent overlap
+									if (CanPlaceFeature(featureMap, x, z, 6, chunkSize))
+									{
+										// More lenient check - allow trees on any solid surface in plains biome
+										GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
+
+										// Mark the area as occupied
+										MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
+									}
 								}
 							}
 							break;
@@ -414,8 +458,16 @@ public partial class WorldGenerator : Node3D
 							{
 								if (surfaceHeight >= 0)
 								{
-									// More lenient check - allow rock spires on any solid surface in mountains biome
-									GenerateRockSpire(chunk, x, z, surfaceHeight, random);
+									// Check if we can place a rock spire here (no overlap with other features)
+									// Rock spires need a medium radius (5) to prevent overlap
+									if (CanPlaceFeature(featureMap, x, z, 5, chunkSize))
+									{
+										// More lenient check - allow rock spires on any solid surface in mountains biome
+										GenerateRockSpire(chunk, x, z, surfaceHeight, random);
+
+										// Mark the area as occupied
+										MarkFeaturePosition(featureMap, x, z, 5, chunkSize);
+									}
 								}
 							}
 							// Add boulders in Mountains biome
@@ -423,7 +475,15 @@ public partial class WorldGenerator : Node3D
 							{
 								if (surfaceHeight >= 0)
 								{
-									GenerateBoulder(chunk, x, z, surfaceHeight, random);
+									// Check if we can place a boulder here (no overlap with other features)
+									// Boulders need a medium radius (4) to prevent overlap
+									if (CanPlaceFeature(featureMap, x, z, 4, chunkSize))
+									{
+										GenerateBoulder(chunk, x, z, surfaceHeight, random);
+
+										// Mark the area as occupied
+										MarkFeaturePosition(featureMap, x, z, 4, chunkSize);
+									}
 								}
 							}
 							break;
@@ -434,8 +494,16 @@ public partial class WorldGenerator : Node3D
 							{
 								if (surfaceHeight >= 0)
 								{
-									// More lenient check - allow ice formations on any solid surface in tundra biome
-									GenerateIceFormation(chunk, x, z, surfaceHeight, random);
+									// Check if we can place an ice formation here (no overlap with other features)
+									// Ice formations need a medium radius (4) to prevent overlap
+									if (CanPlaceFeature(featureMap, x, z, 4, chunkSize))
+									{
+										// More lenient check - allow ice formations on any solid surface in tundra biome
+										GenerateIceFormation(chunk, x, z, surfaceHeight, random);
+
+										// Mark the area as occupied
+										MarkFeaturePosition(featureMap, x, z, 4, chunkSize);
+									}
 								}
 							}
 							// Add snow-covered trees in Tundra biome
@@ -443,13 +511,68 @@ public partial class WorldGenerator : Node3D
 							{
 								if (surfaceHeight >= 0)
 								{
-									// More lenient check - allow snow trees on any solid surface in tundra biome
-									GenerateSnowTree(chunk, x, z, surfaceHeight, random);
+									// Check if we can place a snow tree here (no overlap with other features)
+									// Snow trees need a larger radius (6) to prevent overlap
+									if (CanPlaceFeature(featureMap, x, z, 6, chunkSize))
+									{
+										// More lenient check - allow snow trees on any solid surface in tundra biome
+										GenerateSnowTree(chunk, x, z, surfaceHeight, random);
+
+										// Mark the area as occupied
+										MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
+									}
 								}
 							}
 							break;
 					}
 				}
+			}
+		}
+	}
+
+	// Helper method to check if a feature can be placed at a position
+	private bool CanPlaceFeature(bool[,] featureMap, int x, int z, int radius, int chunkSize)
+	{
+		// Check if the position is already occupied
+		if (featureMap[x, z])
+			return false;
+
+		// Check surrounding area based on radius
+		int minX = Math.Max(0, x - radius);
+		int maxX = Math.Min(chunkSize - 1, x + radius);
+		int minZ = Math.Max(0, z - radius);
+		int maxZ = Math.Min(chunkSize - 1, z + radius);
+
+		for (int dx = minX; dx <= maxX; dx++)
+		{
+			for (int dz = minZ; dz <= maxZ; dz++)
+			{
+				if (featureMap[dx, dz])
+					return false;
+			}
+		}
+
+		return true;
+	}
+
+	// Helper method to mark a feature position and its surrounding area
+	private void MarkFeaturePosition(bool[,] featureMap, int x, int z, int radius, int chunkSize)
+	{
+		// Mark the center position
+		featureMap[x, z] = true;
+
+		// Mark surrounding area based on radius
+		int minX = Math.Max(0, x - radius);
+		int maxX = Math.Min(chunkSize - 1, x + radius);
+		int minZ = Math.Max(0, z - radius);
+		int maxZ = Math.Min(chunkSize - 1, z + radius);
+
+		for (int dx = minX; dx <= maxX; dx++)
+		{
+			for (int dz = minZ; dz <= maxZ; dz++)
+			{
+				// Mark as occupied
+				featureMap[dx, dz] = true;
 			}
 		}
 	}

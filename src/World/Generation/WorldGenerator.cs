@@ -189,60 +189,13 @@ public partial class WorldGenerator : Node3D
 		// Create a temporary noise instance for biome-specific noise settings
 		FastNoiseLite biomeNoise = new FastNoiseLite();
 		biomeNoise.Seed = _terrainNoise.Seed;
-
-		// Set biome-specific noise characteristics
-		switch (biomeType)
-		{
-			case BiomeType.Desert:
-				// Desert: Low frequency, low octaves for smooth dunes
-				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				biomeNoise.Frequency = 0.008f;
-				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-				biomeNoise.FractalOctaves = 1;
-				biomeNoise.FractalLacunarity = 2.0f;
-				biomeNoise.FractalGain = 0.5f;
-				break;
-
-			case BiomeType.Plains:
-				// Plains: Medium-low frequency, low octaves for gentle rolling hills
-				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				biomeNoise.Frequency = 0.01f;
-				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-				biomeNoise.FractalOctaves = 2;
-				biomeNoise.FractalLacunarity = 2.0f;
-				biomeNoise.FractalGain = 0.4f;
-				break;
-
-			case BiomeType.Forest:
-				// Forest: Medium frequency, medium octaves for varied terrain
-				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				biomeNoise.Frequency = 0.012f;
-				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-				biomeNoise.FractalOctaves = 3;
-				biomeNoise.FractalLacunarity = 2.0f;
-				biomeNoise.FractalGain = 0.5f;
-				break;
-
-			case BiomeType.Mountains:
-				// Mountains: Medium-high frequency, ridged fractal for more dramatic terrain
-				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				biomeNoise.Frequency = 0.015f;
-				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Ridged;
-				biomeNoise.FractalOctaves = 4;
-				biomeNoise.FractalLacunarity = 2.2f;
-				biomeNoise.FractalGain = 0.6f;
-				break;
-
-			case BiomeType.Tundra:
-				// Tundra: Medium frequency, low gain for flatter terrain with occasional features
-				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				biomeNoise.Frequency = 0.011f;
-				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-				biomeNoise.FractalOctaves = 2;
-				biomeNoise.FractalLacunarity = 1.8f;
-				biomeNoise.FractalGain = 0.3f;
-				break;
-		}
+		
+		biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+		biomeNoise.Frequency = 0.01f;
+		biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
+		biomeNoise.FractalOctaves = 2;
+		biomeNoise.FractalLacunarity = 2.0f;
+		biomeNoise.FractalGain = 0.4f;
 
 		// Get noise value with biome-specific settings
 		float heightNoise = biomeNoise.GetNoise2D(worldX, worldZ);

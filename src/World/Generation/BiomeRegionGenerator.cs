@@ -15,7 +15,7 @@ namespace CubeGen.World.Generation
         private FastNoiseLite _biomeTypeNoise;
         private FastNoiseLite _domainWarpNoise; // Noise for domain warping
         private int _seed;
-        private float _regionScale = 0.0005f; // Controls the size of regions (smaller value = larger regions)
+        private float _regionScale = 0.00015f; // Controls the size of regions (smaller value = larger regions)
         private float _warpStrength = 50.0f; // Controls how much the domain is warped
         private Dictionary<int, BiomeType> _cellToBiomeMap = new Dictionary<int, BiomeType>();
         private static BiomeRegionGenerator _instance;

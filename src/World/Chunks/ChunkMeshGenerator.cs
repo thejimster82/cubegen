@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Threading;
 using CubeGen.World.Common;
+using CubeGen.World.Generation;
 
 public class ChunkMeshGenerator
 {
@@ -267,8 +268,20 @@ public class ChunkMeshGenerator
                     // Create mesh data for this voxel
                     MeshData meshData = new MeshData();
 
+                    // Special handling for decoration types
+                    bool isDecoration = VoxelProperties.IsDecoration(voxelType);
+
                     // Check each face and add to mesh data
-                    AddVoxelFaces(chunk, x, y, z, voxelType, meshData);
+                    if (isDecoration)
+                    {
+                        // For decoration types, we'll create a cross-shaped mesh instead of a cube
+                        AddDecorationFaces(chunk, x, y, z, voxelType, meshData);
+                    }
+                    else
+                    {
+                        // Regular voxel faces for non-decoration types
+                        AddVoxelFaces(chunk, x, y, z, voxelType, meshData);
+                    }
 
                     // Add mesh data to the appropriate list if it has any vertices
                     if (meshData.Vertices.Count > 0)
@@ -320,8 +333,20 @@ public class ChunkMeshGenerator
                     // Create mesh data for this voxel
                     MeshData meshData = new MeshData();
 
+                    // Special handling for decoration types
+                    bool isDecoration = VoxelProperties.IsDecoration(voxelType);
+
                     // Check each face and add to mesh data
-                    AddVoxelFaces(chunk, x, y, z, voxelType, meshData);
+                    if (isDecoration)
+                    {
+                        // For decoration types, we'll create a cross-shaped mesh instead of a cube
+                        AddDecorationFaces(chunk, x, y, z, voxelType, meshData);
+                    }
+                    else
+                    {
+                        // Regular voxel faces for non-decoration types
+                        AddVoxelFaces(chunk, x, y, z, voxelType, meshData);
+                    }
 
                     // Add mesh data to the appropriate list if it has any vertices
                     if (meshData.Vertices.Count > 0)
@@ -441,10 +466,17 @@ public class ChunkMeshGenerator
                 }
 
                 // Add vertices and indices to collision data
-                allVertices.AddRange(vertices);
-                foreach (int index in indices)
+                // Skip collision data for decoration types
+                bool hasCollider = VoxelProperties.HasCollider(voxelType);
+
+                if (hasCollider)
                 {
-                    allIndices.Add(index + globalVertexOffset);
+                    // Only add collision data for voxels that should have colliders
+                    allVertices.AddRange(vertices);
+                    foreach (int index in indices)
+                    {
+                        allIndices.Add(index + globalVertexOffset);
+                    }
                 }
                 globalVertexOffset += vertices.Count;
 
@@ -522,10 +554,26 @@ public class ChunkMeshGenerator
 
         // Add vertices, normals, and UVs based on face direction
         // Get scale from the chunk
-        float scale = chunk.Scale;
+        float chunkScale = chunk.Scale;
         int x = (int)position.X;
         int y = (int)position.Y;
         int z = (int)position.Z;
+
+        // Get voxel-specific scale factor
+        float voxelScaleFactor = VoxelScaleHelper.GetScaleFactor(voxelType);
+
+        // Calculate the final scale (chunk scale * voxel scale factor)
+        float finalScale = chunkScale * voxelScaleFactor;
+
+        // Calculate offset to center smaller voxels within the full voxel space
+        Vector3 centeringOffset = Vector3.Zero;
+        if (voxelScaleFactor < 1.0f)
+        {
+            centeringOffset = VoxelScaleHelper.GetCenteringOffset(voxelType);
+        }
+
+        // Calculate the base position with chunk scale
+        Vector3 basePosition = position * chunkScale;
 
         // Calculate AO values for each vertex of this face
         float[] aoValues = new float[4];
@@ -555,45 +603,45 @@ public class ChunkMeshGenerator
         switch (direction)
         {
             case FaceDirection.Top:
-                meshData.Vertices.Add(new Vector3(0, 1, 0) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(1, 1, 0) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(1, 1, 1) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(0, 1, 1) * scale + position * scale);
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X, 1, centeringOffset.Z) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X + voxelScaleFactor, 1, centeringOffset.Z) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X + voxelScaleFactor, 1, centeringOffset.Z + voxelScaleFactor) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X, 1, centeringOffset.Z + voxelScaleFactor) * finalScale));
                 for (int i = 0; i < 4; i++) meshData.Normals.Add(Vector3.Up);
                 break;
             case FaceDirection.Bottom:
-                meshData.Vertices.Add(new Vector3(0, 0, 0) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(0, 0, 1) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(1, 0, 1) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(1, 0, 0) * scale + position * scale);
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X, 0, centeringOffset.Z) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X, 0, centeringOffset.Z + voxelScaleFactor) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X + voxelScaleFactor, 0, centeringOffset.Z + voxelScaleFactor) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X + voxelScaleFactor, 0, centeringOffset.Z) * finalScale));
                 for (int i = 0; i < 4; i++) meshData.Normals.Add(Vector3.Down);
                 break;
             case FaceDirection.Front:
-                meshData.Vertices.Add(new Vector3(0, 0, 1) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(0, 1, 1) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(1, 1, 1) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(1, 0, 1) * scale + position * scale);
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X, 0, centeringOffset.Z + voxelScaleFactor) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X, 1, centeringOffset.Z + voxelScaleFactor) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X + voxelScaleFactor, 1, centeringOffset.Z + voxelScaleFactor) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X + voxelScaleFactor, 0, centeringOffset.Z + voxelScaleFactor) * finalScale));
                 for (int i = 0; i < 4; i++) meshData.Normals.Add(Vector3.Forward);
                 break;
             case FaceDirection.Back:
-                meshData.Vertices.Add(new Vector3(0, 0, 0) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(1, 0, 0) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(1, 1, 0) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(0, 1, 0) * scale + position * scale);
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X, 0, centeringOffset.Z) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X + voxelScaleFactor, 0, centeringOffset.Z) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X + voxelScaleFactor, 1, centeringOffset.Z) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X, 1, centeringOffset.Z) * finalScale));
                 for (int i = 0; i < 4; i++) meshData.Normals.Add(Vector3.Back);
                 break;
             case FaceDirection.Right:
-                meshData.Vertices.Add(new Vector3(1, 0, 0) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(1, 0, 1) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(1, 1, 1) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(1, 1, 0) * scale + position * scale);
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X + voxelScaleFactor, 0, centeringOffset.Z) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X + voxelScaleFactor, 0, centeringOffset.Z + voxelScaleFactor) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X + voxelScaleFactor, 1, centeringOffset.Z + voxelScaleFactor) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X + voxelScaleFactor, 1, centeringOffset.Z) * finalScale));
                 for (int i = 0; i < 4; i++) meshData.Normals.Add(Vector3.Right);
                 break;
             case FaceDirection.Left:
-                meshData.Vertices.Add(new Vector3(0, 0, 0) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(0, 1, 0) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(0, 1, 1) * scale + position * scale);
-                meshData.Vertices.Add(new Vector3(0, 0, 1) * scale + position * scale);
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X, 0, centeringOffset.Z) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X, 1, centeringOffset.Z) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X, 1, centeringOffset.Z + voxelScaleFactor) * finalScale));
+                meshData.Vertices.Add(basePosition + (new Vector3(centeringOffset.X, 0, centeringOffset.Z + voxelScaleFactor) * finalScale));
                 for (int i = 0; i < 4; i++) meshData.Normals.Add(Vector3.Left);
                 break;
         }
@@ -726,6 +774,16 @@ public class ChunkMeshGenerator
         // First check if the coordinates are within this chunk
         if (x >= 0 && x < chunk.Size && y >= 0 && y < chunk.Height && z >= 0 && z < chunk.Size)
         {
+            // Get the voxel type
+            VoxelType voxelType = chunk.GetVoxel(x, y, z);
+
+            // Special case: don't consider decoration types as solid for AO calculations
+            // This ensures blocks remain visible even with decorations on top
+            if (VoxelProperties.IsDecoration(voxelType))
+            {
+                return false;
+            }
+
             // Use the chunk's own data for efficiency
             return chunk.IsVoxelSolid(x, y, z);
         }
@@ -768,6 +826,194 @@ public class ChunkMeshGenerator
         return topSolid && bottomSolid && frontSolid && backSolid && rightSolid && leftSolid;
     }
 
+    private void AddDecorationFaces(VoxelChunk chunk, int x, int y, int z, VoxelType voxelType, MeshData meshData)
+    {
+        // Get current vertex count
+        int vertexCount = meshData.Vertices.Count;
+
+        // Get scale from the chunk
+        float chunkScale = chunk.Scale;
+
+        // Get voxel-specific scale factor
+        float voxelScaleFactor = VoxelProperties.GetScaleFactor(voxelType);
+
+        // Calculate the final scale (chunk scale * voxel scale factor)
+        float finalScale = chunkScale * voxelScaleFactor;
+
+        // Calculate the base position with chunk scale
+        Vector3 basePosition = new Vector3(x, y, z) * chunkScale;
+
+        // Calculate offset to center smaller voxels within the full voxel space
+        Vector3 centeringOffset = VoxelProperties.GetCenteringOffset(voxelType);
+
+        // Get biome type for this position
+        int worldX = chunk.Position.X * chunk.Size + x;
+        int worldZ = chunk.Position.Y * chunk.Size + z;
+        BiomeType biomeType = CubeGen.World.Generation.WorldGenerator.GetBiomeType(worldX, worldZ);
+
+        // Get the material color for this voxel type and biome
+        Color baseColor = GetColorForVoxelType(voxelType, biomeType);
+
+        // Get the decoration model
+        List<DecorationModels.DecorationVoxel> decorationVoxels = DecorationModels.GetDecorationModel(voxelType, baseColor);
+
+        // Check if this voxel has custom placement information
+        DecorationClusters.DecorationPlacement placement;
+        bool hasCustomPlacement = chunk.TryGetDecorationPlacement(x, y, z, out placement);
+
+        // Apply custom placement if available
+        Vector2 offset = Vector2.Zero;
+        float rotation = 0;
+        float scaleMultiplier = 1.0f;
+
+        if (hasCustomPlacement)
+        {
+            // Use the custom placement information
+            offset = placement.Offset;
+            rotation = placement.Rotation;
+            scaleMultiplier = placement.Scale;
+        }
+
+        // Create a rotation matrix for the decoration
+        Transform3D rotationTransform = Transform3D.Identity;
+        if (rotation != 0)
+        {
+            rotationTransform = rotationTransform.Rotated(Vector3.Up, Mathf.DegToRad(rotation));
+        }
+
+        // Add each voxel in the decoration model
+        foreach (var decorationVoxel in decorationVoxels)
+        {
+            // Apply the random offset to the base position
+            Vector3 offsetPosition = basePosition;
+            offsetPosition.X += offset.X * chunkScale;
+            offsetPosition.Z += offset.Y * chunkScale;
+
+            // Apply rotation to the decoration voxel position
+            Vector3 rotatedPosition = decorationVoxel.Position;
+            if (rotation != 0)
+            {
+                rotatedPosition = rotationTransform * rotatedPosition;
+            }
+
+            // Calculate the position for this decoration voxel with all transformations
+            Vector3 voxelPosition = offsetPosition + centeringOffset + rotatedPosition * finalScale * scaleMultiplier;
+
+            // Apply scale variation
+            float voxelScale = decorationVoxel.Scale * finalScale * scaleMultiplier;
+
+            // Add a cube for this decoration voxel
+            AddDecorationCube(meshData, voxelPosition, voxelScale, decorationVoxel.Color, vertexCount);
+
+            // Update vertex count for the next cube
+            vertexCount += 24; // 24 vertices per cube (4 vertices per face * 6 faces)
+        }
+    }
+
+    // Helper method to get the color for a voxel type in a specific biome
+    private Color GetColorForVoxelType(VoxelType voxelType, BiomeType biomeType)
+    {
+        // Default color (white)
+        Color color = new Color(1.0f, 1.0f, 1.0f);
+
+        // Get the material for this voxel type and biome
+        Material material = BiomeMaterials.GetMaterial(biomeType, voxelType);
+
+        // Try to get the albedo color from the material
+        if (material is StandardMaterial3D standardMaterial)
+        {
+            color = standardMaterial.AlbedoColor;
+        }
+
+        return color;
+    }
+
+    // Add a cube for a decoration voxel
+    private void AddDecorationCube(MeshData meshData, Vector3 position, float scale, Color color, int vertexOffset)
+    {
+        // Calculate half size for the cube
+        float halfSize = scale * 0.5f;
+
+        // Define the 8 corners of the cube
+        Vector3 v0 = position + new Vector3(-halfSize, -halfSize, -halfSize); // Bottom back left
+        Vector3 v1 = position + new Vector3(halfSize, -halfSize, -halfSize);  // Bottom back right
+        Vector3 v2 = position + new Vector3(halfSize, -halfSize, halfSize);   // Bottom front right
+        Vector3 v3 = position + new Vector3(-halfSize, -halfSize, halfSize);  // Bottom front left
+        Vector3 v4 = position + new Vector3(-halfSize, halfSize, -halfSize);  // Top back left
+        Vector3 v5 = position + new Vector3(halfSize, halfSize, -halfSize);   // Top back right
+        Vector3 v6 = position + new Vector3(halfSize, halfSize, halfSize);    // Top front right
+        Vector3 v7 = position + new Vector3(-halfSize, halfSize, halfSize);   // Top front left
+
+        // Define the 6 faces of the cube (each face has 4 vertices)
+        // Bottom face
+        AddQuad(meshData, v0, v1, v2, v3, color, vertexOffset);
+
+        // Top face
+        AddQuad(meshData, v7, v6, v5, v4, color, vertexOffset + 4);
+
+        // Front face
+        AddQuad(meshData, v3, v2, v6, v7, color, vertexOffset + 8);
+
+        // Back face
+        AddQuad(meshData, v4, v5, v1, v0, color, vertexOffset + 12);
+
+        // Left face
+        AddQuad(meshData, v0, v3, v7, v4, color, vertexOffset + 16);
+
+        // Right face
+        AddQuad(meshData, v1, v5, v6, v2, color, vertexOffset + 20);
+    }
+
+    // Add a quad (4 vertices and 2 triangles)
+    private void AddQuad(MeshData meshData, Vector3 v0, Vector3 v1, Vector3 v2, Vector3 v3, Color color, int vertexOffset)
+    {
+        // Add vertices
+        meshData.Vertices.Add(v0);
+        meshData.Vertices.Add(v1);
+        meshData.Vertices.Add(v2);
+        meshData.Vertices.Add(v3);
+
+        // Calculate normal from vertices
+        Vector3 edge1 = v1 - v0;
+        Vector3 edge2 = v3 - v0;
+        Vector3 normal = edge1.Cross(edge2).Normalized();
+
+        // Add normals
+        meshData.Normals.Add(normal);
+        meshData.Normals.Add(normal);
+        meshData.Normals.Add(normal);
+        meshData.Normals.Add(normal);
+
+        // Add colors
+        meshData.Colors.Add(color);
+        meshData.Colors.Add(color);
+        meshData.Colors.Add(color);
+        meshData.Colors.Add(color);
+
+        // Add UVs (simple mapping)
+        meshData.UVs.Add(new Vector2(0, 0));
+        meshData.UVs.Add(new Vector2(1, 0));
+        meshData.UVs.Add(new Vector2(1, 1));
+        meshData.UVs.Add(new Vector2(0, 1));
+
+        // Add ambient occlusion values (full brightness for decorations)
+        meshData.AmbientOcclusion.Add(1.0f);
+        meshData.AmbientOcclusion.Add(1.0f);
+        meshData.AmbientOcclusion.Add(1.0f);
+        meshData.AmbientOcclusion.Add(1.0f);
+
+        // Add indices for two triangles
+        meshData.Indices.Add(vertexOffset);
+        meshData.Indices.Add(vertexOffset + 1);
+        meshData.Indices.Add(vertexOffset + 2);
+
+        meshData.Indices.Add(vertexOffset);
+        meshData.Indices.Add(vertexOffset + 2);
+        meshData.Indices.Add(vertexOffset + 3);
+    }
+
+
+
     private enum FaceDirection
     {
         Top,
@@ -786,4 +1032,5 @@ public class MeshData
     public List<Vector2> UVs { get; private set; } = new List<Vector2>();
     public List<int> Indices { get; private set; } = new List<int>();
     public List<float> AmbientOcclusion { get; private set; } = new List<float>();
+    public List<Color> Colors { get; private set; } = new List<Color>();
 }

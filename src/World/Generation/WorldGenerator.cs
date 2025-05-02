@@ -14,6 +14,9 @@ public partial class WorldGenerator : Node3D
 	[Export] public float VoxelScale { get; set; } = 0.5f; // Scale of each voxel (0.5 = double resolution)
 	public int ViewDistance { get; set; } = 5;
 
+	// Public constant for chunk size to be used by other classes
+	public const int CHUNK_SIZE = 16;
+
 
 	private FastNoiseLite _terrainNoise;
 	private FastNoiseLite _biomeNoise;
@@ -276,6 +279,9 @@ public partial class WorldGenerator : Node3D
 		// Generate trees and other biome objects
 		Random random = new Random(Seed + chunkPos.X * 10000 + chunkPos.Y);
 
+		// Initialize decoration clusters for this chunk
+		DecorationClusters.InitializeChunkClusters(chunkPos, chunkSize, random);
+
 		for (int x = 0; x < chunkSize; x++)
 		{
 			for (int z = 0; z < chunkSize; z++)
@@ -285,20 +291,89 @@ public partial class WorldGenerator : Node3D
 
 				BiomeType biomeType = GetBiomeType(worldX, worldZ);
 
+				// Find surface height
+				int surfaceHeight = -1;
+				for (int y = ChunkHeight - 1; y >= 0; y--)
+				{
+					if (chunk.GetVoxel(x, y, z) != VoxelType.Air)
+					{
+						surfaceHeight = y;
+						break;
+					}
+				}
+
+				// Only proceed if we found a surface
+				if (surfaceHeight < 0)
+					continue;
+
+				// Add decorations based on clusters
+				if (chunk.GetVoxel(x, surfaceHeight, z) != VoxelType.Air && surfaceHeight + 1 < chunk.Height)
+				{
+					// Only place decorations if the block above is air
+					if (chunk.GetVoxel(x, surfaceHeight + 1, z) == VoxelType.Air)
+					{
+						// Use the already calculated world position
+						Vector2I worldPos = new Vector2I(worldX, worldZ);
+
+						// Check if this position should have a decoration based on clusters
+						DecorationClusters.DecorationPlacement placement;
+						if (DecorationClusters.ShouldPlaceDecoration(worldPos, out placement, random))
+						{
+							// Check if the decoration is appropriate for the surface block
+							bool canPlace = false;
+
+							switch (placement.Type)
+							{
+								case VoxelType.TallGrass:
+								case VoxelType.Flower:
+									// Grass and flowers only on grass blocks
+									canPlace = chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass;
+									break;
+
+								case VoxelType.Mushroom:
+									// Mushrooms on grass or dirt
+									canPlace = chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass ||
+											  chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Dirt;
+									break;
+
+								case VoxelType.Rock:
+									// Rocks can go on any surface
+									canPlace = true;
+									break;
+
+								case VoxelType.Stick:
+									// Sticks primarily in forests on grass or dirt
+									canPlace = chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass ||
+											  chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Dirt;
+									break;
+
+								case VoxelType.Seashell:
+									// Seashells only on sand
+									canPlace = chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Sand;
+									break;
+
+								default:
+									canPlace = false;
+									break;
+							}
+
+							// Place the decoration if appropriate
+							if (canPlace)
+							{
+								// Store the decoration type in the voxel data
+								chunk.SetVoxel(x, surfaceHeight + 1, z, placement.Type);
+
+								// Store the placement information in the chunk's metadata
+								// This will be used by the mesh generator to position the decoration
+								chunk.SetDecorationPlacement(x, surfaceHeight + 1, z, placement);
+							}
+						}
+					}
+				}
+
 				// Only add trees in Forest biome with reduced probability (more spaced out)
 				if (biomeType == BiomeType.Forest && random.NextDouble() < 0.008) // Reduced from 0.02 to 0.008
 				{
-					// Find surface height
-					int surfaceHeight = -1;
-					for (int y = ChunkHeight - 1; y >= 0; y--)
-					{
-						if (chunk.GetVoxel(x, y, z) != VoxelType.Air)
-						{
-							surfaceHeight = y;
-							break;
-						}
-					}
-
 					if (surfaceHeight >= 0 && chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass)
 					{
 						// Calculate max leaf radius for this tree (for boundary check)

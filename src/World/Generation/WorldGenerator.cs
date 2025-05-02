@@ -300,20 +300,58 @@ public partial class WorldGenerator : Node3D
 				if (surfaceHeight < 0)
 					continue;
 
-				// Add small grass in Plains biome
-				if (biomeType == BiomeType.Plains && chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass)
+				// Add decorations based on biome type
+				if (chunk.GetVoxel(x, surfaceHeight, z) != VoxelType.Air && surfaceHeight + 1 < chunk.Height)
 				{
-					// Add tiny (1/4) grass with a reduced probability
-					if (random.NextDouble() < 0.15) // 15% chance for grass (reduced from 30%)
+					// Only place decorations if the block above is air
+					if (chunk.GetVoxel(x, surfaceHeight + 1, z) == VoxelType.Air)
 					{
-						// Keep the grass block and add tiny grass on top
-						if (surfaceHeight + 1 < chunk.Height)
+						// Different decorations based on biome
+						switch (biomeType)
 						{
-							// Only place tiny grass if the block above is air
-							if (chunk.GetVoxel(x, surfaceHeight + 1, z) == VoxelType.Air)
-							{
-								chunk.SetVoxel(x, surfaceHeight + 1, z, VoxelType.TinyGrass);
-							}
+							case BiomeType.Plains:
+								// Add tall grass in Plains biome on grass blocks
+								if (chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass && random.NextDouble() < 0.15)
+								{
+									chunk.SetVoxel(x, surfaceHeight + 1, z, VoxelType.TallGrass);
+								}
+								// Add flowers in Plains biome on grass blocks (more rare)
+								else if (chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass && random.NextDouble() < 0.02)
+								{
+									chunk.SetVoxel(x, surfaceHeight + 1, z, VoxelType.Flower);
+								}
+								break;
+
+							case BiomeType.Forest:
+								// Add mushrooms in Forest biome on grass or dirt blocks (rare)
+								if ((chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass ||
+									chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Dirt) &&
+									random.NextDouble() < 0.01)
+								{
+									chunk.SetVoxel(x, surfaceHeight + 1, z, VoxelType.Mushroom);
+								}
+								// Add sticks in Forest biome (more common)
+								else if (random.NextDouble() < 0.03)
+								{
+									chunk.SetVoxel(x, surfaceHeight + 1, z, VoxelType.Stick);
+								}
+								break;
+
+							case BiomeType.Desert:
+								// Add rocks in Desert biome on sand blocks
+								if (chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Sand && random.NextDouble() < 0.03)
+								{
+									chunk.SetVoxel(x, surfaceHeight + 1, z, VoxelType.Rock);
+								}
+								break;
+
+							case BiomeType.Tundra:
+								// Add rocks in Tundra biome
+								if (random.NextDouble() < 0.02)
+								{
+									chunk.SetVoxel(x, surfaceHeight + 1, z, VoxelType.Rock);
+								}
+								break;
 						}
 					}
 				}

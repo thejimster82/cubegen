@@ -267,18 +267,18 @@ public class ChunkMeshGenerator
                     // Create mesh data for this voxel
                     MeshData meshData = new MeshData();
 
-                    // Special handling for grass types
-                    bool isGrassType = voxelType == VoxelType.TinyGrass;
+                    // Special handling for decoration types
+                    bool isDecoration = VoxelProperties.IsDecoration(voxelType);
 
                     // Check each face and add to mesh data
-                    if (isGrassType)
+                    if (isDecoration)
                     {
-                        // For small grass types, we'll create a cross-shaped mesh instead of a cube
-                        AddGrassFaces(chunk, x, y, z, voxelType, meshData);
+                        // For decoration types, we'll create a cross-shaped mesh instead of a cube
+                        AddDecorationFaces(chunk, x, y, z, voxelType, meshData);
                     }
                     else
                     {
-                        // Regular voxel faces for non-grass types
+                        // Regular voxel faces for non-decoration types
                         AddVoxelFaces(chunk, x, y, z, voxelType, meshData);
                     }
 
@@ -332,18 +332,18 @@ public class ChunkMeshGenerator
                     // Create mesh data for this voxel
                     MeshData meshData = new MeshData();
 
-                    // Special handling for grass types
-                    bool isGrassType = voxelType == VoxelType.TinyGrass;
+                    // Special handling for decoration types
+                    bool isDecoration = VoxelProperties.IsDecoration(voxelType);
 
                     // Check each face and add to mesh data
-                    if (isGrassType)
+                    if (isDecoration)
                     {
-                        // For small grass types, we'll create a cross-shaped mesh instead of a cube
-                        AddGrassFaces(chunk, x, y, z, voxelType, meshData);
+                        // For decoration types, we'll create a cross-shaped mesh instead of a cube
+                        AddDecorationFaces(chunk, x, y, z, voxelType, meshData);
                     }
                     else
                     {
-                        // Regular voxel faces for non-grass types
+                        // Regular voxel faces for non-decoration types
                         AddVoxelFaces(chunk, x, y, z, voxelType, meshData);
                     }
 
@@ -465,12 +465,12 @@ public class ChunkMeshGenerator
                 }
 
                 // Add vertices and indices to collision data
-                // Skip collision data for grass types
-                bool isGrassType = voxelType == VoxelType.TinyGrass;
+                // Skip collision data for decoration types
+                bool hasCollider = VoxelProperties.HasCollider(voxelType);
 
-                if (!isGrassType)
+                if (hasCollider)
                 {
-                    // Only add collision data for non-grass types
+                    // Only add collision data for voxels that should have colliders
                     allVertices.AddRange(vertices);
                     foreach (int index in indices)
                     {
@@ -776,9 +776,9 @@ public class ChunkMeshGenerator
             // Get the voxel type
             VoxelType voxelType = chunk.GetVoxel(x, y, z);
 
-            // Special case: don't consider grass types as solid for AO calculations
-            // This ensures grass blocks remain visible even with grass on top
-            if (voxelType == VoxelType.TinyGrass)
+            // Special case: don't consider decoration types as solid for AO calculations
+            // This ensures blocks remain visible even with decorations on top
+            if (VoxelProperties.IsDecoration(voxelType))
             {
                 return false;
             }
@@ -825,7 +825,7 @@ public class ChunkMeshGenerator
         return topSolid && bottomSolid && frontSolid && backSolid && rightSolid && leftSolid;
     }
 
-    private void AddGrassFaces(VoxelChunk chunk, int x, int y, int z, VoxelType voxelType, MeshData meshData)
+    private void AddDecorationFaces(VoxelChunk chunk, int x, int y, int z, VoxelType voxelType, MeshData meshData)
     {
         // Get current vertex count
         int vertexCount = meshData.Vertices.Count;
@@ -837,7 +837,7 @@ public class ChunkMeshGenerator
         float chunkScale = chunk.Scale;
 
         // Get voxel-specific scale factor
-        float voxelScaleFactor = VoxelScaleHelper.GetScaleFactor(voxelType);
+        float voxelScaleFactor = VoxelProperties.GetScaleFactor(voxelType);
 
         // Calculate the final scale (chunk scale * voxel scale factor)
         float finalScale = chunkScale * voxelScaleFactor;
@@ -846,32 +846,81 @@ public class ChunkMeshGenerator
         Vector3 basePosition = new Vector3(x, y, z) * chunkScale;
 
         // Calculate offset to center smaller voxels within the full voxel space
-        Vector3 centeringOffset = VoxelScaleHelper.GetCenteringOffset(voxelType);
+        Vector3 centeringOffset = VoxelProperties.GetCenteringOffset(voxelType);
 
-        // Calculate AO values - use a simplified version for grass
-        float aoValue = 1.0f; // No AO for grass to keep it bright
+        // Calculate AO values - use a simplified version for decorations
+        float aoValue = 1.0f; // No AO for decorations to keep them bright
 
-        // Create two crossed planes for grass
+        // Create two crossed planes for the decoration
         // First plane (X-shaped when viewed from above)
-        AddGrassPlane(meshData, basePosition, centeringOffset, finalScale, voxelScaleFactor, 0, faceUVs, aoValue, vertexCount);
+        AddDecorationPlane(meshData, basePosition, centeringOffset, finalScale, voxelScaleFactor, 0, faceUVs, aoValue, vertexCount, voxelType);
 
         // Second plane (rotated 90 degrees, +-shaped when viewed from above)
-        AddGrassPlane(meshData, basePosition, centeringOffset, finalScale, voxelScaleFactor, 90, faceUVs, aoValue, vertexCount + 4);
+        AddDecorationPlane(meshData, basePosition, centeringOffset, finalScale, voxelScaleFactor, 90, faceUVs, aoValue, vertexCount + 4, voxelType);
     }
 
-    private void AddGrassPlane(MeshData meshData, Vector3 basePosition, Vector3 centeringOffset, float finalScale,
-                              float voxelScaleFactor, float rotationDegrees, Vector2[] faceUVs, float aoValue, int vertexOffset)
+    private void AddDecorationPlane(MeshData meshData, Vector3 basePosition, Vector3 centeringOffset, float finalScale,
+                              float voxelScaleFactor, float rotationDegrees, Vector2[] faceUVs, float aoValue, int vertexOffset, VoxelType voxelType)
     {
         // Convert rotation to radians
         float rotationRadians = Mathf.DegToRad(rotationDegrees);
 
-        // Calculate height of the grass - make it significantly taller
-        float height = 3.5f;
+        // Calculate height based on decoration type
+        float height = 3.5f; // Default tall height for grass
 
-        // Calculate half width for the grass blade - make it wider
+        // Adjust height based on decoration type
+        switch (voxelType)
+        {
+            case VoxelType.TallGrass:
+                height = 3.5f; // Tall grass
+                break;
+            case VoxelType.Flower:
+                height = 2.0f; // Shorter than grass
+                break;
+            case VoxelType.Mushroom:
+                height = 1.5f; // Short mushroom
+                break;
+            case VoxelType.Rock:
+                height = 0.8f; // Very short rock
+                break;
+            case VoxelType.Stick:
+                height = 0.5f; // Very short stick
+                break;
+            case VoxelType.Seashell:
+                height = 0.4f; // Very short seashell
+                break;
+            default:
+                height = 1.0f; // Default height
+                break;
+        }
+
+        // Calculate half width for the decoration - adjust based on type
         float halfWidth = voxelScaleFactor * 0.8f;
 
-        // Calculate center point for the grass
+        // Adjust width based on decoration type
+        switch (voxelType)
+        {
+            case VoxelType.TallGrass:
+                halfWidth = voxelScaleFactor * 0.8f; // Thin grass
+                break;
+            case VoxelType.Flower:
+                halfWidth = voxelScaleFactor * 0.9f; // Wider flower
+                break;
+            case VoxelType.Mushroom:
+                halfWidth = voxelScaleFactor * 1.0f; // Wide mushroom
+                break;
+            case VoxelType.Rock:
+                halfWidth = voxelScaleFactor * 1.2f; // Wide rock
+                break;
+            case VoxelType.Stick:
+                halfWidth = voxelScaleFactor * 0.6f; // Thin stick
+                break;
+            case VoxelType.Seashell:
+                halfWidth = voxelScaleFactor * 0.7f; // Medium seashell
+                break;
+        }
+
+        // Calculate center point for the decoration
         float centerX = centeringOffset.X + (voxelScaleFactor * 0.5f);
         float centerZ = centeringOffset.Z + (voxelScaleFactor * 0.5f);
 

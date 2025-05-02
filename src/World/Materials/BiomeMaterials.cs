@@ -74,15 +74,6 @@ public static class BiomeMaterials
             case VoxelType.Grass:
                 material.AlbedoColor = new Color(0.4f, 0.83f, 0.3f); // Bright green
                 break;
-            case VoxelType.SmallGrass:
-                material.AlbedoColor = new Color(0.45f, 0.85f, 0.35f); // Slightly brighter green for small grass
-                break;
-            case VoxelType.TinyGrass:
-                material.AlbedoColor = new Color(0.5f, 0.87f, 0.4f); // Even brighter green for tiny grass
-                break;
-            case VoxelType.MicroGrass:
-                material.AlbedoColor = new Color(0.55f, 0.9f, 0.45f); // Brightest green for micro grass
-                break;
             case VoxelType.Dirt:
                 material.AlbedoColor = new Color(0.6f, 0.4f, 0.2f); // Brown
                 break;
@@ -97,6 +88,26 @@ public static class BiomeMaterials
                 break;
             case VoxelType.Leaves:
                 material.AlbedoColor = new Color(0.35f, 0.75f, 0.25f); // Brighter green for Plains biome
+                break;
+
+            // Decoration types
+            case VoxelType.TallGrass:
+                material.AlbedoColor = new Color(0.5f, 0.87f, 0.4f); // Bright green for tall grass
+                break;
+            case VoxelType.Flower:
+                material.AlbedoColor = new Color(0.95f, 0.6f, 0.7f); // Pink flower
+                break;
+            case VoxelType.Mushroom:
+                material.AlbedoColor = new Color(0.9f, 0.4f, 0.4f); // Red mushroom
+                break;
+            case VoxelType.Rock:
+                material.AlbedoColor = new Color(0.7f, 0.7f, 0.7f); // Light gray rock
+                break;
+            case VoxelType.Stick:
+                material.AlbedoColor = new Color(0.6f, 0.4f, 0.2f); // Brown stick
+                break;
+            case VoxelType.Seashell:
+                material.AlbedoColor = new Color(0.95f, 0.9f, 0.8f); // Off-white seashell
                 break;
             case VoxelType.Water:
                 material.AlbedoColor = new Color(0.2f, 0.4f, 0.8f); // Blue

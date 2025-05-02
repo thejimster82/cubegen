@@ -63,8 +63,8 @@ public class VoxelChunk
         {
             VoxelType type = _voxels[x][y][z];
 
-            // Don't consider grass types as solid for visibility calculations
-            if (type == VoxelType.TinyGrass)
+            // Don't consider decoration types as solid for visibility calculations
+            if (VoxelProperties.IsDecoration(type))
             {
                 return false;
             }

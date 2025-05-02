@@ -27,6 +27,9 @@ namespace CubeGen.World.Common
             _voxelCategories[VoxelType.Water] = VoxelCategory.Fluid;
             _voxelCategories[VoxelType.Wood] = VoxelCategory.Structure;
             _voxelCategories[VoxelType.Leaves] = VoxelCategory.Structure;
+            _voxelCategories[VoxelType.Cactus] = VoxelCategory.Structure;
+            _voxelCategories[VoxelType.IceBlock] = VoxelCategory.Structure;
+            _voxelCategories[VoxelType.SnowLeaves] = VoxelCategory.Structure;
 
             // Set decoration categories
             _voxelCategories[VoxelType.TallGrass] = VoxelCategory.Decoration;
@@ -43,6 +46,26 @@ namespace CubeGen.World.Common
             _voxelScales[VoxelType.Rock] = VoxelScale.Half;
             _voxelScales[VoxelType.Stick] = VoxelScale.Half;
             _voxelScales[VoxelType.Seashell] = VoxelScale.Half;
+
+            // Debug output to verify all voxel types are registered
+            DebugCheckVoxelTypes();
+        }
+
+        // Debug method to check if all voxel types are properly registered
+        private static void DebugCheckVoxelTypes()
+        {
+            // Get all voxel types from the enum
+            Array voxelTypes = Enum.GetValues(typeof(VoxelType));
+
+            GD.Print($"VoxelProperties initialized with {voxelTypes.Length} voxel types:");
+
+            // List all registered voxel types
+            foreach (VoxelType type in voxelTypes)
+            {
+                VoxelCategory category = GetCategory(type);
+                VoxelScale scale = GetScale(type);
+                GD.Print($"  - {type}: Category={category}, Scale={scale}");
+            }
         }
 
         // Get the category for a voxel type

@@ -346,24 +346,108 @@ public partial class WorldGenerator : Node3D
 					}
 				}
 
-				// Only add trees in Forest biome with reduced probability (more spaced out)
-				if (biomeType == BiomeType.Forest && random.NextDouble() < 0.008) // Reduced from 0.02 to 0.008
+				// Add biome-specific features with appropriate probability
+				// Check position is safely away from chunk boundaries
+				int safeDistance = 4; // Reduced safe distance to allow more features
+				if (x >= safeDistance && x < (chunkSize - safeDistance) &&
+					z >= safeDistance && z < (chunkSize - safeDistance))
 				{
-					if (surfaceHeight >= 0 && chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass)
+					switch (biomeType)
 					{
-						// Calculate max leaf radius for this tree (for boundary check)
-						int maxLeafRadius = random.Next(4, 8);
+						case BiomeType.Forest:
+							// Add trees in Forest biome
+							if (random.NextDouble() < 0.01) // Adjusted to a more reasonable value
+							{
+								if (surfaceHeight >= 0)
+								{
+									// More lenient check - allow trees on any solid surface in forest biome
+									GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
+								}
+							}
+							break;
 
-						// Check if tree is too close to chunk boundary
-						int safeDistance = maxLeafRadius + 2; // Add a small buffer
+						case BiomeType.Desert:
+							// Add cacti in Desert biome
+							if (random.NextDouble() < 0.008) // Adjusted to a more reasonable value
+							{
+								if (surfaceHeight >= 0)
+								{
+									// More lenient check - allow cacti on any solid surface in desert biome
+									GenerateCactus(chunk, x, z, surfaceHeight, random);
+								}
+							}
+							// Add rock formations in Desert biome
+							else if (random.NextDouble() < 0.006) // Adjusted to a more reasonable value
+							{
+								if (surfaceHeight >= 0)
+								{
+									// More lenient check - allow rock formations on any solid surface in desert biome
+									GenerateRockFormation(chunk, x, z, surfaceHeight, random);
+								}
+							}
+							break;
 
-						// Only generate trees that are safely away from chunk boundaries
-						if (x >= safeDistance && x < (chunkSize - safeDistance) &&
-							z >= safeDistance && z < (chunkSize - safeDistance))
-						{
-							// Generate a detailed tree with trunk and leaves
-							GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
-						}
+						case BiomeType.Plains:
+							// Add small bushes in Plains biome
+							if (random.NextDouble() < 0.01) // Adjusted to a more reasonable value
+							{
+								if (surfaceHeight >= 0)
+								{
+									// More lenient check - allow bushes on any solid surface in plains biome
+									GenerateBush(chunk, x, z, surfaceHeight, random);
+								}
+							}
+							// Add occasional lone trees in Plains biome
+							else if (random.NextDouble() < 0.004) // Adjusted to a more reasonable value
+							{
+								if (surfaceHeight >= 0)
+								{
+									// More lenient check - allow trees on any solid surface in plains biome
+									GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
+								}
+							}
+							break;
+
+						case BiomeType.Mountains:
+							// Add rock spires in Mountains biome
+							if (random.NextDouble() < 0.007) // Adjusted to a more reasonable value
+							{
+								if (surfaceHeight >= 0)
+								{
+									// More lenient check - allow rock spires on any solid surface in mountains biome
+									GenerateRockSpire(chunk, x, z, surfaceHeight, random);
+								}
+							}
+							// Add boulders in Mountains biome
+							else if (random.NextDouble() < 0.01) // Adjusted to a more reasonable value
+							{
+								if (surfaceHeight >= 0)
+								{
+									GenerateBoulder(chunk, x, z, surfaceHeight, random);
+								}
+							}
+							break;
+
+						case BiomeType.Tundra:
+							// Add ice formations in Tundra biome
+							if (random.NextDouble() < 0.008) // Adjusted to a more reasonable value
+							{
+								if (surfaceHeight >= 0)
+								{
+									// More lenient check - allow ice formations on any solid surface in tundra biome
+									GenerateIceFormation(chunk, x, z, surfaceHeight, random);
+								}
+							}
+							// Add snow-covered trees in Tundra biome
+							else if (random.NextDouble() < 0.006) // Adjusted to a more reasonable value
+							{
+								if (surfaceHeight >= 0)
+								{
+									// More lenient check - allow snow trees on any solid surface in tundra biome
+									GenerateSnowTree(chunk, x, z, surfaceHeight, random);
+								}
+							}
+							break;
 					}
 				}
 			}
@@ -454,6 +538,382 @@ public partial class WorldGenerator : Node3D
 								}
 
 								chunk.SetVoxel(nx, ny, nz, VoxelType.Leaves);
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	private static void GenerateCactus(VoxelChunk chunk, int x, int z, int surfaceHeight, Random random)
+	{
+		// Cactus parameters
+		int mainHeight = random.Next(8, 16); // Height of the main trunk
+		bool hasArms = random.NextDouble() < 0.7f; // 70% chance to have arms
+
+		// Generate main trunk
+		for (int y = 1; y <= mainHeight; y++)
+		{
+			if (surfaceHeight + y < chunk.Height)
+			{
+				chunk.SetVoxel(x, surfaceHeight + y, z, VoxelType.Cactus);
+			}
+		}
+
+		// Add arms if needed
+		if (hasArms)
+		{
+			// Determine number of arms (1-2)
+			int numArms = random.Next(1, 3);
+
+			for (int arm = 0; arm < numArms; arm++)
+			{
+				// Determine arm direction (0=+x, 1=-x, 2=+z, 3=-z)
+				int direction = random.Next(0, 4);
+
+				// Determine arm height (somewhere in the middle of the cactus)
+				int armHeight = random.Next(mainHeight / 3, mainHeight * 2 / 3);
+
+				// Determine arm length
+				int armLength = random.Next(3, 7);
+
+				// Calculate direction offsets
+				int dx = 0, dz = 0;
+				switch (direction)
+				{
+					case 0: dx = 1; break;
+					case 1: dx = -1; break;
+					case 2: dz = 1; break;
+					case 3: dz = -1; break;
+				}
+
+				// Generate the arm
+				for (int i = 1; i <= armLength; i++)
+				{
+					int nx = x + dx * i;
+					int nz = z + dz * i;
+					int ny = surfaceHeight + armHeight;
+
+					// Check chunk boundaries
+					if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size && ny < chunk.Height)
+					{
+						chunk.SetVoxel(nx, ny, nz, VoxelType.Cactus);
+
+						// Add a small vertical part at the end of the arm
+						if (i == armLength)
+						{
+							int verticalHeight = random.Next(2, 5);
+							for (int v = 1; v <= verticalHeight; v++)
+							{
+								if (ny + v < chunk.Height)
+								{
+									chunk.SetVoxel(nx, ny + v, nz, VoxelType.Cactus);
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	private static void GenerateRockFormation(VoxelChunk chunk, int x, int z, int surfaceHeight, Random random)
+	{
+		// Rock formation parameters
+		int baseRadius = random.Next(3, 6);
+		int height = random.Next(5, 10);
+
+		// Generate a rounded rock formation
+		for (int y = 0; y < height; y++)
+		{
+			// Rocks get smaller as they go up
+			float heightFactor = 1.0f - (y / (float)height);
+			int currentRadius = (int)Math.Ceiling(baseRadius * heightFactor);
+
+			for (int dx = -currentRadius; dx <= currentRadius; dx++)
+			{
+				for (int dz = -currentRadius; dz <= currentRadius; dz++)
+				{
+					// Create a rounded shape
+					float distance = (float)Math.Sqrt(dx * dx + dz * dz);
+
+					// Add some noise to the edge
+					float edgeNoise = (float)random.NextDouble() * 0.5f;
+					float effectiveRadius = currentRadius - edgeNoise;
+
+					if (distance <= effectiveRadius)
+					{
+						int nx = x + dx;
+						int nz = z + dz;
+						int ny = surfaceHeight + y + 1; // Start one block above surface
+
+						// Check chunk boundaries
+						if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size && ny < chunk.Height)
+						{
+							// Add some randomness to make rocks less uniform
+							if (distance > effectiveRadius - 0.8f && random.NextDouble() < 0.4f)
+							{
+								// Skip some edge blocks randomly
+								continue;
+							}
+
+							chunk.SetVoxel(nx, ny, nz, VoxelType.Stone);
+						}
+					}
+				}
+			}
+		}
+	}
+
+	private static void GenerateBush(VoxelChunk chunk, int x, int z, int surfaceHeight, Random random)
+	{
+		// Bush parameters
+		int radius = random.Next(2, 5);
+		int height = random.Next(2, 4);
+
+		// Generate a small bush (just leaves, no trunk)
+		for (int y = 0; y < height; y++)
+		{
+			// Calculate radius at this height (fuller at bottom, thinner at top)
+			float heightFactor = 1.0f - (y / (float)height) * 0.5f; // Less reduction with height
+			int currentRadius = (int)Math.Ceiling(radius * heightFactor);
+
+			for (int dx = -currentRadius; dx <= currentRadius; dx++)
+			{
+				for (int dz = -currentRadius; dz <= currentRadius; dz++)
+				{
+					// Create a rounded shape
+					float distance = (float)Math.Sqrt(dx * dx + dz * dz);
+
+					// Add some noise to the edge
+					float edgeNoise = (float)random.NextDouble() * 0.7f;
+					float effectiveRadius = currentRadius + edgeNoise;
+
+					if (distance <= effectiveRadius)
+					{
+						int nx = x + dx;
+						int nz = z + dz;
+						int ny = surfaceHeight + y + 1; // Start one block above surface
+
+						// Check chunk boundaries
+						if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size && ny < chunk.Height)
+						{
+							// Add some randomness to make bushes less uniform
+							if (distance > effectiveRadius - 0.8f && random.NextDouble() < 0.4f)
+							{
+								// Skip some edge blocks randomly
+								continue;
+							}
+
+							chunk.SetVoxel(nx, ny, nz, VoxelType.Leaves);
+						}
+					}
+				}
+			}
+		}
+	}
+
+	private static void GenerateRockSpire(VoxelChunk chunk, int x, int z, int surfaceHeight, Random random)
+	{
+		// Rock spire parameters
+		int baseRadius = random.Next(3, 5);
+		int height = random.Next(12, 20);
+
+		// Generate a tall, thin rock spire
+		for (int y = 0; y < height; y++)
+		{
+			// Spires get much thinner as they go up
+			float heightFactor = 1.0f - (y / (float)height) * 0.8f;
+			int currentRadius = (int)Math.Ceiling(baseRadius * heightFactor);
+
+			// Ensure we have at least a 1x1 column at the top
+			currentRadius = Math.Max(1, currentRadius);
+
+			for (int dx = -currentRadius; dx <= currentRadius; dx++)
+			{
+				for (int dz = -currentRadius; dz <= currentRadius; dz++)
+				{
+					// Create a rounded shape
+					float distance = (float)Math.Sqrt(dx * dx + dz * dz);
+
+					// Add some noise to the edge
+					float edgeNoise = (float)random.NextDouble() * 0.3f;
+					float effectiveRadius = currentRadius - edgeNoise;
+
+					if (distance <= effectiveRadius)
+					{
+						int nx = x + dx;
+						int nz = z + dz;
+						int ny = surfaceHeight + y + 1; // Start one block above surface
+
+						// Check chunk boundaries
+						if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size && ny < chunk.Height)
+						{
+							// Add some randomness to make spires less uniform
+							if (distance > effectiveRadius - 0.5f && random.NextDouble() < 0.3f && y > height / 2)
+							{
+								// Skip some edge blocks randomly, more at the top
+								continue;
+							}
+
+							chunk.SetVoxel(nx, ny, nz, VoxelType.Stone);
+						}
+					}
+				}
+			}
+		}
+	}
+
+	private static void GenerateBoulder(VoxelChunk chunk, int x, int z, int surfaceHeight, Random random)
+	{
+		// Boulder parameters
+		int radius = random.Next(3, 6);
+
+		// Generate a roughly spherical boulder
+		for (int dy = -radius; dy <= radius; dy++)
+		{
+			for (int dx = -radius; dx <= radius; dx++)
+			{
+				for (int dz = -radius; dz <= radius; dz++)
+				{
+					// Create a spherical shape
+					float distance = (float)Math.Sqrt(dx * dx + dy * dy + dz * dz);
+
+					// Add some noise to the edge
+					float edgeNoise = (float)random.NextDouble() * 0.5f;
+					float effectiveRadius = radius - edgeNoise;
+
+					if (distance <= effectiveRadius)
+					{
+						int nx = x + dx;
+						int nz = z + dz;
+						int ny = surfaceHeight + dy + radius / 2; // Position boulder half-embedded in ground
+
+						// Check chunk boundaries and ensure we're not placing blocks underground
+						if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size &&
+							ny >= 0 && ny < chunk.Height && ny > surfaceHeight - radius / 2)
+						{
+							// Add some randomness to make boulders less uniform
+							if (distance > effectiveRadius - 0.8f && random.NextDouble() < 0.3f)
+							{
+								// Skip some edge blocks randomly
+								continue;
+							}
+
+							chunk.SetVoxel(nx, ny, nz, VoxelType.Stone);
+						}
+					}
+				}
+			}
+		}
+	}
+
+	private static void GenerateIceFormation(VoxelChunk chunk, int x, int z, int surfaceHeight, Random random)
+	{
+		// Ice formation parameters
+		int baseRadius = random.Next(2, 4);
+		int height = random.Next(6, 12);
+
+		// Generate a crystalline ice formation
+		for (int y = 0; y < height; y++)
+		{
+			// Ice formations get thinner as they go up
+			float heightFactor = 1.0f - (y / (float)height) * 0.7f;
+			int currentRadius = (int)Math.Ceiling(baseRadius * heightFactor);
+
+			for (int dx = -currentRadius; dx <= currentRadius; dx++)
+			{
+				for (int dz = -currentRadius; dz <= currentRadius; dz++)
+				{
+					// Create a more angular, crystalline shape
+					// Use Manhattan distance for a more angular look
+					float distance = Math.Abs(dx) + Math.Abs(dz);
+					float maxDistance = currentRadius * 2;
+
+					if (distance <= maxDistance)
+					{
+						// Add some randomness for crystal-like protrusions
+						if (random.NextDouble() < 0.7f || distance <= maxDistance * 0.5f)
+						{
+							int nx = x + dx;
+							int nz = z + dz;
+							int ny = surfaceHeight + y + 1; // Start one block above surface
+
+							// Check chunk boundaries
+							if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size && ny < chunk.Height)
+							{
+								chunk.SetVoxel(nx, ny, nz, VoxelType.IceBlock);
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	private static void GenerateSnowTree(VoxelChunk chunk, int x, int z, int surfaceHeight, Random random)
+	{
+		// Snow tree parameters - similar to regular trees but with snow-covered leaves
+		int trunkHeight = random.Next(10, 16); // Slightly shorter than regular trees
+		int leafRadius = random.Next(3, 6);    // Slightly smaller than regular trees
+		int leafHeight = random.Next(6, 10);   // Slightly smaller than regular trees
+
+		// Generate trunk
+		for (int y = 1; y <= trunkHeight; y++)
+		{
+			if (surfaceHeight + y < chunk.Height)
+			{
+				chunk.SetVoxel(x, surfaceHeight + y, z, VoxelType.Wood);
+			}
+		}
+
+		// Generate leaf canopy with snow on top
+		int leafStartHeight = surfaceHeight + trunkHeight - leafHeight / 2;
+
+		for (int y = 0; y < leafHeight; y++)
+		{
+			// Calculate the radius at this height (conical shape for snow trees)
+			// Wider at bottom, narrower at top
+			float heightFactor = 1.0f - (y / (float)leafHeight);
+			int currentRadius = (int)Math.Ceiling(leafRadius * heightFactor);
+
+			for (int dx = -currentRadius; dx <= currentRadius; dx++)
+			{
+				for (int dz = -currentRadius; dz <= currentRadius; dz++)
+				{
+					// Create a rounded shape
+					float distance = (float)Math.Sqrt(dx * dx + dz * dz);
+
+					// Add some noise to the edge
+					float edgeNoise = (float)random.NextDouble() * 0.5f;
+					float effectiveRadius = currentRadius + edgeNoise;
+
+					if (distance <= effectiveRadius)
+					{
+						int nx = x + dx;
+						int nz = z + dz;
+						int ny = leafStartHeight + y;
+
+						// Check chunk boundaries
+						if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size && ny < chunk.Height)
+						{
+							// Don't overwrite the trunk
+							if (chunk.GetVoxel(nx, ny, nz) != VoxelType.Wood)
+							{
+								// Use snow-covered leaves for the top layer, regular leaves for lower layers
+								VoxelType leafType = (y == leafHeight - 1 || (y >= leafHeight - 2 && random.NextDouble() < 0.7f))
+									? VoxelType.SnowLeaves
+									: VoxelType.Leaves;
+
+								// Add some randomness to make leaves less uniform
+								if (distance > effectiveRadius - 0.8f && random.NextDouble() < 0.4f)
+								{
+									// Skip some edge leaves randomly
+									continue;
+								}
+
+								chunk.SetVoxel(nx, ny, nz, leafType);
 							}
 						}
 					}

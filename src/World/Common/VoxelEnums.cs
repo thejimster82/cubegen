@@ -25,6 +25,9 @@ namespace CubeGen.World.Common
         Snow,
         Bedrock,
         Cloud,
+        Cactus,       // Cactus block for desert
+        IceBlock,     // Ice block for tundra
+        SnowLeaves,   // Snow-covered leaves for tundra
 
         // Decoration voxels (no colliders)
         TallGrass,    // 1/4 size tall grass

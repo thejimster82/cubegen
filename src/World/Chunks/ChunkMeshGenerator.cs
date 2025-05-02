@@ -268,9 +268,7 @@ public class ChunkMeshGenerator
                     MeshData meshData = new MeshData();
 
                     // Special handling for grass types
-                    bool isGrassType = voxelType == VoxelType.SmallGrass ||
-                                      voxelType == VoxelType.TinyGrass ||
-                                      voxelType == VoxelType.MicroGrass;
+                    bool isGrassType = voxelType == VoxelType.TinyGrass;
 
                     // Check each face and add to mesh data
                     if (isGrassType)
@@ -335,9 +333,7 @@ public class ChunkMeshGenerator
                     MeshData meshData = new MeshData();
 
                     // Special handling for grass types
-                    bool isGrassType = voxelType == VoxelType.SmallGrass ||
-                                      voxelType == VoxelType.TinyGrass ||
-                                      voxelType == VoxelType.MicroGrass;
+                    bool isGrassType = voxelType == VoxelType.TinyGrass;
 
                     // Check each face and add to mesh data
                     if (isGrassType)
@@ -470,9 +466,7 @@ public class ChunkMeshGenerator
 
                 // Add vertices and indices to collision data
                 // Skip collision data for grass types
-                bool isGrassType = voxelType == VoxelType.SmallGrass ||
-                                  voxelType == VoxelType.TinyGrass ||
-                                  voxelType == VoxelType.MicroGrass;
+                bool isGrassType = voxelType == VoxelType.TinyGrass;
 
                 if (!isGrassType)
                 {
@@ -782,11 +776,9 @@ public class ChunkMeshGenerator
             // Get the voxel type
             VoxelType voxelType = chunk.GetVoxel(x, y, z);
 
-            // Special case: don't consider micro grass types as solid for AO calculations
+            // Special case: don't consider grass types as solid for AO calculations
             // This ensures grass blocks remain visible even with grass on top
-            if (voxelType == VoxelType.MicroGrass ||
-                voxelType == VoxelType.SmallGrass ||
-                voxelType == VoxelType.TinyGrass)
+            if (voxelType == VoxelType.TinyGrass)
             {
                 return false;
             }

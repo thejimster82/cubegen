@@ -64,9 +64,7 @@ public class VoxelChunk
             VoxelType type = _voxels[x][y][z];
 
             // Don't consider grass types as solid for visibility calculations
-            if (type == VoxelType.MicroGrass ||
-                type == VoxelType.SmallGrass ||
-                type == VoxelType.TinyGrass)
+            if (type == VoxelType.TinyGrass)
             {
                 return false;
             }

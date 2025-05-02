@@ -71,9 +71,7 @@ public partial class ChunkManager : Node3D
             VoxelType voxelType = chunk.GetVoxel(localX, localY, localZ);
 
             // Special case: don't consider grass types as solid for visibility calculations
-            if (voxelType == VoxelType.MicroGrass ||
-                voxelType == VoxelType.SmallGrass ||
-                voxelType == VoxelType.TinyGrass)
+            if (voxelType == VoxelType.TinyGrass)
             {
                 return false;
             }
@@ -92,9 +90,7 @@ public partial class ChunkManager : Node3D
                 VoxelType voxelType = chunk.GetVoxel(localX, localY, localZ);
 
                 // Special case: don't consider grass types as solid for visibility calculations
-                if (voxelType == VoxelType.MicroGrass ||
-                    voxelType == VoxelType.SmallGrass ||
-                    voxelType == VoxelType.TinyGrass)
+                if (voxelType == VoxelType.TinyGrass)
                 {
                     return false;
                 }

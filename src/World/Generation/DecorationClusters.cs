@@ -51,6 +51,23 @@ namespace CubeGen.World.Generation
             }
         }
 
+        // Structure to hold decoration placement information
+        public struct DecorationPlacement
+        {
+            public VoxelType Type;       // Type of decoration
+            public Vector2 Offset;       // Offset from center of voxel (range: -0.4 to 0.4)
+            public float Rotation;       // Rotation in degrees
+            public float Scale;          // Scale variation (0.8 to 1.2)
+
+            public DecorationPlacement(VoxelType type, Vector2 offset, float rotation, float scale)
+            {
+                Type = type;
+                Offset = offset;
+                Rotation = rotation;
+                Scale = scale;
+            }
+        }
+
         // Initialize clusters for a chunk
         public static void InitializeChunkClusters(Vector2I chunkPos, int chunkSize, Random random)
         {
@@ -164,9 +181,10 @@ namespace CubeGen.World.Generation
         }
 
         // Check if a position is within a cluster and should have a decoration
-        public static bool ShouldPlaceDecoration(Vector2I worldPos, out VoxelType decorationType, Random random)
+        public static bool ShouldPlaceDecoration(Vector2I worldPos, out DecorationPlacement placement, Random random)
         {
-            decorationType = VoxelType.Air; // Default to no decoration
+            // Initialize with default values
+            placement = new DecorationPlacement(VoxelType.Air, Vector2.Zero, 0, 1.0f);
 
             // Check all nearby chunks for clusters
             int chunkSize = WorldGenerator.CHUNK_SIZE;
@@ -246,7 +264,7 @@ namespace CubeGen.World.Generation
                             if (random.NextDouble() < probability)
                             {
                                 // Get the decoration type for this cluster
-                                decorationType = cluster.Type;
+                                VoxelType decorationType = cluster.Type;
 
                                 // Add some variation to the decoration type
                                 if (random.NextDouble() < 0.15f) // 15% chance to vary the decoration
@@ -254,6 +272,24 @@ namespace CubeGen.World.Generation
                                     // Get a variation of the decoration type
                                     decorationType = GetVariationOfDecorationType(decorationType, random);
                                 }
+
+                                // Generate random offset from center of voxel (-0.4 to 0.4)
+                                float offsetX = (float)(random.NextDouble() * 0.8 - 0.4);
+                                float offsetZ = (float)(random.NextDouble() * 0.8 - 0.4);
+
+                                // Generate random rotation (0 to 360 degrees)
+                                float rotation = (float)(random.NextDouble() * 360.0);
+
+                                // Generate random scale variation (0.8 to 1.2)
+                                float scale = 0.8f + (float)(random.NextDouble() * 0.4);
+
+                                // Create the decoration placement
+                                placement = new DecorationPlacement(
+                                    decorationType,
+                                    new Vector2(offsetX, offsetZ),
+                                    rotation,
+                                    scale
+                                );
 
                                 // Update the cluster's item count (this is approximate since we can't modify the struct directly)
                                 // In a real implementation, you'd need to track this differently

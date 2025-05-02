@@ -1,6 +1,8 @@
 using Godot;
 using System;
+using System.Collections.Generic;
 using CubeGen.World.Common;
+using CubeGen.World.Generation;
 
 public class VoxelChunk
 {
@@ -10,6 +12,10 @@ public class VoxelChunk
     public float Scale { get; private set; } = 1.0f;
 
     private VoxelType[][][] _voxels;
+
+    // Dictionary to store decoration placement information
+    // Key is a string in the format "x,y,z", value is the placement data
+    private Dictionary<string, DecorationClusters.DecorationPlacement> _decorationPlacements = new Dictionary<string, DecorationClusters.DecorationPlacement>();
 
     public VoxelChunk(int size, int height, Vector2I position, float scale = 1.0f)
     {
@@ -89,5 +95,47 @@ public class VoxelChunk
     public Vector3 GetWorldPosition()
     {
         return new Vector3(Position.X * Size * Scale, 0, Position.Y * Size * Scale);
+    }
+
+    // Helper method to create a key for the decoration dictionary
+    private string GetDecorationKey(int x, int y, int z)
+    {
+        return $"{x},{y},{z}";
+    }
+
+    // Set decoration placement information for a voxel
+    public void SetDecorationPlacement(int x, int y, int z, DecorationClusters.DecorationPlacement placement)
+    {
+        if (IsInBounds(x, y, z))
+        {
+            string key = GetDecorationKey(x, y, z);
+            _decorationPlacements[key] = placement;
+        }
+    }
+
+    // Get decoration placement information for a voxel
+    public bool TryGetDecorationPlacement(int x, int y, int z, out DecorationClusters.DecorationPlacement placement)
+    {
+        placement = new DecorationClusters.DecorationPlacement(VoxelType.Air, Vector2.Zero, 0, 1.0f);
+
+        if (IsInBounds(x, y, z))
+        {
+            string key = GetDecorationKey(x, y, z);
+            return _decorationPlacements.TryGetValue(key, out placement);
+        }
+
+        return false;
+    }
+
+    // Check if a voxel has decoration placement information
+    public bool HasDecorationPlacement(int x, int y, int z)
+    {
+        if (IsInBounds(x, y, z))
+        {
+            string key = GetDecorationKey(x, y, z);
+            return _decorationPlacements.ContainsKey(key);
+        }
+
+        return false;
     }
 }

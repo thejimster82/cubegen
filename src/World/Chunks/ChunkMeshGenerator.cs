@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Threading;
 using CubeGen.World.Common;
+using CubeGen.World.Generation;
 
 public class ChunkMeshGenerator
 {
@@ -856,14 +857,53 @@ public class ChunkMeshGenerator
         // Get the decoration model
         List<DecorationModels.DecorationVoxel> decorationVoxels = DecorationModels.GetDecorationModel(voxelType, baseColor);
 
+        // Check if this voxel has custom placement information
+        DecorationClusters.DecorationPlacement placement;
+        bool hasCustomPlacement = chunk.TryGetDecorationPlacement(x, y, z, out placement);
+
+        // Apply custom placement if available
+        Vector2 offset = Vector2.Zero;
+        float rotation = 0;
+        float scaleMultiplier = 1.0f;
+
+        if (hasCustomPlacement)
+        {
+            // Use the custom placement information
+            offset = placement.Offset;
+            rotation = placement.Rotation;
+            scaleMultiplier = placement.Scale;
+        }
+
+        // Create a rotation matrix for the decoration
+        Transform3D rotationTransform = Transform3D.Identity;
+        if (rotation != 0)
+        {
+            rotationTransform = rotationTransform.Rotated(Vector3.Up, Mathf.DegToRad(rotation));
+        }
+
         // Add each voxel in the decoration model
         foreach (var decorationVoxel in decorationVoxels)
         {
-            // Calculate the position for this decoration voxel
-            Vector3 voxelPosition = basePosition + centeringOffset + decorationVoxel.Position * finalScale;
+            // Apply the random offset to the base position
+            Vector3 offsetPosition = basePosition;
+            offsetPosition.X += offset.X * chunkScale;
+            offsetPosition.Z += offset.Y * chunkScale;
+
+            // Apply rotation to the decoration voxel position
+            Vector3 rotatedPosition = decorationVoxel.Position;
+            if (rotation != 0)
+            {
+                rotatedPosition = rotationTransform * rotatedPosition;
+            }
+
+            // Calculate the position for this decoration voxel with all transformations
+            Vector3 voxelPosition = offsetPosition + centeringOffset + rotatedPosition * finalScale * scaleMultiplier;
+
+            // Apply scale variation
+            float voxelScale = decorationVoxel.Scale * finalScale * scaleMultiplier;
 
             // Add a cube for this decoration voxel
-            AddDecorationCube(meshData, voxelPosition, decorationVoxel.Scale * finalScale, decorationVoxel.Color, vertexCount);
+            AddDecorationCube(meshData, voxelPosition, voxelScale, decorationVoxel.Color, vertexCount);
 
             // Update vertex count for the next cube
             vertexCount += 24; // 24 vertices per cube (4 vertices per face * 6 faces)

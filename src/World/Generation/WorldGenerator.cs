@@ -316,13 +316,13 @@ public partial class WorldGenerator : Node3D
 						Vector2I worldPos = new Vector2I(worldX, worldZ);
 
 						// Check if this position should have a decoration based on clusters
-						VoxelType decorationType;
-						if (DecorationClusters.ShouldPlaceDecoration(worldPos, out decorationType, random))
+						DecorationClusters.DecorationPlacement placement;
+						if (DecorationClusters.ShouldPlaceDecoration(worldPos, out placement, random))
 						{
 							// Check if the decoration is appropriate for the surface block
 							bool canPlace = false;
 
-							switch (decorationType)
+							switch (placement.Type)
 							{
 								case VoxelType.TallGrass:
 								case VoxelType.Flower:
@@ -360,7 +360,12 @@ public partial class WorldGenerator : Node3D
 							// Place the decoration if appropriate
 							if (canPlace)
 							{
-								chunk.SetVoxel(x, surfaceHeight + 1, z, decorationType);
+								// Store the decoration type in the voxel data
+								chunk.SetVoxel(x, surfaceHeight + 1, z, placement.Type);
+
+								// Store the placement information in the chunk's metadata
+								// This will be used by the mesh generator to position the decoration
+								chunk.SetDecorationPlacement(x, surfaceHeight + 1, z, placement);
 							}
 						}
 					}

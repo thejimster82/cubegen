@@ -186,34 +186,76 @@ public partial class WorldGenerator : Node3D
 
 	private int GenerateTerrainHeight(int worldX, int worldZ, BiomeType biomeType)
 	{
-		// Base terrain height from noise
-		float heightNoise = _terrainNoise.GetNoise2D(worldX, worldZ);
+		// Create a temporary noise instance for biome-specific noise settings
+		FastNoiseLite biomeNoise = new FastNoiseLite();
+		biomeNoise.Seed = _terrainNoise.Seed;
+
+		// Set biome-specific noise characteristics
+		switch (biomeType)
+		{
+			case BiomeType.Desert:
+				// Desert: Low frequency, low octaves for smooth dunes
+				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				biomeNoise.Frequency = 0.008f;
+				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
+				biomeNoise.FractalOctaves = 1;
+				biomeNoise.FractalLacunarity = 2.0f;
+				biomeNoise.FractalGain = 0.5f;
+				break;
+
+			case BiomeType.Plains:
+				// Plains: Medium-low frequency, low octaves for gentle rolling hills
+				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				biomeNoise.Frequency = 0.01f;
+				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
+				biomeNoise.FractalOctaves = 2;
+				biomeNoise.FractalLacunarity = 2.0f;
+				biomeNoise.FractalGain = 0.4f;
+				break;
+
+			case BiomeType.Forest:
+				// Forest: Medium frequency, medium octaves for varied terrain
+				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				biomeNoise.Frequency = 0.012f;
+				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
+				biomeNoise.FractalOctaves = 3;
+				biomeNoise.FractalLacunarity = 2.0f;
+				biomeNoise.FractalGain = 0.5f;
+				break;
+
+			case BiomeType.Mountains:
+				// Mountains: Medium-high frequency, ridged fractal for more dramatic terrain
+				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				biomeNoise.Frequency = 0.015f;
+				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Ridged;
+				biomeNoise.FractalOctaves = 4;
+				biomeNoise.FractalLacunarity = 2.2f;
+				biomeNoise.FractalGain = 0.6f;
+				break;
+
+			case BiomeType.Tundra:
+				// Tundra: Medium frequency, low gain for flatter terrain with occasional features
+				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				biomeNoise.Frequency = 0.011f;
+				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
+				biomeNoise.FractalOctaves = 2;
+				biomeNoise.FractalLacunarity = 1.8f;
+				biomeNoise.FractalGain = 0.3f;
+				break;
+		}
+
+		// Get noise value with biome-specific settings
+		float heightNoise = biomeNoise.GetNoise2D(worldX, worldZ);
 
 		// Convert noise from [-1, 1] to [0, 1]
 		heightNoise = (heightNoise + 1f) * 0.5f;
 
-		// Apply biome-specific height modifications - much flatter for all biomes
-		// Add a consistent base height to ensure terrain is at a predictable level
-		float baseHeight = 0.3f; // Consistent base height for all terrain
+		// Apply a consistent base height for all biomes
+		float baseHeight = 0.3f;
+		float noiseContribution = 0.15f; // How much the noise affects the final height
 
-		switch (biomeType)
-		{
-			case BiomeType.Desert:
-				heightNoise = heightNoise * 0.1f + baseHeight; // Very flat, low
-				break;
-			case BiomeType.Plains:
-				heightNoise = heightNoise * 0.15f + baseHeight; // Very flat
-				break;
-			case BiomeType.Forest:
-				heightNoise = heightNoise * 0.2f + baseHeight; // Slightly more varied but still flat
-				break;
-			case BiomeType.Mountains:
-				heightNoise = heightNoise * 0.3f + baseHeight; // Less mountainous, more like hills
-				break;
-			case BiomeType.Tundra:
-				heightNoise = heightNoise * 0.15f + baseHeight; // Very flat
-				break;
-		}
+		// Combine base height with noise contribution
+		heightNoise = baseHeight + (heightNoise * noiseContribution);
 
 		// Convert to actual height value
 		int height = Mathf.FloorToInt(heightNoise * ChunkHeight);
@@ -221,7 +263,7 @@ public partial class WorldGenerator : Node3D
 		// Debug output for the first chunk to help understand terrain height
 		if (worldX == 0 && worldZ == 0)
 		{
-			GD.Print($"Terrain height at origin: {height}");
+			GD.Print($"Terrain height at origin: {height}, biome: {biomeType}");
 		}
 
 		return height;

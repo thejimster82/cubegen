@@ -1,6 +1,7 @@
 using Godot;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using CubeGen.World.Common;
 
 namespace CubeGen.World.Generation
@@ -103,15 +104,27 @@ public partial class WorldGenerator : Node3D
 				int worldZ = chunkPos.Y * ChunkSize + z;
 
 				// Get biome type based on noise
-				BiomeType biomeType = GetBiomeTypeForChunk(worldX, worldZ);
+				BiomeType primaryBiome = GetBiomeTypeForChunk(worldX, worldZ);
 
-				// Generate terrain height based on noise
-				int terrainHeight = GenerateTerrainHeight(worldX, worldZ, biomeType);
+				// Calculate biome blend weights for this position
+				Dictionary<BiomeType, float> biomeBlendWeights =
+					BiomeRegionGenerator.Instance.CalculateBiomeBlendWeights(worldX, worldZ, 10f);
+
+				// Store blend weights in the chunk for later use
+				foreach (var biomeEntry in biomeBlendWeights)
+				{
+					chunk.SetBiomeBlendWeight(x, z, biomeEntry.Key, biomeEntry.Value);
+				}
+
+				// Generate blended terrain height based on all contributing biomes
+				int terrainHeight = GenerateBlendedTerrainHeight(worldX, worldZ, biomeBlendWeights);
 
 				// Fill voxels from bottom to terrain height
 				for (int y = 0; y < terrainHeight && y < ChunkHeight; y++)
 				{
-					VoxelType voxelType = DetermineVoxelType(y, terrainHeight, biomeType);
+					// Use the primary biome for voxel type determination
+					// This keeps the biome colors distinct while still blending heights
+					VoxelType voxelType = DetermineVoxelType(y, terrainHeight, primaryBiome);
 					chunk.SetVoxel(x, y, z, voxelType);
 				}
 			}
@@ -170,6 +183,9 @@ public partial class WorldGenerator : Node3D
 			return BiomeType.Tundra;
 	}
 
+	/// <summary>
+	/// Generates terrain height for a specific biome
+	/// </summary>
 	private int GenerateTerrainHeight(int worldX, int worldZ, BiomeType biomeType)
 	{
 		// Create a temporary noise instance for biome-specific noise settings
@@ -246,13 +262,67 @@ public partial class WorldGenerator : Node3D
 		// Convert to actual height value
 		int height = Mathf.FloorToInt(heightNoise * ChunkHeight);
 
+		return height;
+	}
+
+	/// <summary>
+	/// Generates terrain height by blending multiple biomes based on blend weights
+	/// </summary>
+	/// <param name="worldX">World X coordinate</param>
+	/// <param name="worldZ">World Z coordinate</param>
+	/// <param name="biomeBlendWeights">Dictionary mapping BiomeType to blend weight (0.0-1.0)</param>
+	/// <returns>Blended terrain height</returns>
+	private int GenerateBlendedTerrainHeight(int worldX, int worldZ, Dictionary<BiomeType, float> biomeBlendWeights)
+	{
+		// If there's only one biome with weight 1.0, use the standard method
+		if (biomeBlendWeights.Count == 1)
+		{
+			BiomeType biomeType = biomeBlendWeights.Keys.First();
+			return GenerateTerrainHeight(worldX, worldZ, biomeType);
+		}
+
+		// Calculate weighted height from all contributing biomes
+		float totalHeight = 0f;
+		float totalWeight = 0f;
+
+		foreach (var biomeEntry in biomeBlendWeights)
+		{
+			BiomeType biomeType = biomeEntry.Key;
+			float weight = biomeEntry.Value;
+
+			if (weight <= 0f)
+				continue;
+
+			// Get height for this biome
+			int biomeHeight = GenerateTerrainHeight(worldX, worldZ, biomeType);
+
+			// Add weighted contribution
+			totalHeight += biomeHeight * weight;
+			totalWeight += weight;
+		}
+
+		// Normalize if needed
+		if (totalWeight > 0f)
+		{
+			totalHeight /= totalWeight;
+		}
+		else
+		{
+			// Fallback to default biome if no weights
+			return GenerateTerrainHeight(worldX, worldZ, BiomeType.Plains);
+		}
+
+		// Convert to integer height
+		int blendedHeight = Mathf.RoundToInt(totalHeight);
+
 		// Debug output for the first chunk to help understand terrain height
 		if (worldX == 0 && worldZ == 0)
 		{
-			GD.Print($"Terrain height at origin: {height}, biome: {biomeType}");
+			string biomeInfo = string.Join(", ", biomeBlendWeights.Select(b => $"{b.Key}:{b.Value:F2}"));
+			GD.Print($"Blended terrain height at origin: {blendedHeight}, biomes: {biomeInfo}");
 		}
 
-		return height;
+		return blendedHeight;
 	}
 
 	private VoxelType DetermineVoxelType(int y, int terrainHeight, BiomeType biomeType)

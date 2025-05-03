@@ -340,6 +340,79 @@ namespace CubeGen.World.Generation
 		}
 
 		/// <summary>
+		/// Checks if a chunk is near any biome boundary
+		/// </summary>
+		/// <param name="chunkPosX">Chunk X position</param>
+		/// <param name="chunkPosZ">Chunk Z position</param>
+		/// <param name="chunkSize">Size of the chunk in blocks</param>
+		/// <param name="blendDistance">Maximum distance to blend (in blocks)</param>
+		/// <returns>True if any part of the chunk is near a biome boundary</returns>
+		public bool IsChunkNearBiomeBoundary(int chunkPosX, int chunkPosZ, int chunkSize, float blendDistance)
+		{
+			// Check corners and center of the chunk
+			int worldX, worldZ;
+
+			// Check center
+			worldX = chunkPosX * chunkSize + chunkSize / 2;
+			worldZ = chunkPosZ * chunkSize + chunkSize / 2;
+			if (GetDistanceToBoundary(worldX, worldZ) <= blendDistance)
+				return true;
+
+			// Check corners
+			// Top-left
+			worldX = chunkPosX * chunkSize;
+			worldZ = chunkPosZ * chunkSize;
+			if (GetDistanceToBoundary(worldX, worldZ) <= blendDistance)
+				return true;
+
+			// Top-right
+			worldX = chunkPosX * chunkSize + chunkSize - 1;
+			worldZ = chunkPosZ * chunkSize;
+			if (GetDistanceToBoundary(worldX, worldZ) <= blendDistance)
+				return true;
+
+			// Bottom-left
+			worldX = chunkPosX * chunkSize;
+			worldZ = chunkPosZ * chunkSize + chunkSize - 1;
+			if (GetDistanceToBoundary(worldX, worldZ) <= blendDistance)
+				return true;
+
+			// Bottom-right
+			worldX = chunkPosX * chunkSize + chunkSize - 1;
+			worldZ = chunkPosZ * chunkSize + chunkSize - 1;
+			if (GetDistanceToBoundary(worldX, worldZ) <= blendDistance)
+				return true;
+
+			// Check midpoints of edges
+			// Top edge
+			worldX = chunkPosX * chunkSize + chunkSize / 2;
+			worldZ = chunkPosZ * chunkSize;
+			if (GetDistanceToBoundary(worldX, worldZ) <= blendDistance)
+				return true;
+
+			// Bottom edge
+			worldX = chunkPosX * chunkSize + chunkSize / 2;
+			worldZ = chunkPosZ * chunkSize + chunkSize - 1;
+			if (GetDistanceToBoundary(worldX, worldZ) <= blendDistance)
+				return true;
+
+			// Left edge
+			worldX = chunkPosX * chunkSize;
+			worldZ = chunkPosZ * chunkSize + chunkSize / 2;
+			if (GetDistanceToBoundary(worldX, worldZ) <= blendDistance)
+				return true;
+
+			// Right edge
+			worldX = chunkPosX * chunkSize + chunkSize - 1;
+			worldZ = chunkPosZ * chunkSize + chunkSize / 2;
+			if (GetDistanceToBoundary(worldX, worldZ) <= blendDistance)
+				return true;
+
+			// If none of the sample points are near a boundary, the chunk is not near a boundary
+			return false;
+		}
+
+		/// <summary>
 		/// Gets neighboring biomes for a world position
 		/// </summary>
 		/// <param name="worldX">World X coordinate</param>

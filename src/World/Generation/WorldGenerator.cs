@@ -94,6 +94,18 @@ public partial class WorldGenerator : Node3D
 		// Create chunk data
 		VoxelChunk chunk = new VoxelChunk(ChunkSize, ChunkHeight, chunkPos, VoxelScale);
 
+		// Check if this chunk is near any biome boundary
+		// Only calculate and store blend weights if it is
+		float blendDistance = 10f;
+		bool isNearBiomeBoundary = BiomeRegionGenerator.Instance.IsChunkNearBiomeBoundary(
+			chunkPos.X, chunkPos.Y, ChunkSize, blendDistance);
+
+		// Debug output to help understand performance improvement
+		if (chunkPos.X % 5 == 0 && chunkPos.Y % 5 == 0)
+		{
+			GD.Print($"Chunk at {chunkPos} is {(isNearBiomeBoundary ? "near" : "not near")} a biome boundary");
+		}
+
 		// Generate terrain for the chunk
 		for (int x = 0; x < ChunkSize; x++)
 		{
@@ -106,14 +118,28 @@ public partial class WorldGenerator : Node3D
 				// Get biome type based on noise
 				BiomeType primaryBiome = GetBiomeTypeForChunk(worldX, worldZ);
 
-				// Calculate biome blend weights for this position
-				Dictionary<BiomeType, float> biomeBlendWeights =
-					BiomeRegionGenerator.Instance.CalculateBiomeBlendWeights(worldX, worldZ, 10f);
+				// Dictionary to hold biome blend weights
+				Dictionary<BiomeType, float> biomeBlendWeights;
 
-				// Store blend weights in the chunk for later use
-				foreach (var biomeEntry in biomeBlendWeights)
+				// Only calculate blend weights if the chunk is near a biome boundary
+				if (isNearBiomeBoundary)
 				{
-					chunk.SetBiomeBlendWeight(x, z, biomeEntry.Key, biomeEntry.Value);
+					// Calculate biome blend weights for this position
+					biomeBlendWeights = BiomeRegionGenerator.Instance.CalculateBiomeBlendWeights(worldX, worldZ, blendDistance);
+
+					// Store blend weights in the chunk for later use
+					foreach (var biomeEntry in biomeBlendWeights)
+					{
+						chunk.SetBiomeBlendWeight(x, z, biomeEntry.Key, biomeEntry.Value);
+					}
+				}
+				else
+				{
+					// If not near a boundary, just use the primary biome with weight 1.0
+					biomeBlendWeights = new Dictionary<BiomeType, float> { { primaryBiome, 1.0f } };
+
+					// Store only the primary biome weight
+					chunk.SetBiomeBlendWeight(x, z, primaryBiome, 1.0f);
 				}
 
 				// Generate blended terrain height based on all contributing biomes
@@ -274,11 +300,33 @@ public partial class WorldGenerator : Node3D
 	/// <returns>Blended terrain height</returns>
 	private int GenerateBlendedTerrainHeight(int worldX, int worldZ, Dictionary<BiomeType, float> biomeBlendWeights)
 	{
-		// If there's only one biome with weight 1.0, use the standard method
+		// Fast path: If there's only one biome with weight 1.0, use the standard method
 		if (biomeBlendWeights.Count == 1)
 		{
 			BiomeType biomeType = biomeBlendWeights.Keys.First();
 			return GenerateTerrainHeight(worldX, worldZ, biomeType);
+		}
+
+		// Fast path: If there are only two biomes and one has a weight of 1.0
+		if (biomeBlendWeights.Count == 2)
+		{
+			bool hasFullWeight = false;
+			BiomeType fullWeightBiome = BiomeType.Plains; // Default, will be overwritten
+
+			foreach (var entry in biomeBlendWeights)
+			{
+				if (Math.Abs(entry.Value - 1.0f) < 0.001f) // Check if weight is very close to 1.0
+				{
+					hasFullWeight = true;
+					fullWeightBiome = entry.Key;
+					break;
+				}
+			}
+
+			if (hasFullWeight)
+			{
+				return GenerateTerrainHeight(worldX, worldZ, fullWeightBiome);
+			}
 		}
 
 		// Calculate weighted height from all contributing biomes
@@ -290,7 +338,7 @@ public partial class WorldGenerator : Node3D
 			BiomeType biomeType = biomeEntry.Key;
 			float weight = biomeEntry.Value;
 
-			if (weight <= 0f)
+			if (weight <= 0.001f) // Skip very small weights
 				continue;
 
 			// Get height for this biome

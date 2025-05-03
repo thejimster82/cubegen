@@ -124,6 +124,17 @@ public static class BiomeMaterials
                 material.Roughness = 0.9f; // Soft, diffuse appearance
                 material.Metallic = 0.0f; // Non-metallic
                 break;
+            case VoxelType.Cactus:
+                material.AlbedoColor = new Color(0.4f, 0.7f, 0.4f); // Green cactus
+                break;
+            case VoxelType.IceBlock:
+                material.AlbedoColor = new Color(0.8f, 0.9f, 1.0f); // Light blue ice
+                material.Roughness = 0.1f; // Smooth and reflective
+                material.Metallic = 0.1f; // Slight metallic look for ice
+                break;
+            case VoxelType.SnowLeaves:
+                material.AlbedoColor = new Color(0.9f, 0.9f, 0.95f); // White with slight blue tint
+                break;
             default:
                 material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // White
                 break;
@@ -187,6 +198,17 @@ public static class BiomeMaterials
                 material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // Pure white
                 material.Roughness = 0.9f; // Soft, diffuse appearance
                 material.Metallic = 0.0f; // Non-metallic
+                break;
+            case VoxelType.Cactus:
+                material.AlbedoColor = new Color(0.35f, 0.6f, 0.35f); // Darker green cactus
+                break;
+            case VoxelType.IceBlock:
+                material.AlbedoColor = new Color(0.7f, 0.8f, 0.9f); // Blueish ice
+                material.Roughness = 0.1f;
+                material.Metallic = 0.1f;
+                break;
+            case VoxelType.SnowLeaves:
+                material.AlbedoColor = new Color(0.85f, 0.9f, 0.85f); // Snow-covered leaves
                 break;
             default:
                 material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // White
@@ -252,6 +274,17 @@ public static class BiomeMaterials
                 material.Roughness = 0.9f; // Soft, diffuse appearance
                 material.Metallic = 0.0f; // Non-metallic
                 break;
+            case VoxelType.Cactus:
+                material.AlbedoColor = new Color(0.5f, 0.7f, 0.3f); // Yellowish-green desert cactus
+                break;
+            case VoxelType.IceBlock:
+                material.AlbedoColor = new Color(0.8f, 0.85f, 0.7f); // Yellowish ice (rare in desert)
+                material.Roughness = 0.2f;
+                material.Metallic = 0.05f;
+                break;
+            case VoxelType.SnowLeaves:
+                material.AlbedoColor = new Color(0.9f, 0.85f, 0.7f); // Sandy-colored snow leaves
+                break;
             default:
                 material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // White
                 break;
@@ -316,6 +349,17 @@ public static class BiomeMaterials
                 material.Roughness = 0.9f; // Soft, diffuse appearance
                 material.Metallic = 0.0f; // Non-metallic
                 break;
+            case VoxelType.Cactus:
+                material.AlbedoColor = new Color(0.3f, 0.5f, 0.25f); // Dark green mountain cactus
+                break;
+            case VoxelType.IceBlock:
+                material.AlbedoColor = new Color(0.6f, 0.7f, 0.8f); // Grayish-blue mountain ice
+                material.Roughness = 0.15f;
+                material.Metallic = 0.1f;
+                break;
+            case VoxelType.SnowLeaves:
+                material.AlbedoColor = new Color(0.8f, 0.85f, 0.9f); // Bluish-white snow leaves
+                break;
             default:
                 material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // White
                 break;
@@ -379,6 +423,17 @@ public static class BiomeMaterials
                 material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // Pure white
                 material.Roughness = 0.9f; // Soft, diffuse appearance
                 material.Metallic = 0.0f; // Non-metallic
+                break;
+            case VoxelType.Cactus:
+                material.AlbedoColor = new Color(0.4f, 0.5f, 0.4f); // Pale green tundra cactus
+                break;
+            case VoxelType.IceBlock:
+                material.AlbedoColor = new Color(0.85f, 0.9f, 1.0f); // Bright blue tundra ice
+                material.Roughness = 0.05f;
+                material.Metallic = 0.15f;
+                break;
+            case VoxelType.SnowLeaves:
+                material.AlbedoColor = new Color(0.9f, 0.95f, 1.0f); // Bright white snow leaves
                 break;
             default:
                 material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // White

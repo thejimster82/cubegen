@@ -106,6 +106,34 @@ public partial class WorldGenerator : Node3D
 			GD.Print($"Chunk at {chunkPos} is {(isNearBiomeBoundary ? "near" : "not near")} a biome boundary");
 		}
 
+		// OPTIMIZATION: Pre-calculate blend weights on a coarser grid if near boundary
+		// Use a 4x4 grid instead of calculating for every voxel
+		Dictionary<BiomeType, float>[,] blendWeightsGrid = null;
+		int gridSize = 4; // 4x4 grid for the chunk
+
+		if (isNearBiomeBoundary)
+		{
+			blendWeightsGrid = new Dictionary<BiomeType, float>[gridSize, gridSize];
+
+			// Calculate blend weights only at grid points
+			for (int gx = 0; gx < gridSize; gx++)
+			{
+				for (int gz = 0; gz < gridSize; gz++)
+				{
+					// Calculate world coordinates for this grid point
+					int worldX = chunkPos.X * ChunkSize + (gx * ChunkSize / (gridSize - 1));
+					int worldZ = chunkPos.Y * ChunkSize + (gz * ChunkSize / (gridSize - 1));
+
+					// Handle edge case for last grid point
+					if (gx == gridSize - 1) worldX = chunkPos.X * ChunkSize + ChunkSize - 1;
+					if (gz == gridSize - 1) worldZ = chunkPos.Y * ChunkSize + ChunkSize - 1;
+
+					// Calculate blend weights at this grid point
+					blendWeightsGrid[gx, gz] = BiomeRegionGenerator.Instance.CalculateBiomeBlendWeights(worldX, worldZ, blendDistance);
+				}
+			}
+		}
+
 		// Generate terrain for the chunk
 		for (int x = 0; x < ChunkSize; x++)
 		{
@@ -121,11 +149,11 @@ public partial class WorldGenerator : Node3D
 				// Dictionary to hold biome blend weights
 				Dictionary<BiomeType, float> biomeBlendWeights;
 
-				// Only calculate blend weights if the chunk is near a biome boundary
+				// Only use interpolated blend weights if the chunk is near a biome boundary
 				if (isNearBiomeBoundary)
 				{
-					// Calculate biome blend weights for this position
-					biomeBlendWeights = BiomeRegionGenerator.Instance.CalculateBiomeBlendWeights(worldX, worldZ, blendDistance);
+					// OPTIMIZATION: Interpolate blend weights from the pre-calculated grid
+					biomeBlendWeights = InterpolateBlendWeights(x, z, blendWeightsGrid, gridSize, ChunkSize);
 
 					// Store blend weights in the chunk for later use
 					foreach (var biomeEntry in biomeBlendWeights)
@@ -373,7 +401,93 @@ public partial class WorldGenerator : Node3D
 		return blendedHeight;
 	}
 
-	private VoxelType DetermineVoxelType(int y, int terrainHeight, BiomeType biomeType)
+	/// <summary>
+	/// Interpolates blend weights from a pre-calculated grid
+	/// </summary>
+	/// <param name="x">X coordinate within the chunk</param>
+	/// <param name="z">Z coordinate within the chunk</param>
+	/// <param name="blendWeightsGrid">Pre-calculated grid of blend weights</param>
+	/// <param name="gridSize">Size of the grid (e.g., 4 for a 4x4 grid)</param>
+	/// <param name="chunkSize">Size of the chunk in voxels</param>
+	/// <returns>Interpolated blend weights for the given position</returns>
+	private static Dictionary<BiomeType, float> InterpolateBlendWeights(
+		int x, int z,
+		Dictionary<BiomeType, float>[,] blendWeightsGrid,
+		int gridSize, int chunkSize)
+	{
+		// Convert x,z to normalized coordinates in the grid (0.0 to 1.0)
+		float normalizedX = x / (float)(chunkSize - 1);
+		float normalizedZ = z / (float)(chunkSize - 1);
+
+		// Convert to grid coordinates
+		float gridX = normalizedX * (gridSize - 1);
+		float gridZ = normalizedZ * (gridSize - 1);
+
+		// Get the four surrounding grid points
+		int gridX1 = Mathf.FloorToInt(gridX);
+		int gridZ1 = Mathf.FloorToInt(gridZ);
+		int gridX2 = Mathf.Min(gridX1 + 1, gridSize - 1);
+		int gridZ2 = Mathf.Min(gridZ1 + 1, gridSize - 1);
+
+		// Calculate interpolation factors
+		float factorX = gridX - gridX1;
+		float factorZ = gridZ - gridZ1;
+
+		// Get the four corner weights
+		var weights11 = blendWeightsGrid[gridX1, gridZ1];
+		var weights12 = blendWeightsGrid[gridX1, gridZ2];
+		var weights21 = blendWeightsGrid[gridX2, gridZ1];
+		var weights22 = blendWeightsGrid[gridX2, gridZ2];
+
+		// Collect all biome types from the four corners
+		var allBiomes = new HashSet<BiomeType>(weights11.Keys);
+		allBiomes.UnionWith(weights12.Keys);
+		allBiomes.UnionWith(weights21.Keys);
+		allBiomes.UnionWith(weights22.Keys);
+
+		// Create result dictionary
+		var result = new Dictionary<BiomeType, float>();
+
+		// Bilinear interpolation for each biome
+		foreach (var biome in allBiomes)
+		{
+			// Get weights from each corner (default to 0 if not present)
+			weights11.TryGetValue(biome, out float w11);
+			weights12.TryGetValue(biome, out float w12);
+			weights21.TryGetValue(biome, out float w21);
+			weights22.TryGetValue(biome, out float w22);
+
+			// Bilinear interpolation
+			float topInterp = Mathf.Lerp(w11, w21, factorX);
+			float bottomInterp = Mathf.Lerp(w12, w22, factorX);
+			float finalWeight = Mathf.Lerp(topInterp, bottomInterp, factorZ);
+
+			// Only add biomes with significant weight
+			if (finalWeight > 0.001f)
+			{
+				result[biome] = finalWeight;
+			}
+		}
+
+		// Normalize weights to ensure they sum to 1.0
+		float totalWeight = 0f;
+		foreach (var weight in result.Values)
+		{
+			totalWeight += weight;
+		}
+
+		if (totalWeight > 0f)
+		{
+			foreach (var biome in result.Keys.ToArray())
+			{
+				result[biome] /= totalWeight;
+			}
+		}
+
+		return result;
+	}
+
+	private static VoxelType DetermineVoxelType(int y, int terrainHeight, BiomeType biomeType)
 	{
 		// Bedrock at bottom
 		if (y == 0)

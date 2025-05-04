@@ -56,8 +56,7 @@ public partial class World : Node3D
 			Random random = new Random();
 			Seed = random.Next();
 		}
-		_worldGenerator.Seed = Seed;
-		_worldGenerator.ViewDistance = ViewDistance;
+		_worldGenerator.Initialize(Seed, ViewDistance);
 
 		// Note: BiomeRegionGenerator is now initialized in WorldGenerator._Ready()
 		// to ensure it's done before any biome queries
@@ -457,7 +456,7 @@ public partial class World : Node3D
 			{ BiomeType.Desert, new Color(0.95f, 0.85f, 0.5f) },
 			{ BiomeType.Mountains, new Color(0.5f, 0.5f, 0.6f) },
 			{ BiomeType.Tundra, new Color(0.95f, 0.97f, 1.0f) },
-			{ BiomeType.Water, new Color(0.2f, 0.4f, 0.8f) },     // Blue for water
+			{ BiomeType.Beach, new Color(0.95f, 0.9f, 0.7f) },   // Tan for beach
 			{ BiomeType.Islands, new Color(0.8f, 0.9f, 0.6f) }    // Light green-yellow for islands
 		};
 
@@ -612,14 +611,14 @@ public partial class World : Node3D
 				biomeNoise.FractalGain = 0.3f;
 				break;
 
-			case BiomeType.Water:
-				// Water: Low frequency, low octaves for gentle waves
+			case BiomeType.Beach:
+				// Beach: Low frequency, low octaves for gentle dunes
 				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				biomeNoise.Frequency = 0.01f;
+				biomeNoise.Frequency = 0.015f;
 				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-				biomeNoise.FractalOctaves = 1;
-				biomeNoise.FractalLacunarity = 1.5f;
-				biomeNoise.FractalGain = 0.3f;
+				biomeNoise.FractalOctaves = 2;
+				biomeNoise.FractalLacunarity = 1.8f;
+				biomeNoise.FractalGain = 0.4f;
 				break;
 
 			case BiomeType.Islands:
@@ -643,11 +642,11 @@ public partial class World : Node3D
 		float baseHeight = 0.3f;
 		float noiseContribution = 0.15f; // How much the noise affects the final height
 
-		// Special case for Water biome - make it lower
-		if (biomeType == BiomeType.Water)
+		// Special case for Beach biome - make it have gentle slopes
+		if (biomeType == BiomeType.Beach)
 		{
-			baseHeight = 0.15f; // Lower base height for water
-			noiseContribution = 0.05f; // Less variation for water
+			baseHeight = 0.2f; // Slightly lower base height for beach
+			noiseContribution = 0.1f; // Moderate variation for beach dunes
 		}
 		// Special case for Islands biome - make it have more variation
 		else if (biomeType == BiomeType.Islands)

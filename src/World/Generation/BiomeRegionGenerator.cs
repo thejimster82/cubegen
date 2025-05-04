@@ -143,11 +143,11 @@ namespace CubeGen.World.Generation
 			foreach (BiomeType biomeType in biomeTypesArray)
 			{
 				// Add biome types with appropriate probabilities
-				// Water and Islands biomes should be less common
-				if (biomeType == BiomeType.Water)
+				// Beach and Islands biomes should be less common
+				if (biomeType == BiomeType.Beach)
 				{
-					// Only 10% chance to add Water biome to available biomes
-					if (random.NextDouble() < 0.1)
+					// Only 15% chance to add Beach biome to available biomes (increased from 10% for Water)
+					if (random.NextDouble() < 0.15)
 					{
 						availableBiomes.Add(biomeType);
 					}
@@ -175,6 +175,8 @@ namespace CubeGen.World.Generation
 				availableBiomes.Add(BiomeType.Desert);
 				availableBiomes.Add(BiomeType.Mountains);
 				availableBiomes.Add(BiomeType.Tundra);
+				availableBiomes.Add(BiomeType.Beach);
+				availableBiomes.Add(BiomeType.Islands);
 			}
 
 			// Find neighboring cells by sampling points around this cell
@@ -202,12 +204,8 @@ namespace CubeGen.World.Generation
 				availableBiomes.Add(BiomeType.Desert);
 				availableBiomes.Add(BiomeType.Mountains);
 				availableBiomes.Add(BiomeType.Tundra);
-
-				// Add water and islands with lower probability
-				if (random.NextDouble() < 0.1)
-					availableBiomes.Add(BiomeType.Water);
-				if (random.NextDouble() < 0.15)
-					availableBiomes.Add(BiomeType.Islands);
+				availableBiomes.Add(BiomeType.Beach);
+				availableBiomes.Add(BiomeType.Islands);
 			}
 
 			// Select a random biome from the available ones
@@ -435,6 +433,120 @@ namespace CubeGen.World.Generation
 			}
 
 			return _cellToBiomeMap[cellId];
+		}
+
+		/// <summary>
+		/// Gets the nearest region center for a specific biome type
+		/// </summary>
+		/// <param name="worldX">World X coordinate</param>
+		/// <param name="worldZ">World Z coordinate</param>
+		/// <param name="biomeType">The biome type to find the center for</param>
+		/// <returns>Vector2 containing the region center coordinates</returns>
+		public Vector2 GetNearestRegionCenter(int worldX, int worldZ, BiomeType biomeType)
+		{
+			// Check if properly initialized
+			if (!_isProperlyInitialized)
+			{
+				GD.PrintErr("BiomeRegionGenerator not properly initialized in GetNearestRegionCenter. Using default center.");
+				return new Vector2(worldX, worldZ); // Return the input position as fallback
+			}
+
+			// Apply domain warping to the input coordinates
+			(float warpedX, float warpedZ) = WarpPosition(worldX, worldZ);
+
+			// Get the cell ID for the warped position
+			float cellValue = _voronoiNoise.GetNoise2D(warpedX, warpedZ);
+			int cellId = (int)((cellValue + 1.0f) * 1000.0f);
+
+			// If we haven't assigned a biome to this cell yet, do it now
+			if (!_cellToBiomeMap.ContainsKey(cellId))
+			{
+				AssignBiomeToCell(cellId);
+			}
+
+			// Check if this cell is the requested biome type
+			if (_cellToBiomeMap[cellId] == biomeType)
+			{
+				// This cell is already the requested biome, return its center
+				return GetCellCenter(cellId);
+			}
+
+			// If this cell is not the requested biome, find the nearest cell with that biome
+			// First, get the neighboring cells
+			List<int> neighbors = GetCellNeighbors(cellId);
+
+			// Check if any direct neighbors are the requested biome
+			foreach (int neighborId in neighbors)
+			{
+				if (_cellToBiomeMap.ContainsKey(neighborId) && _cellToBiomeMap[neighborId] == biomeType)
+				{
+					return GetCellCenter(neighborId);
+				}
+			}
+
+			// If no direct neighbors match, search in a wider radius
+			// This is a simplified approach - in a real game, you might want a more efficient search
+			float closestDistance = float.MaxValue;
+			Vector2 closestCenter = new Vector2(worldX, worldZ); // Default to current position
+
+			// Search through all known cells (this could be optimized further)
+			foreach (var entry in _cellToBiomeMap)
+			{
+				if (entry.Value == biomeType)
+				{
+					Vector2 center = GetCellCenter(entry.Key);
+					float distance = (center - new Vector2(worldX, worldZ)).LengthSquared();
+
+					if (distance < closestDistance)
+					{
+						closestDistance = distance;
+						closestCenter = center;
+					}
+				}
+			}
+
+			return closestCenter;
+		}
+
+		/// <summary>
+		/// Gets the center coordinates of a cell
+		/// </summary>
+		/// <param name="cellId">The cell ID</param>
+		/// <returns>Vector2 containing the cell center coordinates</returns>
+		private Vector2 GetCellCenter(int cellId)
+		{
+			// Use the cell ID to seed a random generator for this cell
+			Random random = new Random(_seed + cellId);
+
+			// Generate a position within this cell
+			// The scale factor should match the one used in the noise frequency
+			float sampleX = random.Next(-10000, 10000);
+			float sampleZ = random.Next(-10000, 10000);
+
+			// Return the cell center
+			return new Vector2(sampleX, sampleZ);
+		}
+
+		/// <summary>
+		/// Gets the neighboring cells for a given cell ID
+		/// </summary>
+		/// <param name="cellId">The cell ID</param>
+		/// <returns>List of neighboring cell IDs</returns>
+		private List<int> GetCellNeighbors(int cellId)
+		{
+			// Check if we've already calculated neighbors for this cell
+			if (_cellNeighbors.ContainsKey(cellId))
+			{
+				return _cellNeighbors[cellId];
+			}
+
+			// Otherwise, find the neighbors
+			List<int> neighbors = FindNeighboringCells(cellId);
+
+			// Store for future reference
+			_cellNeighbors[cellId] = neighbors;
+
+			return neighbors;
 		}
 
 		/// <summary>

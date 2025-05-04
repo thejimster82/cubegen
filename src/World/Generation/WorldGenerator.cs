@@ -8,7 +8,7 @@ namespace CubeGen.World.Generation
 {
 public partial class WorldGenerator : Node3D
 {
-	[Export] public int Seed { get; set; } = 0;
+	public int Seed { get; set; } = 0;
 	[Export] public Vector2I WorldSize { get; set; } = new Vector2I(16, 16); // Size in chunks
 	[Export] public int ChunkSize { get; set; } = 16; // Size of each chunk in voxels
 	[Export] public int ChunkHeight { get; set; } = 128; // Maximum height of the world
@@ -22,9 +22,15 @@ public partial class WorldGenerator : Node3D
 	private ChunkManager _chunkManager;
 
 	public override void _Ready()
+	{		
+	}
+
+	public void Initialize(int seed, int viewDistance)
 	{
 		// Explicitly initialize the BiomeRegionGenerator first
 		// This ensures it's properly initialized before any biome queries
+		Seed = seed;
+		ViewDistance = viewDistance;
 		BiomeRegionGenerator.Instance.Initialize(Seed);
 		GD.Print($"BiomeRegionGenerator initialized with seed: {Seed}");
 
@@ -44,13 +50,13 @@ public partial class WorldGenerator : Node3D
 	}
 
 	private void InitializeNoise()
-	{
-		// We're now using biome-specific noise instances in GenerateTerrainHeight
-		// so we don't need to initialize _terrainNoise here anymore
+		{
+			// We're now using biome-specific noise instances in GenerateTerrainHeight
+			// so we don't need to initialize _terrainNoise here anymore
 
-		// Initialize static noise for use by other classes
-		InitializeStaticNoise(Seed);
-	}
+			// Initialize static noise for use by other classes
+			InitializeStaticNoise(Seed);
+		}
 
 	private void GenerateInitialChunks(int viewDistance)
 	{
@@ -185,8 +191,8 @@ public partial class WorldGenerator : Node3D
 					chunk.SetVoxel(x, y, z, voxelType);
 				}
 
-				// For Water and Islands biomes, fill water above terrain up to water level
-				if (primaryBiome == BiomeType.Water || primaryBiome == BiomeType.Islands)
+				// For Beach and Islands biomes, fill water above terrain up to water level
+				if (primaryBiome == BiomeType.Beach || primaryBiome == BiomeType.Islands)
 				{
 					// Calculate minimum water depth (15 voxels)
 					int minWaterDepth = 15;
@@ -283,11 +289,73 @@ public partial class WorldGenerator : Node3D
 		// Define water level height in voxels (used consistently throughout the code)
 		int waterLevelHeight = Mathf.FloorToInt(WaterLevel * ChunkHeight);
 
-		// For water biome, return a fixed height below the base height
-		if (biomeType == BiomeType.Water)
+		// For Beach biome, create a lake/ocean with sandy shores
+		if (biomeType == BiomeType.Beach)
 		{
-			// Return a fixed water level
-			return waterLevelHeight;
+			// Calculate minimum water depth (15 voxels)
+			int minWaterDepth = 15;
+
+			// Calculate the minimum water bottom level (water level - minimum depth)
+			int minWaterBottomLevel = waterLevelHeight - minWaterDepth;
+
+			// Create a noise value that will determine the beach terrain
+			float beachNoise = biomeNoise.GetNoise2D(worldX, worldZ);
+
+			// Convert noise from [-1, 1] to [0, 1]
+			beachNoise = (beachNoise + 1f) * 0.5f;
+
+			// Use a distance-based approach to create a shore around the perimeter
+			// Get the distance from the center of the biome region
+			int regionSize = 1000; // Approximate size of a biome region
+
+			// Get the biome region center for this position
+			BiomeRegionGenerator biomeRegionGen = BiomeRegionGenerator.Instance;
+			Vector2 regionCenter = biomeRegionGen.GetNearestRegionCenter(worldX, worldZ, BiomeType.Beach);
+
+			// Calculate distance from region center (normalized to 0-1 range)
+			float distFromCenter = Mathf.Sqrt((worldX - regionCenter.X) * (worldX - regionCenter.X) +
+											 (worldZ - regionCenter.Y) * (worldZ - regionCenter.Y)) / regionSize;
+
+			// Clamp distance to 0-1 range
+			distFromCenter = Mathf.Clamp(distFromCenter, 0f, 1f);
+
+			// Apply noise to make the shoreline irregular
+			float shoreNoiseInfluence = 0.3f; // How much noise affects the shoreline
+			float adjustedDist = distFromCenter + (beachNoise - 0.5f) * shoreNoiseInfluence;
+
+			// Define the shore threshold - areas beyond this will be land
+			float shoreThreshold = 0.65f; // Adjust to control how much of the biome is water vs. land
+
+			if (adjustedDist < shoreThreshold)
+			{
+				// Center area - deep water
+				return minWaterBottomLevel;
+			}
+			else
+			{
+				// Shore area - calculate how far into the shore we are (0 at threshold, 1 at edge)
+				float shorePosition = (adjustedDist - shoreThreshold) / (1.0f - shoreThreshold);
+
+				// Create a gentle slope from below water to above water level
+				if (shorePosition < 0.3f)
+				{
+					// Underwater part of shore (deep to shallow)
+					float t = shorePosition / 0.3f; // Normalize to [0,1]
+					return minWaterBottomLevel + Mathf.FloorToInt(t * (waterLevelHeight - minWaterBottomLevel - 2));
+				}
+				else if (shorePosition < 0.6f)
+				{
+					// Water's edge (just below to just above water level)
+					float t = (shorePosition - 0.3f) / 0.3f; // Normalize to [0,1]
+					return waterLevelHeight - 2 + Mathf.FloorToInt(t * 4);
+				}
+				else
+				{
+					// Dry beach area (above water level)
+					float t = (shorePosition - 0.6f) / 0.4f; // Normalize to [0,1]
+					return waterLevelHeight + 2 + Mathf.FloorToInt(t * 3);
+				}
+			}
 		}
 
 		// Set biome-specific noise characteristics
@@ -595,8 +663,8 @@ public partial class WorldGenerator : Node3D
 		if (y == 0)
 			return VoxelType.Bedrock;
 
-		// For Water biome, everything up to water level is sand/dirt/stone, above is water
-		if (biomeType == BiomeType.Water)
+		// For Beach biome, create sandy beaches with water
+		if (biomeType == BiomeType.Beach)
 		{
 			// If this is above terrain height but below or at water level, it should be water
 			if (y > terrainHeight && y <= waterLevelHeight)
@@ -604,15 +672,24 @@ public partial class WorldGenerator : Node3D
 				return VoxelType.Water;
 			}
 
-			// Underwater terrain
+			// Beach terrain
 			if (y == terrainHeight - 1)
-				return VoxelType.Sand; // Sand at the bottom of water
-			else if (y >= terrainHeight - 4)
-				return VoxelType.Sand; // More sand below that
+			{
+				// Top layer is always sand for beaches
+				return VoxelType.Sand;
+			}
+			else if (y >= terrainHeight - 6) // Deeper sand layer for beaches
+			{
+				return VoxelType.Sand;
+			}
 			else if (y < terrainHeight * 0.6f)
+			{
 				return VoxelType.Stone; // Stone for deeper layers
+			}
 			else
+			{
 				return VoxelType.Dirt; // Dirt in between
+			}
 		}
 
 		// For Islands biome, handle water and islands
@@ -973,9 +1050,53 @@ public partial class WorldGenerator : Node3D
 							}
 							break;
 
-						case BiomeType.Water:
-							// Water biome doesn't have any features on land
-							// But we could add some underwater features in the future
+						case BiomeType.Beach:
+							// Beach biome features - seashells, palm trees, etc.
+							// Add seashells on the beach
+							if (random.NextDouble() < 0.03) // 3% chance for seashells
+							{
+								if (surfaceHeight >= 0)
+								{
+									// Only place seashells on sand
+									if (chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Sand)
+									{
+										// Use the decoration system to place seashells
+										Vector2I worldPos = new Vector2I(worldX, worldZ);
+										DecorationClusters.DecorationPlacement seashellPlacement = new DecorationClusters.DecorationPlacement(
+											VoxelType.Seashell,
+											new Vector2(random.Next(-20, 20) / 100.0f, random.Next(-20, 20) / 100.0f),
+											random.Next(0, 360),
+											0.5f + random.Next(-20, 20) / 100.0f
+										);
+
+										chunk.SetVoxel(x, surfaceHeight + 1, z, VoxelType.Seashell);
+										chunk.SetDecorationPlacement(x, surfaceHeight + 1, z, seashellPlacement);
+									}
+								}
+							}
+
+							// Add palm trees on the beach (only on sand above water level)
+							if (random.NextDouble() < 0.01) // 1% chance for palm trees
+							{
+								// Calculate water level height in voxels
+								int waterLevelHeight = Mathf.FloorToInt(WaterLevel * ChunkHeight);
+
+								if (surfaceHeight >= 0 && surfaceHeight > waterLevelHeight)
+								{
+									// Check if we can place a palm tree here
+									if (CanPlaceFeature(featureMap, x, z, 5, chunkSize))
+									{
+										// Only place palm trees on sand
+										if (chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Sand)
+										{
+											GeneratePalmTree(chunk, x, z, surfaceHeight, random);
+
+											// Mark the area as occupied
+											MarkFeaturePosition(featureMap, x, z, 5, chunkSize);
+										}
+									}
+								}
+							}
 							break;
 
 						case BiomeType.Islands:

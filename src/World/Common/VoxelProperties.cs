@@ -90,7 +90,8 @@ namespace CubeGen.World.Common
         public static bool HasCollider(VoxelType voxelType)
         {
             VoxelCategory category = GetCategory(voxelType);
-            return category == VoxelCategory.Terrain || category == VoxelCategory.Structure;
+            // Exclude Fluid category (water) from having colliders
+            return (category == VoxelCategory.Terrain || category == VoxelCategory.Structure) && category != VoxelCategory.Fluid;
         }
 
         // Check if a voxel type is water

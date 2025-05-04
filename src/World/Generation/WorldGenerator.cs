@@ -22,7 +22,7 @@ public partial class WorldGenerator : Node3D
 	private ChunkManager _chunkManager;
 
 	public override void _Ready()
-	{		
+	{
 	}
 
 	public void Initialize(int seed, int viewDistance)
@@ -712,16 +712,25 @@ public partial class WorldGenerator : Node3D
 				}
 				else
 				{
-					return VoxelType.Grass; // Islands have grass on top above water level
+					// Check if we're near the water's edge (within 5 blocks of water level)
+					// This creates a sandy beach around the island
+					if (terrainHeight <= waterLevelHeight + 5)
+					{
+						return VoxelType.Sand; // Create sandy beaches around islands
+					}
+					else
+					{
+						return VoxelType.Grass; // Islands have grass on top above water level
+					}
 				}
 			}
 			// Layers just below surface
 			else if (y >= terrainHeight - 4)
 			{
 				// If the terrain is at or below water level, use sand
-				if (terrainHeight <= waterLevelHeight)
+				if (terrainHeight <= waterLevelHeight + 5) // Extended sand area to match surface
 				{
-					return VoxelType.Sand; // More sand under islands
+					return VoxelType.Sand; // More sand under islands and beaches
 				}
 				else
 				{
@@ -1101,7 +1110,7 @@ public partial class WorldGenerator : Node3D
 
 						case BiomeType.Islands:
 							// Add palm trees on islands
-							if (random.NextDouble() < 0.015) // Higher chance for palm trees
+							if (random.NextDouble() < 0.02) // Increased chance for palm trees (2%)
 							{
 								if (surfaceHeight >= 0)
 								{
@@ -1109,8 +1118,14 @@ public partial class WorldGenerator : Node3D
 									// Palm trees need a larger radius (5) to prevent overlap
 									if (CanPlaceFeature(featureMap, x, z, 5, chunkSize))
 									{
-										// Only place palm trees on sand
-										if (chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Sand)
+										// Calculate water level height in voxels
+										int waterLevelHeight = Mathf.FloorToInt(WaterLevel * ChunkHeight);
+
+										// Place palm trees on sand (beach areas) or on grass near the beach
+										VoxelType surfaceType = chunk.GetVoxel(x, surfaceHeight, z);
+
+										if (surfaceType == VoxelType.Sand ||
+											(surfaceType == VoxelType.Grass && surfaceHeight <= waterLevelHeight + 8))
 										{
 											GeneratePalmTree(chunk, x, z, surfaceHeight, random);
 

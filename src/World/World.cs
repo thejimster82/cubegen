@@ -456,7 +456,9 @@ public partial class World : Node3D
 			{ BiomeType.Forest, new Color(0.2f, 0.6f, 0.2f) },
 			{ BiomeType.Desert, new Color(0.95f, 0.85f, 0.5f) },
 			{ BiomeType.Mountains, new Color(0.5f, 0.5f, 0.6f) },
-			{ BiomeType.Tundra, new Color(0.95f, 0.97f, 1.0f) }
+			{ BiomeType.Tundra, new Color(0.95f, 0.97f, 1.0f) },
+			{ BiomeType.Water, new Color(0.2f, 0.4f, 0.8f) },     // Blue for water
+			{ BiomeType.Islands, new Color(0.8f, 0.9f, 0.6f) }    // Light green-yellow for islands
 		};
 
 		// Calculate half size for centering
@@ -609,6 +611,26 @@ public partial class World : Node3D
 				biomeNoise.FractalLacunarity = 1.8f;
 				biomeNoise.FractalGain = 0.3f;
 				break;
+
+			case BiomeType.Water:
+				// Water: Low frequency, low octaves for gentle waves
+				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				biomeNoise.Frequency = 0.01f;
+				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
+				biomeNoise.FractalOctaves = 1;
+				biomeNoise.FractalLacunarity = 1.5f;
+				biomeNoise.FractalGain = 0.3f;
+				break;
+
+			case BiomeType.Islands:
+				// Islands: Medium frequency, higher octaves for varied island terrain
+				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				biomeNoise.Frequency = 0.02f;
+				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
+				biomeNoise.FractalOctaves = 3;
+				biomeNoise.FractalLacunarity = 2.0f;
+				biomeNoise.FractalGain = 0.5f;
+				break;
 		}
 
 		// Get noise value with biome-specific settings
@@ -620,6 +642,19 @@ public partial class World : Node3D
 		// Apply a consistent base height for all biomes
 		float baseHeight = 0.3f;
 		float noiseContribution = 0.15f; // How much the noise affects the final height
+
+		// Special case for Water biome - make it lower
+		if (biomeType == BiomeType.Water)
+		{
+			baseHeight = 0.15f; // Lower base height for water
+			noiseContribution = 0.05f; // Less variation for water
+		}
+		// Special case for Islands biome - make it have more variation
+		else if (biomeType == BiomeType.Islands)
+		{
+			baseHeight = 0.25f; // Slightly lower base height
+			noiseContribution = 0.25f; // More variation for islands
+		}
 
 		// Combine base height with noise contribution
 		heightNoise = baseHeight + (heightNoise * noiseContribution);

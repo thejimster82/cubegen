@@ -29,6 +29,8 @@ public partial class Player : CharacterBody3D
 	private bool _isInWater = false; // Tracks if player is in water
 	private Label _waterIndicator; // UI indicator for when player is in water
 	private ColorRect _waterDebugIndicator; // Visual debug indicator for water detection
+	private CanvasLayer _underwaterOverlayCanvas; // Canvas layer for underwater effect
+	private ColorRect _underwaterOverlay; // Translucent overlay for underwater effect
 
 	public override void _Ready()
 	{
@@ -99,6 +101,55 @@ public partial class Player : CharacterBody3D
 
 		// Add the debug indicator to the UI
 		uiControl.AddChild(_waterDebugIndicator);
+
+		// Create a CanvasLayer for the underwater overlay
+		// This ensures it's attached to the camera's view rather than the player
+		_underwaterOverlayCanvas = new CanvasLayer();
+		_underwaterOverlayCanvas.Name = "UnderwaterOverlayCanvas";
+		_underwaterOverlayCanvas.Layer = 10; // Use a higher layer to ensure it's visible
+
+		// Create a full-screen underwater overlay
+		_underwaterOverlay = new ColorRect();
+		_underwaterOverlay.Name = "UnderwaterOverlay";
+		_underwaterOverlay.SetAnchorsPreset(Control.LayoutPreset.FullRect); // Make it cover the entire screen
+		_underwaterOverlay.Size = new Vector2(1920, 1080); // Ensure it's large enough
+
+		// Use a tropical blue water color with transparency
+		// This matches the color used in BiomeMaterials for Islands biome water
+		// Make it more visible for testing
+		Color waterColor = new Color(0.0f, 0.5f, 0.8f, 0.5f);
+		_underwaterOverlay.Color = waterColor;
+		_underwaterOverlay.Visible = false; // Hide initially
+		_underwaterOverlay.MouseFilter = Control.MouseFilterEnum.Ignore; // Make sure it doesn't block input
+
+		// Add the overlay to the canvas layer
+		_underwaterOverlayCanvas.AddChild(_underwaterOverlay);
+
+		// Add the canvas layer directly to the scene root instead of the player
+		// This ensures it's not affected by player transformations and is always visible
+		// Use call_deferred to avoid adding a child while the parent is still setting up
+		GetTree().Root.CallDeferred("add_child", _underwaterOverlayCanvas);
+
+		// Print debug info
+		GD.Print("Underwater overlay created with color: " + waterColor);
+
+		// For testing: Make the overlay visible for a few seconds when the game starts
+		_underwaterOverlay.Visible = true;
+
+		// Create a timer to hide the overlay after 3 seconds
+		var testTimer = new Timer();
+		testTimer.WaitTime = 3.0f;
+		testTimer.OneShot = true;
+		testTimer.Timeout += () => {
+			GD.Print("Test timer expired, hiding overlay");
+			_underwaterOverlay.Visible = false;
+		};
+
+		// Use call_deferred to avoid adding a child while the parent is still setting up
+		CallDeferred("add_child", testTimer);
+
+		// Start the timer after it's added (in the next frame)
+		CallDeferred("StartTestTimer", testTimer);
 	}
 
 	public override void _Input(InputEvent @event)
@@ -125,6 +176,23 @@ public partial class Player : CharacterBody3D
 			else
 				Input.MouseMode = Input.MouseModeEnum.Captured;
 		}
+
+		// Toggle underwater overlay with F4 (for testing)
+		if (@event is InputEventKey keyEvent2 && keyEvent2.Pressed && keyEvent2.Keycode == Key.F4 && _underwaterOverlay != null)
+		{
+			_underwaterOverlay.Visible = !_underwaterOverlay.Visible;
+			GD.Print($"Underwater overlay toggled: {_underwaterOverlay.Visible}");
+		}
+	}
+
+	// Helper method to start the test timer (called via CallDeferred)
+	private void StartTestTimer(Timer timer)
+	{
+		if (timer != null && IsInstanceValid(timer))
+		{
+			timer.Start();
+			GD.Print("Test timer started");
+		}
 	}
 
 	private void UpdateCameraPosition()
@@ -144,25 +212,39 @@ public partial class Player : CharacterBody3D
 	private bool CheckIfInWater()
 	{
 		// Get the chunk manager from the scene
-		var chunkManager = GetParent().GetNode<ChunkManager>("WorldGenerator/ChunkManager");
-		if (chunkManager == null)
+		ChunkManager chunkManager = null;
+
+		// Try different paths to find the ChunkManager
+		// This makes the code more robust to different scene structures
+		try
 		{
-			// Try alternative path
-			chunkManager = GetTree().Root.GetNode<ChunkManager>("World/WorldGenerator/ChunkManager");
+			// Try to find ChunkManager in various possible locations
+			chunkManager = GetParent().GetNodeOrNull<ChunkManager>("WorldGenerator/ChunkManager");
+
+			if (chunkManager == null)
+				chunkManager = GetTree().Root.GetNodeOrNull<ChunkManager>("World/WorldGenerator/ChunkManager");
+
+			if (chunkManager == null)
+				chunkManager = GetTree().Root.GetNodeOrNull<ChunkManager>("WorldGenerator/ChunkManager");
+
+			if (chunkManager == null)
+				chunkManager = GetParent().GetParent()?.GetNodeOrNull<ChunkManager>("WorldGenerator/ChunkManager");
+
 			if (chunkManager == null)
 			{
 				GD.PrintErr("ChunkManager not found in scene");
 				return false;
 			}
 		}
+		catch (Exception ex)
+		{
+			// Log the error but continue with default values
+			GD.PrintErr($"Error finding ChunkManager: {ex.Message}");
+			return false;
+		}
 
 		// Get player's position in world coordinates
 		Vector3 playerPos = GlobalPosition;
-
-		// Check multiple points around the player's body to determine if in water
-		// We need at least 3 points in water to consider the player "in water"
-		int waterPoints = 0;
-		int totalPoints = 0;
 
 		// Get the player's collision shape to determine appropriate check points
 		var collisionShape = GetNode<CollisionShape3D>("CollisionShape3D");
@@ -173,10 +255,15 @@ public partial class Player : CharacterBody3D
 		{
 			playerHeight = capsule.Height;
 			playerRadius = capsule.Radius;
-			GD.Print($"Player collision shape: height={playerHeight}, radius={playerRadius}");
+
+			// Only print this occasionally to avoid spam
+			if (Engine.GetProcessFrames() % 300 == 0)
+			{
+				GD.Print($"Player collision shape: height={playerHeight}, radius={playerRadius}");
+			}
 		}
 
-		// Check at center
+		// Check at center of player
 		bool isInWater = false;
 		if (IsPositionInWater(chunkManager, new Vector3(playerPos.X, playerPos.Y+playerHeight/2, playerPos.Z)))
 			isInWater = true;
@@ -190,10 +277,28 @@ public partial class Player : CharacterBody3D
 		try
 		{
 			// Get the world generator to access voxel scale
-			var worldGenerator = GetTree().Root.GetNode<WorldGenerator>("World/WorldGenerator");
-			if (worldGenerator == null)
+			WorldGenerator worldGenerator = null;
+
+			// Try different paths to find the WorldGenerator
+			// This makes the code more robust to different scene structures
+			try
 			{
-				worldGenerator = GetParent().GetNode<WorldGenerator>("WorldGenerator");
+				// Try to find WorldGenerator in various possible locations
+				worldGenerator = GetTree().Root.GetNodeOrNull<WorldGenerator>("World/WorldGenerator");
+
+				if (worldGenerator == null)
+					worldGenerator = GetTree().Root.GetNodeOrNull<WorldGenerator>("WorldGenerator");
+
+				if (worldGenerator == null)
+					worldGenerator = GetParent().GetNodeOrNull<WorldGenerator>("WorldGenerator");
+
+				if (worldGenerator == null)
+					worldGenerator = GetParent().GetParent()?.GetNodeOrNull<WorldGenerator>("WorldGenerator");
+			}
+			catch (Exception ex)
+			{
+				// Log the error but continue with default values
+				GD.PrintErr($"Error finding WorldGenerator: {ex.Message}");
 			}
 
 			float voxelScale = 1.0f;
@@ -250,26 +355,62 @@ public partial class Player : CharacterBody3D
 	private float FindWaterSurfaceLevel()
 	{
 		// Get the chunk manager from the scene
-		var chunkManager = GetParent().GetNode<ChunkManager>("WorldGenerator/ChunkManager");
-		if (chunkManager == null)
+		ChunkManager chunkManager = null;
+
+		// Try different paths to find the ChunkManager
+		// This makes the code more robust to different scene structures
+		try
 		{
-			// Try alternative path
-			chunkManager = GetTree().Root.GetNode<ChunkManager>("World/WorldGenerator/ChunkManager");
+			// Try to find ChunkManager in various possible locations
+			chunkManager = GetParent().GetNodeOrNull<ChunkManager>("WorldGenerator/ChunkManager");
+
+			if (chunkManager == null)
+				chunkManager = GetTree().Root.GetNodeOrNull<ChunkManager>("World/WorldGenerator/ChunkManager");
+
+			if (chunkManager == null)
+				chunkManager = GetTree().Root.GetNodeOrNull<ChunkManager>("WorldGenerator/ChunkManager");
+
+			if (chunkManager == null)
+				chunkManager = GetParent().GetParent()?.GetNodeOrNull<ChunkManager>("WorldGenerator/ChunkManager");
+
 			if (chunkManager == null)
 			{
 				GD.PrintErr("ChunkManager not found in scene");
 				return GlobalPosition.Y; // Return current position if can't find chunk manager
 			}
 		}
+		catch (Exception ex)
+		{
+			// Log the error but continue with default values
+			GD.PrintErr($"Error finding ChunkManager: {ex.Message}");
+			return GlobalPosition.Y;
+		}
 
 		// Get player's position in world coordinates
 		Vector3 playerPos = GlobalPosition;
 
 		// Get the world generator to access voxel scale
-		var worldGenerator = GetTree().Root.GetNode<WorldGenerator>("World/WorldGenerator");
-		if (worldGenerator == null)
+		WorldGenerator worldGenerator = null;
+
+		// Try different paths to find the WorldGenerator
+		try
 		{
-			worldGenerator = GetParent().GetNode<WorldGenerator>("WorldGenerator");
+			// Try to find WorldGenerator in various possible locations
+			worldGenerator = GetTree().Root.GetNodeOrNull<WorldGenerator>("World/WorldGenerator");
+
+			if (worldGenerator == null)
+				worldGenerator = GetTree().Root.GetNodeOrNull<WorldGenerator>("WorldGenerator");
+
+			if (worldGenerator == null)
+				worldGenerator = GetParent().GetNodeOrNull<WorldGenerator>("WorldGenerator");
+
+			if (worldGenerator == null)
+				worldGenerator = GetParent().GetParent()?.GetNodeOrNull<WorldGenerator>("WorldGenerator");
+		}
+		catch (Exception ex)
+		{
+			// Log the error but continue with default values
+			GD.PrintErr($"Error finding WorldGenerator: {ex.Message}");
 		}
 
 		float voxelScale = 1.0f;
@@ -323,6 +464,68 @@ public partial class Player : CharacterBody3D
 		if (_waterDebugIndicator != null)
 		{
 			_waterDebugIndicator.Color = _isInWater ? new Color(0, 0.7f, 1.0f) : new Color(1, 0, 0);
+		}
+
+		// Update underwater overlay visibility
+		if (_underwaterOverlay != null)
+		{
+			// Check if the camera is underwater
+			bool cameraInWater = false;
+
+			// Get the world position of the camera
+			Vector3 cameraPosition = _camera.GlobalPosition;
+
+			// Get the chunk manager
+			ChunkManager chunkManager = null;
+
+			// Try different paths to find the ChunkManager
+			// This makes the code more robust to different scene structures
+			try
+			{
+				// Try to find ChunkManager in various possible locations
+				chunkManager = GetParent().GetNodeOrNull<ChunkManager>("WorldGenerator/ChunkManager");
+
+				if (chunkManager == null)
+					chunkManager = GetTree().Root.GetNodeOrNull<ChunkManager>("World/WorldGenerator/ChunkManager");
+
+				if (chunkManager == null)
+					chunkManager = GetTree().Root.GetNodeOrNull<ChunkManager>("WorldGenerator/ChunkManager");
+
+				if (chunkManager == null)
+					chunkManager = GetParent().GetParent()?.GetNodeOrNull<ChunkManager>("WorldGenerator/ChunkManager");
+			}
+			catch (Exception ex)
+			{
+				// Log the error but continue with default values
+				if (Engine.GetProcessFrames() % 300 == 0)
+				{
+					GD.PrintErr($"Error finding ChunkManager: {ex.Message}");
+				}
+			}
+
+			// Check if the camera position is in water
+			if (chunkManager != null)
+			{
+				cameraInWater = IsPositionInWater(chunkManager, cameraPosition);
+			}
+
+			// Store current state for debug output
+			bool currentVisibility = _underwaterOverlay.Visible;
+
+			// Update visibility - only show the overlay when the camera is underwater
+			_underwaterOverlay.Visible = cameraInWater;
+
+			// Always print debug info every few seconds
+			if (Engine.GetProcessFrames() % 120 == 0)
+			{
+				GD.Print($"Underwater debug - Camera in water: {cameraInWater}, Overlay visible: {_underwaterOverlay.Visible}, Canvas layer: {_underwaterOverlayCanvas.Layer}");
+			}
+
+			// Debug output when underwater state changes
+			if (currentVisibility != cameraInWater)
+			{
+				GD.Print($"Camera underwater state changed: {cameraInWater}");
+			}
 		}
 
 		// Print debug message when water state changes

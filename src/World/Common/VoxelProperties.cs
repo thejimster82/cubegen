@@ -99,6 +99,49 @@ namespace CubeGen.World.Common
             return voxelType == VoxelType.Water;
         }
 
+        // Check if a voxel type is transparent
+        public static bool IsTransparent(VoxelType voxelType)
+        {
+            // Air is always transparent
+            if (voxelType == VoxelType.Air)
+                return true;
+
+            // Water is transparent
+            if (voxelType == VoxelType.Water)
+                return true;
+
+            // Decoration types are considered transparent for mesh generation
+            if (IsDecoration(voxelType))
+                return true;
+
+            // Leaves are semi-transparent
+            if (voxelType == VoxelType.Leaves || voxelType == VoxelType.SnowLeaves)
+                return true;
+
+            // All other blocks are not transparent
+            return false;
+        }
+
+        // Check if a voxel type is occluding for ambient occlusion calculations
+        // This is different from IsSolid - only fully opaque blocks should occlude light
+        public static bool IsOccluding(VoxelType voxelType)
+        {
+            // Air and transparent blocks like Water should not occlude light
+            if (voxelType == VoxelType.Air || voxelType == VoxelType.Water)
+            {
+                return false;
+            }
+
+            // Decoration types should not occlude light
+            if (IsDecoration(voxelType))
+            {
+                return false;
+            }
+
+            // All other blocks (Stone, Dirt, etc.) should occlude light
+            return true;
+        }
+
         // Get the scale factor for a voxel type
         public static float GetScaleFactor(VoxelType voxelType)
         {

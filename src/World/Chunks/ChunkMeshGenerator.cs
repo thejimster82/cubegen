@@ -512,40 +512,53 @@ public class ChunkMeshGenerator
         }
 
         // Regular handling for non-water voxels
+        // Convert to world coordinates for consistent lookups across chunk boundaries
+        int worldX = chunk.Position.X * chunk.Size + x;
+        int worldY = y;
+        int worldZ = chunk.Position.Y * chunk.Size + z;
+
         // Check each of the 6 faces
+        // For each face, we need to check if the neighboring voxel is solid or transparent
+        // If it's not solid (air or transparent), we need to add a face
 
         // Top face (Y+)
-        if (y == chunk.Height - 1 || !IsVoxelSolidForAO(chunk, x, y + 1, z))
+        VoxelType topVoxel = GetVoxelTypeConsistent(chunk, x, y + 1, z, worldX, worldY + 1, worldZ);
+        if (VoxelProperties.IsTransparent(topVoxel))
         {
             AddFace(FaceDirection.Top, new Vector3(x, y, z), voxelType, meshData, chunk);
         }
 
         // Bottom face (Y-)
-        if (y == 0 || !IsVoxelSolidForAO(chunk, x, y - 1, z))
+        VoxelType bottomVoxel = GetVoxelTypeConsistent(chunk, x, y - 1, z, worldX, worldY - 1, worldZ);
+        if (VoxelProperties.IsTransparent(bottomVoxel))
         {
             AddFace(FaceDirection.Bottom, new Vector3(x, y, z), voxelType, meshData, chunk);
         }
 
         // Front face (Z+)
-        if (z == chunk.Size - 1 || !IsVoxelSolidForAO(chunk, x, y, z + 1))
+        VoxelType frontVoxel = GetVoxelTypeConsistent(chunk, x, y, z + 1, worldX, worldY, worldZ + 1);
+        if (VoxelProperties.IsTransparent(frontVoxel))
         {
             AddFace(FaceDirection.Front, new Vector3(x, y, z), voxelType, meshData, chunk);
         }
 
         // Back face (Z-)
-        if (z == 0 || !IsVoxelSolidForAO(chunk, x, y, z - 1))
+        VoxelType backVoxel = GetVoxelTypeConsistent(chunk, x, y, z - 1, worldX, worldY, worldZ - 1);
+        if (VoxelProperties.IsTransparent(backVoxel))
         {
             AddFace(FaceDirection.Back, new Vector3(x, y, z), voxelType, meshData, chunk);
         }
 
         // Right face (X+)
-        if (x == chunk.Size - 1 || !IsVoxelSolidForAO(chunk, x + 1, y, z))
+        VoxelType rightVoxel = GetVoxelTypeConsistent(chunk, x + 1, y, z, worldX + 1, worldY, worldZ);
+        if (VoxelProperties.IsTransparent(rightVoxel))
         {
             AddFace(FaceDirection.Right, new Vector3(x, y, z), voxelType, meshData, chunk);
         }
 
         // Left face (X-)
-        if (x == 0 || !IsVoxelSolidForAO(chunk, x - 1, y, z))
+        VoxelType leftVoxel = GetVoxelTypeConsistent(chunk, x - 1, y, z, worldX - 1, worldY, worldZ);
+        if (VoxelProperties.IsTransparent(leftVoxel))
         {
             AddFace(FaceDirection.Left, new Vector3(x, y, z), voxelType, meshData, chunk);
         }
@@ -556,46 +569,72 @@ public class ChunkMeshGenerator
         // For water, we only add the top face if it's exposed to air
         // and side faces if they're exposed to air or non-water blocks
 
+        // Convert to world coordinates for consistent lookups across chunk boundaries
+        int worldX = chunk.Position.X * chunk.Size + x;
+        int worldY = y;
+        int worldZ = chunk.Position.Y * chunk.Size + z;
+
         // Top face (Y+) - only if exposed to air
-        if (y == chunk.Height - 1 || chunk.GetVoxel(x, y + 1, z) == VoxelType.Air)
+        VoxelType topVoxel = GetVoxelTypeConsistent(chunk, x, y + 1, z, worldX, worldY + 1, worldZ);
+        if (topVoxel == VoxelType.Air)
         {
             // Water top face is slightly lower than a full block
             AddWaterTopFace(new Vector3(x, y, z), voxelType, meshData, chunk);
         }
 
         // Bottom face (Y-) - only if exposed to air (rare, but possible)
-        if (y == 0 || chunk.GetVoxel(x, y - 1, z) == VoxelType.Air)
+        VoxelType bottomVoxel = GetVoxelTypeConsistent(chunk, x, y - 1, z, worldX, worldY - 1, worldZ);
+        if (bottomVoxel == VoxelType.Air)
         {
             AddFace(FaceDirection.Bottom, new Vector3(x, y, z), voxelType, meshData, chunk);
         }
 
         // Front face (Z+) - only if exposed to air or non-water
-        if (z == chunk.Size - 1 ||
-            (chunk.GetVoxel(x, y, z + 1) != VoxelType.Water && !IsVoxelSolidForAO(chunk, x, y, z + 1)))
+        VoxelType frontVoxel = GetVoxelTypeConsistent(chunk, x, y, z + 1, worldX, worldY, worldZ + 1);
+        if (frontVoxel != VoxelType.Water)
         {
+            // Only add face if the neighboring voxel is not water
             AddFace(FaceDirection.Front, new Vector3(x, y, z), voxelType, meshData, chunk);
         }
 
         // Back face (Z-) - only if exposed to air or non-water
-        if (z == 0 ||
-            (chunk.GetVoxel(x, y, z - 1) != VoxelType.Water && !IsVoxelSolidForAO(chunk, x, y, z - 1)))
+        VoxelType backVoxel = GetVoxelTypeConsistent(chunk, x, y, z - 1, worldX, worldY, worldZ - 1);
+        if (backVoxel != VoxelType.Water)
         {
+            // Only add face if the neighboring voxel is not water
             AddFace(FaceDirection.Back, new Vector3(x, y, z), voxelType, meshData, chunk);
         }
 
         // Right face (X+) - only if exposed to air or non-water
-        if (x == chunk.Size - 1 ||
-            (chunk.GetVoxel(x + 1, y, z) != VoxelType.Water && !IsVoxelSolidForAO(chunk, x + 1, y, z)))
+        VoxelType rightVoxel = GetVoxelTypeConsistent(chunk, x + 1, y, z, worldX + 1, worldY, worldZ);
+        if (rightVoxel != VoxelType.Water)
         {
+            // Only add face if the neighboring voxel is not water
             AddFace(FaceDirection.Right, new Vector3(x, y, z), voxelType, meshData, chunk);
         }
 
         // Left face (X-) - only if exposed to air or non-water
-        if (x == 0 ||
-            (chunk.GetVoxel(x - 1, y, z) != VoxelType.Water && !IsVoxelSolidForAO(chunk, x - 1, y, z)))
+        VoxelType leftVoxel = GetVoxelTypeConsistent(chunk, x - 1, y, z, worldX - 1, worldY, worldZ);
+        if (leftVoxel != VoxelType.Water)
         {
+            // Only add face if the neighboring voxel is not water
             AddFace(FaceDirection.Left, new Vector3(x, y, z), voxelType, meshData, chunk);
         }
+    }
+
+    // Helper method to get voxel type consistently across chunk boundaries
+    private VoxelType GetVoxelTypeConsistent(VoxelChunk chunk, int localX, int localY, int localZ, int worldX, int worldY, int worldZ)
+    {
+        // First try to get the voxel from the current chunk if it's in bounds
+        if (localX >= 0 && localX < chunk.Size &&
+            localY >= 0 && localY < chunk.Height &&
+            localZ >= 0 && localZ < chunk.Size)
+        {
+            return chunk.GetVoxel(localX, localY, localZ);
+        }
+
+        // If out of bounds, use the ChunkManager to get the voxel type from world coordinates
+        return _chunkManager.GetVoxelType(worldX, worldY, worldZ);
     }
 
     private void AddWaterTopFace(Vector3 position, VoxelType voxelType, MeshData meshData, VoxelChunk chunk)
@@ -891,22 +930,9 @@ public class ChunkMeshGenerator
             // Get the voxel type
             VoxelType voxelType = chunk.GetVoxel(x, y, z);
 
-            // Special case: don't consider decoration types as solid for AO calculations
-            // This ensures blocks remain visible even with decorations on top
-            if (VoxelProperties.IsDecoration(voxelType))
-            {
-                return false;
-            }
-
-            // Special case: water is not solid for AO calculations
-            // This ensures proper lighting for underwater blocks
-            if (VoxelProperties.IsWater(voxelType))
-            {
-                return false;
-            }
-
-            // Use the chunk's own data for efficiency
-            return chunk.IsVoxelSolid(x, y, z);
+            // Use the IsOccluding method to determine if this voxel should contribute to AO
+            // This is different from IsSolid - only fully opaque blocks should occlude light
+            return VoxelProperties.IsOccluding(voxelType);
         }
 
         // For coordinates outside this chunk, convert to world coordinates
@@ -926,25 +952,39 @@ public class ChunkMeshGenerator
             return false;
         }
 
-        // Use the ChunkManager to check if the voxel is solid in world coordinates
+        // Use the ChunkManager to check if the voxel is occluding in world coordinates
         // This will handle cross-chunk lookups consistently
-        return _chunkManager.IsVoxelSolid(worldX, worldY, worldZ);
+        return _chunkManager.IsVoxelOccluding(worldX, worldY, worldZ);
     }
 
     // Check if a voxel is completely surrounded by solid voxels
     // If it is, we can skip generating mesh data for it since it won't be visible
     private bool IsVoxelSurrounded(VoxelChunk chunk, int x, int y, int z)
     {
-        // Check all 6 faces
-        bool topSolid = IsVoxelSolidForAO(chunk, x, y + 1, z);
-        bool bottomSolid = IsVoxelSolidForAO(chunk, x, y - 1, z);
-        bool frontSolid = IsVoxelSolidForAO(chunk, x, y, z + 1);
-        bool backSolid = IsVoxelSolidForAO(chunk, x, y, z - 1);
-        bool rightSolid = IsVoxelSolidForAO(chunk, x + 1, y, z);
-        bool leftSolid = IsVoxelSolidForAO(chunk, x - 1, y, z);
+        // Convert to world coordinates for consistent lookups across chunk boundaries
+        int worldX = chunk.Position.X * chunk.Size + x;
+        int worldY = y;
+        int worldZ = chunk.Position.Y * chunk.Size + z;
 
-        // If all faces are covered by solid voxels, this voxel is not visible
-        return topSolid && bottomSolid && frontSolid && backSolid && rightSolid && leftSolid;
+        // Check all 6 faces
+        VoxelType topVoxel = GetVoxelTypeConsistent(chunk, x, y + 1, z, worldX, worldY + 1, worldZ);
+        VoxelType bottomVoxel = GetVoxelTypeConsistent(chunk, x, y - 1, z, worldX, worldY - 1, worldZ);
+        VoxelType frontVoxel = GetVoxelTypeConsistent(chunk, x, y, z + 1, worldX, worldY, worldZ + 1);
+        VoxelType backVoxel = GetVoxelTypeConsistent(chunk, x, y, z - 1, worldX, worldY, worldZ - 1);
+        VoxelType rightVoxel = GetVoxelTypeConsistent(chunk, x + 1, y, z, worldX + 1, worldY, worldZ);
+        VoxelType leftVoxel = GetVoxelTypeConsistent(chunk, x - 1, y, z, worldX - 1, worldY, worldZ);
+
+        // A voxel is surrounded if none of its neighbors are transparent
+        bool topTransparent = VoxelProperties.IsTransparent(topVoxel);
+        bool bottomTransparent = VoxelProperties.IsTransparent(bottomVoxel);
+        bool frontTransparent = VoxelProperties.IsTransparent(frontVoxel);
+        bool backTransparent = VoxelProperties.IsTransparent(backVoxel);
+        bool rightTransparent = VoxelProperties.IsTransparent(rightVoxel);
+        bool leftTransparent = VoxelProperties.IsTransparent(leftVoxel);
+
+        // If any face is adjacent to a transparent voxel, this voxel is visible
+        return !topTransparent && !bottomTransparent && !frontTransparent &&
+               !backTransparent && !rightTransparent && !leftTransparent;
     }
 
     private void AddDecorationFaces(VoxelChunk chunk, int x, int y, int z, VoxelType voxelType, MeshData meshData)

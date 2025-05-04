@@ -10,7 +10,6 @@ namespace CubeGen.World.Common
         Desert,
         Mountains,
         Tundra,
-        Beach,
         Islands
     }
 

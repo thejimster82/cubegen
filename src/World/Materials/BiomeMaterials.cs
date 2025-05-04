@@ -53,9 +53,6 @@ public static class BiomeMaterials
                     case BiomeType.Tundra:
                         SetTundraColors(material, voxelType);
                         break;
-                    case BiomeType.Beach:
-                        SetBeachBiomeColors(material, voxelType);
-                        break;
                     case BiomeType.Islands:
                         SetIslandColors(material, voxelType);
                         break;
@@ -447,84 +444,7 @@ public static class BiomeMaterials
         }
     }
 
-    private static void SetBeachBiomeColors(StandardMaterial3D material, VoxelType voxelType)
-    {
-        switch (voxelType)
-        {
-            case VoxelType.Grass:
-                material.AlbedoColor = new Color(0.7f, 0.8f, 0.4f); // Beach grass (yellowish)
-                break;
-            case VoxelType.Dirt:
-                material.AlbedoColor = new Color(0.7f, 0.6f, 0.4f); // Sandy soil
-                break;
-            case VoxelType.Stone:
-                material.AlbedoColor = new Color(0.7f, 0.65f, 0.6f); // Beach stone
-                break;
-            case VoxelType.Sand:
-                material.AlbedoColor = new Color(0.95f, 0.9f, 0.7f); // Bright beach sand
-                break;
-            case VoxelType.Wood:
-                material.AlbedoColor = new Color(0.7f, 0.5f, 0.3f); // Palm wood
-                break;
-            case VoxelType.Leaves:
-                material.AlbedoColor = new Color(0.3f, 0.7f, 0.4f); // Palm leaves
-                break;
 
-            // Decoration types
-            case VoxelType.TallGrass:
-                material.AlbedoColor = new Color(0.7f, 0.8f, 0.5f); // Beach grass
-                break;
-            case VoxelType.Flower:
-                material.AlbedoColor = new Color(1.0f, 0.6f, 0.7f); // Beach flower (pinkish)
-                break;
-            case VoxelType.Mushroom:
-                material.AlbedoColor = new Color(0.8f, 0.7f, 0.6f); // Beach mushroom
-                break;
-            case VoxelType.Rock:
-                material.AlbedoColor = new Color(0.8f, 0.75f, 0.7f); // Beach pebble
-                break;
-            case VoxelType.Stick:
-                material.AlbedoColor = new Color(0.7f, 0.6f, 0.4f); // Driftwood
-                break;
-            case VoxelType.Seashell:
-                material.AlbedoColor = new Color(0.95f, 0.9f, 0.85f); // Bright seashell
-                break;
-
-            case VoxelType.Water:
-                material.AlbedoColor = new Color(0.0f, 0.5f, 0.8f); // Tropical blue water
-                material.Roughness = 0.05f; // Very smooth
-                material.Metallic = 0.1f; // Slight metallic look for reflections
-                material.Transparency = BaseMaterial3D.TransparencyEnum.Alpha; // Make water transparent
-                material.AlphaScissorThreshold = 0.1f;
-                material.AlbedoColor = new Color(0.0f, 0.5f, 0.8f, 0.7f); // Add alpha for transparency
-                break;
-            case VoxelType.Snow:
-                material.AlbedoColor = new Color(0.95f, 0.95f, 0.9f); // White sand (not actual snow)
-                break;
-            case VoxelType.Bedrock:
-                material.AlbedoColor = new Color(0.4f, 0.35f, 0.3f); // Beach bedrock
-                break;
-            case VoxelType.Cloud:
-                material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // White clouds
-                material.Roughness = 0.9f;
-                material.Metallic = 0.0f;
-                break;
-            case VoxelType.Cactus:
-                material.AlbedoColor = new Color(0.5f, 0.7f, 0.4f); // Beach plant
-                break;
-            case VoxelType.IceBlock:
-                material.AlbedoColor = new Color(0.8f, 0.9f, 0.95f); // Crystalline rock (not actual ice)
-                material.Roughness = 0.1f;
-                material.Metallic = 0.1f;
-                break;
-            case VoxelType.SnowLeaves:
-                material.AlbedoColor = new Color(0.8f, 0.85f, 0.7f); // Light colored beach plants
-                break;
-            default:
-                material.AlbedoColor = new Color(0.8f, 0.75f, 0.6f); // Generic beach color
-                break;
-        }
-    }
 
     private static void SetIslandColors(StandardMaterial3D material, VoxelType voxelType)
     {

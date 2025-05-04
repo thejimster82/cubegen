@@ -143,16 +143,8 @@ namespace CubeGen.World.Generation
 			foreach (BiomeType biomeType in biomeTypesArray)
 			{
 				// Add biome types with appropriate probabilities
-				// Beach and Islands biomes should be more common for debugging
-				if (biomeType == BiomeType.Beach)
-				{
-					// 40% chance to add Beach biome to available biomes (increased from 15%)
-					if (random.NextDouble() < 0.40)
-					{
-						availableBiomes.Add(biomeType);
-					}
-				}
-				else if (biomeType == BiomeType.Islands)
+				// Islands biome should be more common for debugging
+				if (biomeType == BiomeType.Islands)
 				{
 					// 40% chance to add Islands biome to available biomes (increased from 15%)
 					if (random.NextDouble() < 0.40)
@@ -175,7 +167,6 @@ namespace CubeGen.World.Generation
 				availableBiomes.Add(BiomeType.Desert);
 				availableBiomes.Add(BiomeType.Mountains);
 				availableBiomes.Add(BiomeType.Tundra);
-				availableBiomes.Add(BiomeType.Beach);
 				availableBiomes.Add(BiomeType.Islands);
 			}
 
@@ -204,7 +195,6 @@ namespace CubeGen.World.Generation
 				availableBiomes.Add(BiomeType.Desert);
 				availableBiomes.Add(BiomeType.Mountains);
 				availableBiomes.Add(BiomeType.Tundra);
-				availableBiomes.Add(BiomeType.Beach);
 				availableBiomes.Add(BiomeType.Islands);
 			}
 

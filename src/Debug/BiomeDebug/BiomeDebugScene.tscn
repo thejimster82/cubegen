@@ -1,0 +1,40 @@
+[gd_scene load_steps=6 format=3 uid="uid://c8yvxw0vf4yeb"]
+
+[ext_resource type="Script" uid="uid://brcrv45pgqu7a" path="res://src/Debug/BiomeDebug/BiomeDebugScene.cs" id="1_yvnqm"]
+[ext_resource type="Script" uid="uid://cjlr7mfi4phey" path="res://src/World/Generation/WorldGenerator.cs" id="2_yvnqm"]
+[ext_resource type="Script" uid="uid://f86vp5v3wafj" path="res://src/World/Chunks/ChunkManager.cs" id="3_yvnqm"]
+[ext_resource type="PackedScene" uid="uid://dxnqpj5l2ykbw" path="res://src/World/ChunkMesh.tscn" id="4_yvnqm"]
+[ext_resource type="Environment" uid="uid://b4e3ckxsxo8gq" path="res://src/World/Environment/WorldEnvironment.tres" id="5_yvnqm"]
+
+[node name="BiomeDebugScene" type="Node3D"]
+script = ExtResource("1_yvnqm")
+ViewDistance = 15
+
+[node name="WorldGenerator" type="Node3D" parent="."]
+script = ExtResource("2_yvnqm")
+WorldSize = Vector2i(32, 32)
+VoxelScale = 0.75
+
+[node name="ChunkManager" type="Node3D" parent="WorldGenerator"]
+script = ExtResource("3_yvnqm")
+ChunkMeshScene = ExtResource("4_yvnqm")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, -0.75, 0.433013, 0, 10, 0)
+light_color = Color(1, 0.956863, 0.839216, 1)
+light_energy = 0.8
+light_angular_distance = 0.5
+shadow_enabled = true
+shadow_normal_bias = 3.0
+shadow_blur = 6.0
+directional_shadow_blend_splits = true
+directional_shadow_max_distance = 200.0
+directional_shadow_pancake_size = 40.0
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = ExtResource("5_yvnqm")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.707107, 0.707107, 0, -0.707107, 0.707107, 0, 50, 50)
+current = true
+fov = 60.0

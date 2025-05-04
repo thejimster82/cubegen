@@ -35,10 +35,15 @@ namespace CubeGen.World.Generation
 				}
 				return _instance;
 			}
+			set
+			{
+				_instance = value;
+				GD.Print($"BiomeRegionGenerator instance set to: {_instance.GetType().Name}");
+			}
 		}
 
 		// Initialize with a specific seed
-		public void Initialize(int seed)
+		public virtual void Initialize(int seed)
 		{
 			// Store the seed
 			_seed = seed;
@@ -79,7 +84,7 @@ namespace CubeGen.World.Generation
 		private Dictionary<int, List<int>> _cellNeighbors = new Dictionary<int, List<int>>();
 
 		// Get biome type for a world position using domain warping
-		public BiomeType GetBiomeType(int worldX, int worldZ)
+		public virtual BiomeType GetBiomeType(int worldX, int worldZ)
 		{
 			// Check if properly initialized
 			if (!_isProperlyInitialized)
@@ -384,7 +389,7 @@ namespace CubeGen.World.Generation
 		/// <summary>
 		/// Gets the cell ID for a world position
 		/// </summary>
-		public int GetCellId(int worldX, int worldZ)
+		public virtual int GetCellId(int worldX, int worldZ)
 		{
 			// Check if properly initialized
 			if (!_isProperlyInitialized)
@@ -407,7 +412,7 @@ namespace CubeGen.World.Generation
 		/// <summary>
 		/// Gets the biome type for a cell ID
 		/// </summary>
-		public BiomeType GetBiomeTypeForCell(int cellId)
+		public virtual BiomeType GetBiomeTypeForCell(int cellId)
 		{
 			// Check if properly initialized
 			if (!_isProperlyInitialized)
@@ -547,7 +552,7 @@ namespace CubeGen.World.Generation
 		/// <param name="chunkSize">Size of the chunk in blocks</param>
 		/// <param name="blendDistance">Maximum distance to blend (in blocks)</param>
 		/// <returns>True if any part of the chunk is near a biome boundary</returns>
-		public bool IsChunkNearBiomeBoundary(int chunkPosX, int chunkPosZ, int chunkSize, float blendDistance)
+		public virtual bool IsChunkNearBiomeBoundary(int chunkPosX, int chunkPosZ, int chunkSize, float blendDistance)
 		{
 			// Check if properly initialized
 			if (!_isProperlyInitialized)

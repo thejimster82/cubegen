@@ -340,6 +340,32 @@ public partial class ChunkManager : Node3D
         base._ExitTree();
     }
 
+    // Clear all chunks from the scene
+    public void ClearAllChunks()
+    {
+        // Create a copy of the keys to avoid modification during enumeration
+        var chunkKeys = _chunks.Keys.ToArray();
+
+        // Remove all chunk meshes
+        foreach (Vector2I position in chunkKeys)
+        {
+            if (_chunks.TryGetValue(position, out ChunkMesh chunkToRemove))
+            {
+                chunkToRemove.QueueFree();
+                _chunks.TryRemove(position, out _);
+            }
+        }
+
+        // Clear chunk data
+        _chunkData.Clear();
+
+        // Clear any pending requests
+        while (_chunksToRequest.TryTake(out _)) { }
+        while (_chunksToRemove.TryTake(out _)) { }
+
+        GD.Print("All chunks cleared");
+    }
+
     [Signal]
     public delegate void ChunkRequestedEventHandler(Vector2I chunkPosition);
 }

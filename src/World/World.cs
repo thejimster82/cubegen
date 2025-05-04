@@ -59,8 +59,8 @@ public partial class World : Node3D
 		_worldGenerator.Seed = Seed;
 		_worldGenerator.ViewDistance = ViewDistance;
 
-		// Initialize the BiomeRegionGenerator with the same seed
-		BiomeRegionGenerator.Instance.Initialize(Seed);
+		// Note: BiomeRegionGenerator is now initialized in WorldGenerator._Ready()
+		// to ensure it's done before any biome queries
 
 		// Set the same seed for cloud generator
 		if (_cloudGenerator != null)

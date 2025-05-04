@@ -20,6 +20,7 @@ namespace CubeGen.World.Generation
 		private float _warpStrength = 50.0f; // Controls how much the domain is warped
 		private Dictionary<int, BiomeType> _cellToBiomeMap = new Dictionary<int, BiomeType>();
 		private static BiomeRegionGenerator _instance;
+		private bool _isProperlyInitialized = false; // Flag to track if initialized with the game's seed
 
 		// Singleton instance
 		public static BiomeRegionGenerator Instance
@@ -29,6 +30,8 @@ namespace CubeGen.World.Generation
 				if (_instance == null)
 				{
 					_instance = new BiomeRegionGenerator();
+					// We don't initialize with a default seed here anymore
+					// The proper seed will be set by the WorldGenerator
 				}
 				return _instance;
 			}
@@ -37,6 +40,7 @@ namespace CubeGen.World.Generation
 		// Initialize with a specific seed
 		public void Initialize(int seed)
 		{
+			// Store the seed
 			_seed = seed;
 
 			// Initialize Voronoi noise for region boundaries
@@ -66,6 +70,9 @@ namespace CubeGen.World.Generation
 
 			// Clear any existing mappings
 			_cellToBiomeMap.Clear();
+
+			// Mark as properly initialized
+			_isProperlyInitialized = true;
 		}
 
 		// Dictionary to track neighboring cell relationships
@@ -74,6 +81,14 @@ namespace CubeGen.World.Generation
 		// Get biome type for a world position using domain warping
 		public BiomeType GetBiomeType(int worldX, int worldZ)
 		{
+			// Check if properly initialized
+			if (!_isProperlyInitialized)
+			{
+				GD.PrintErr("BiomeRegionGenerator not properly initialized in GetBiomeType. Waiting for proper initialization.");
+				// Return a default biome type instead of initializing with a default seed
+				return BiomeType.Plains;
+			}
+
 			// Apply domain warping to the coordinates
 			(float warpedX, float warpedZ) = WarpPosition(worldX, worldZ);
 
@@ -96,6 +111,13 @@ namespace CubeGen.World.Generation
 		// Apply domain warping to a position
 		private (float, float) WarpPosition(float x, float z)
 		{
+			// Check if properly initialized
+			if (!_isProperlyInitialized)
+			{
+				// If not properly initialized, return the original coordinates without warping
+				return (x, z);
+			}
+
 			// Sample the domain warp noise at the input position
 			float warpX = _domainWarpNoise.GetNoise2D(x + 1000, z);
 			float warpZ = _domainWarpNoise.GetNoise2D(x, z + 1000);
@@ -247,6 +269,13 @@ namespace CubeGen.World.Generation
 		// Get the raw cell value for a position (useful for visualizing region boundaries)
 		public float GetCellValue(int worldX, int worldZ)
 		{
+			// Check if properly initialized
+			if (!_isProperlyInitialized)
+			{
+				GD.PrintErr("BiomeRegionGenerator not properly initialized in GetCellValue. Returning default value.");
+				return 0.0f;
+			}
+
 			// Apply domain warping to the coordinates
 			(float warpedX, float warpedZ) = WarpPosition(worldX, worldZ);
 
@@ -256,6 +285,13 @@ namespace CubeGen.World.Generation
 		// Check if a position is near a region boundary
 		public bool IsNearBoundary(int worldX, int worldZ, float threshold = 0.05f)
 		{
+			// Check if properly initialized
+			if (!_isProperlyInitialized)
+			{
+				GD.PrintErr("BiomeRegionGenerator not properly initialized in IsNearBoundary. Returning default value.");
+				return false;
+			}
+
 			// Apply domain warping to the coordinates
 			(float warpedX, float warpedZ) = WarpPosition(worldX, worldZ);
 
@@ -288,6 +324,13 @@ namespace CubeGen.World.Generation
 		// Get distance to the nearest region boundary - more efficient implementation
 		public float GetDistanceToBoundary(int worldX, int worldZ)
 		{
+			// Check if properly initialized
+			if (!_isProperlyInitialized)
+			{
+				GD.PrintErr("BiomeRegionGenerator not properly initialized in GetDistanceToBoundary. Returning default distance.");
+				return 100.0f; // Return a large value to indicate "far from boundary"
+			}
+
 			// Apply domain warping to the coordinates
 			(float warpedX, float warpedZ) = WarpPosition(worldX, worldZ);
 
@@ -355,6 +398,14 @@ namespace CubeGen.World.Generation
 		/// </summary>
 		public int GetCellId(int worldX, int worldZ)
 		{
+			// Check if properly initialized
+			if (!_isProperlyInitialized)
+			{
+				GD.PrintErr("BiomeRegionGenerator not properly initialized in GetCellId. Returning default cell ID.");
+				// Return a consistent default cell ID
+				return 500; // Arbitrary but consistent value
+			}
+
 			// Apply domain warping to the coordinates
 			(float warpedX, float warpedZ) = WarpPosition(worldX, worldZ);
 
@@ -370,6 +421,13 @@ namespace CubeGen.World.Generation
 		/// </summary>
 		public BiomeType GetBiomeTypeForCell(int cellId)
 		{
+			// Check if properly initialized
+			if (!_isProperlyInitialized)
+			{
+				GD.PrintErr("BiomeRegionGenerator not properly initialized in GetBiomeTypeForCell. Returning default biome.");
+				return BiomeType.Plains;
+			}
+
 			// If we haven't assigned a biome to this cell yet, do so now
 			if (!_cellToBiomeMap.ContainsKey(cellId))
 			{
@@ -389,6 +447,12 @@ namespace CubeGen.World.Generation
 		/// <returns>True if any part of the chunk is near a biome boundary</returns>
 		public bool IsChunkNearBiomeBoundary(int chunkPosX, int chunkPosZ, int chunkSize, float blendDistance)
 		{
+			// Check if properly initialized
+			if (!_isProperlyInitialized)
+			{
+				GD.PrintErr("BiomeRegionGenerator not properly initialized in IsChunkNearBiomeBoundary. Returning false.");
+				return false;
+			}
 			// Check corners and center of the chunk
 			int worldX, worldZ;
 
@@ -463,6 +527,14 @@ namespace CubeGen.World.Generation
 		{
 			Dictionary<BiomeType, float> biomesWithDistances = new Dictionary<BiomeType, float>();
 
+			// Check if properly initialized
+			if (!_isProperlyInitialized)
+			{
+				GD.PrintErr("BiomeRegionGenerator not properly initialized in GetNeighboringBiomes. Returning default biome only.");
+				biomesWithDistances[BiomeType.Plains] = 0f;
+				return biomesWithDistances;
+			}
+
 			// Get the current cell and biome
 			int cellId = GetCellId(worldX, worldZ);
 			BiomeType currentBiome = GetBiomeTypeForCell(cellId);
@@ -515,6 +587,14 @@ namespace CubeGen.World.Generation
 		public Dictionary<BiomeType, float> CalculateBiomeBlendWeights(int worldX, int worldZ, float blendDistance = 10f)
 		{
 			Dictionary<BiomeType, float> blendWeights = new Dictionary<BiomeType, float>();
+
+			// Check if properly initialized
+			if (!_isProperlyInitialized)
+			{
+				GD.PrintErr("BiomeRegionGenerator not properly initialized in CalculateBiomeBlendWeights. Returning default biome only.");
+				blendWeights[BiomeType.Plains] = 1.0f;
+				return blendWeights;
+			}
 
 			// Get the current biome
 			BiomeType currentBiome = GetBiomeType(worldX, worldZ);

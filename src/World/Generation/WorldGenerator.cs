@@ -23,6 +23,11 @@ public partial class WorldGenerator : Node3D
 
 	public override void _Ready()
 	{
+		// Explicitly initialize the BiomeRegionGenerator first
+		// This ensures it's properly initialized before any biome queries
+		BiomeRegionGenerator.Instance.Initialize(Seed);
+		GD.Print($"BiomeRegionGenerator initialized with seed: {Seed}");
+
 		InitializeNoise();
 		_chunkManager = GetNode<ChunkManager>("ChunkManager");
 

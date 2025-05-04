@@ -56,11 +56,10 @@ public partial class World : Node3D
 			Random random = new Random();
 			Seed = random.Next();
 		}
-		_worldGenerator.Seed = Seed;
-		_worldGenerator.ViewDistance = ViewDistance;
+		_worldGenerator.Initialize(Seed, ViewDistance);
 
-		// Initialize the BiomeRegionGenerator with the same seed
-		BiomeRegionGenerator.Instance.Initialize(Seed);
+		// Note: BiomeRegionGenerator is now initialized in WorldGenerator._Ready()
+		// to ensure it's done before any biome queries
 
 		// Set the same seed for cloud generator
 		if (_cloudGenerator != null)
@@ -456,7 +455,8 @@ public partial class World : Node3D
 			{ BiomeType.Forest, new Color(0.2f, 0.6f, 0.2f) },
 			{ BiomeType.Desert, new Color(0.95f, 0.85f, 0.5f) },
 			{ BiomeType.Mountains, new Color(0.5f, 0.5f, 0.6f) },
-			{ BiomeType.Tundra, new Color(0.95f, 0.97f, 1.0f) }
+			{ BiomeType.Tundra, new Color(0.95f, 0.97f, 1.0f) },
+			{ BiomeType.Islands, new Color(0.8f, 0.9f, 0.6f) }    // Light green-yellow for islands
 		};
 
 		// Calculate half size for centering
@@ -609,6 +609,18 @@ public partial class World : Node3D
 				biomeNoise.FractalLacunarity = 1.8f;
 				biomeNoise.FractalGain = 0.3f;
 				break;
+
+
+
+			case BiomeType.Islands:
+				// Islands: Medium frequency, higher octaves for varied island terrain
+				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				biomeNoise.Frequency = 0.02f;
+				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
+				biomeNoise.FractalOctaves = 3;
+				biomeNoise.FractalLacunarity = 2.0f;
+				biomeNoise.FractalGain = 0.5f;
+				break;
 		}
 
 		// Get noise value with biome-specific settings
@@ -620,6 +632,13 @@ public partial class World : Node3D
 		// Apply a consistent base height for all biomes
 		float baseHeight = 0.3f;
 		float noiseContribution = 0.15f; // How much the noise affects the final height
+
+		// Special case for Islands biome - make it have more variation
+		if (biomeType == BiomeType.Islands)
+		{
+			baseHeight = 0.25f; // Slightly lower base height
+			noiseContribution = 0.25f; // More variation for islands
+		}
 
 		// Combine base height with noise contribution
 		heightNoise = baseHeight + (heightNoise * noiseContribution);
@@ -678,7 +697,7 @@ public partial class World : Node3D
 		if (_player != null && _chunkManager != null)
 		{
 			// Capture player position on the main thread
-			Vector3 playerPosition = _player.Position;
+			Vector3 playerPosition = _player.GlobalPosition;
 
 			// Update last position
 			_lastPlayerPosition = playerPosition;

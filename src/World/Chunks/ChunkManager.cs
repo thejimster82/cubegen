@@ -39,7 +39,7 @@ public partial class ChunkManager : Node3D
     private ChunkMeshGenerator _meshGenerator;
 
     // Maximum number of chunks to process per frame
-    private const int MaxChunksPerFrame = 8; // Increased from 3 to process more chunks each frame
+    private const int MaxChunksPerFrame = 5; // Increased from 3 to process more chunks each frame
 
     public void Initialize(int chunkSize, int chunkHeight)
     {
@@ -128,52 +128,13 @@ public partial class ChunkManager : Node3D
         }
     }
 
-    // Queue neighboring chunks for remeshing to fix AO at boundaries
-    private void QueueNeighborsForRemeshing(Vector2I chunkPos)
-    {
-        // Check all 8 neighboring positions
-        Vector2I[] neighbors = new Vector2I[]
-        {
-            new Vector2I(chunkPos.X - 1, chunkPos.Y - 1), // Bottom-left
-            new Vector2I(chunkPos.X - 1, chunkPos.Y),     // Left
-            new Vector2I(chunkPos.X - 1, chunkPos.Y + 1), // Top-left
-            new Vector2I(chunkPos.X, chunkPos.Y - 1),     // Bottom
-            new Vector2I(chunkPos.X, chunkPos.Y + 1),     // Top
-            new Vector2I(chunkPos.X + 1, chunkPos.Y - 1), // Bottom-right
-            new Vector2I(chunkPos.X + 1, chunkPos.Y),     // Right
-            new Vector2I(chunkPos.X + 1, chunkPos.Y + 1)  // Top-right
-        };
-
-        // Queue each existing neighbor for remeshing
-        foreach (Vector2I neighborPos in neighbors)
-        {
-            // First check if we have the chunk data
-            if (_chunkData.TryGetValue(neighborPos, out VoxelChunk neighborChunk))
-            {
-                // Queue it for remeshing
-                _meshGenerator.QueueChunk(neighborChunk);
-            }
-            // If no chunk data but we have a mesh, try to get the chunk from there
-            else if (_chunks.TryGetValue(neighborPos, out ChunkMesh neighborMesh))
-            {
-                // Get the chunk from the mesh
-                neighborChunk = neighborMesh.GetChunk();
-                if (neighborChunk != null)
-                {
-                    // Queue it for remeshing
-                    _meshGenerator.QueueChunk(neighborChunk);
-                }
-            }
-        }
-    }
-
     private void ProcessCompletedMeshes()
     {
         // Process any completed meshes from the mesh generator
         // Limit the number of meshes processed per frame
         int meshesProcessed = 0;
 
-        while (_meshGenerator.HasCompletedMeshes() && meshesProcessed < MaxChunksPerFrame)
+        while (meshesProcessed < MaxChunksPerFrame && _meshGenerator.HasCompletedMeshes())
         {
             var (chunk, mesh, collisionFaces) = _meshGenerator.GetNextCompletedMesh();
 
@@ -211,7 +172,9 @@ public partial class ChunkManager : Node3D
 
     private void ProcessChunkRemovals()
     {
-        while (_chunksToRemove.TryTake(out Vector2I position))
+        int chunksRemoved = 0;
+        int maxChunksToRemove = 1; // Process more chunks per frame
+        while (chunksRemoved < maxChunksToRemove && _chunksToRemove.TryTake(out Vector2I position))
         {
             // Remove chunk mesh if it exists
             if (_chunks.TryGetValue(position, out ChunkMesh chunkToRemove))
@@ -222,6 +185,8 @@ public partial class ChunkManager : Node3D
 
             // Also remove chunk data
             _chunkData.TryRemove(position, out _);
+
+            chunksRemoved++;
         }
     }
 
@@ -252,7 +217,6 @@ public partial class ChunkManager : Node3D
     {
         // Limit the number of chunks processed per frame
         int chunksProcessed = 0;
-        int maxChunksToRequest = 12; // Process more chunks per frame
 
         // Sort chunks by distance before processing
         List<(Vector2I, float)> sortedChunks = new();
@@ -269,7 +233,7 @@ public partial class ChunkManager : Node3D
         // Process chunks in order of distance
         foreach (var chunkRequest in sortedChunks)
         {
-            if (chunksProcessed >= maxChunksToRequest)
+            if (chunksProcessed >= MaxChunksPerFrame)
             {
                 // Re-queue remaining chunks for next frame
                 _chunksToRequest.Add(chunkRequest);

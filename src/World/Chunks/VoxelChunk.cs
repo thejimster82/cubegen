@@ -4,6 +4,9 @@ using System.Collections.Generic;
 using CubeGen.World.Common;
 using CubeGen.World.Generation;
 
+/// <summary>
+/// Represents a chunk of voxels in the world
+/// </summary>
 public class VoxelChunk
 {
     public Vector2I Position { get; private set; }
@@ -16,6 +19,10 @@ public class VoxelChunk
     // Dictionary to store decoration placement information
     // Key is a string in the format "x,y,z", value is the placement data
     private Dictionary<string, DecorationClusters.DecorationPlacement> _decorationPlacements = new Dictionary<string, DecorationClusters.DecorationPlacement>();
+
+    // Dictionary to store biome blend weights for each voxel
+    // Key is a string in the format "x,z", value is a dictionary mapping BiomeType to blend weight (0.0-1.0)
+    private Dictionary<string, Dictionary<BiomeType, float>> _biomeBlendWeights = new Dictionary<string, Dictionary<BiomeType, float>>();
 
     public VoxelChunk(int size, int height, Vector2I position, float scale = 1.0f)
     {
@@ -91,6 +98,16 @@ public class VoxelChunk
         return false;
     }
 
+    // Check if a voxel is water
+    public bool IsVoxelWater(int x, int y, int z)
+    {
+        if (IsInBounds(x, y, z))
+        {
+            return _voxels[x][y][z] == VoxelType.Water;
+        }
+        return false;
+    }
+
     // Get world position of this chunk
     public Vector3 GetWorldPosition()
     {
@@ -134,6 +151,97 @@ public class VoxelChunk
         {
             string key = GetDecorationKey(x, y, z);
             return _decorationPlacements.ContainsKey(key);
+        }
+
+        return false;
+    }
+
+    // Helper method to create a key for the biome blend weights dictionary
+    private string GetBiomeBlendKey(int x, int z)
+    {
+        return $"{x},{z}";
+    }
+
+    /// <summary>
+    /// Sets the blend weight for a specific biome at a voxel position
+    /// </summary>
+    /// <param name="x">X coordinate within the chunk</param>
+    /// <param name="z">Z coordinate within the chunk</param>
+    /// <param name="biomeType">The biome type</param>
+    /// <param name="weight">The blend weight (0.0-1.0)</param>
+    public void SetBiomeBlendWeight(int x, int z, BiomeType biomeType, float weight)
+    {
+        if (x >= 0 && x < Size && z >= 0 && z < Size)
+        {
+            string key = GetBiomeBlendKey(x, z);
+
+            // Initialize the dictionary for this position if it doesn't exist
+            if (!_biomeBlendWeights.ContainsKey(key))
+            {
+                _biomeBlendWeights[key] = new Dictionary<BiomeType, float>();
+            }
+
+            // Set the blend weight
+            _biomeBlendWeights[key][biomeType] = weight;
+        }
+    }
+
+    /// <summary>
+    /// Gets the blend weight for a specific biome at a voxel position
+    /// </summary>
+    /// <param name="x">X coordinate within the chunk</param>
+    /// <param name="z">Z coordinate within the chunk</param>
+    /// <param name="biomeType">The biome type</param>
+    /// <returns>The blend weight (0.0-1.0), or 0.0 if not set</returns>
+    public float GetBiomeBlendWeight(int x, int z, BiomeType biomeType)
+    {
+        if (x >= 0 && x < Size && z >= 0 && z < Size)
+        {
+            string key = GetBiomeBlendKey(x, z);
+
+            if (_biomeBlendWeights.TryGetValue(key, out var weights) &&
+                weights.TryGetValue(biomeType, out var weight))
+            {
+                return weight;
+            }
+        }
+
+        return 0.0f; // Default to no influence if not set
+    }
+
+    /// <summary>
+    /// Gets all biome blend weights for a voxel position
+    /// </summary>
+    /// <param name="x">X coordinate within the chunk</param>
+    /// <param name="z">Z coordinate within the chunk</param>
+    /// <returns>Dictionary mapping BiomeType to blend weight, or null if none set</returns>
+    public Dictionary<BiomeType, float> GetAllBiomeBlendWeights(int x, int z)
+    {
+        if (x >= 0 && x < Size && z >= 0 && z < Size)
+        {
+            string key = GetBiomeBlendKey(x, z);
+
+            if (_biomeBlendWeights.TryGetValue(key, out var weights))
+            {
+                return new Dictionary<BiomeType, float>(weights); // Return a copy to prevent modification
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Checks if a voxel position has any biome blend weights set
+    /// </summary>
+    /// <param name="x">X coordinate within the chunk</param>
+    /// <param name="z">Z coordinate within the chunk</param>
+    /// <returns>True if any blend weights are set, false otherwise</returns>
+    public bool HasBiomeBlendWeights(int x, int z)
+    {
+        if (x >= 0 && x < Size && z >= 0 && z < Size)
+        {
+            string key = GetBiomeBlendKey(x, z);
+            return _biomeBlendWeights.ContainsKey(key) && _biomeBlendWeights[key].Count > 0;
         }
 
         return false;

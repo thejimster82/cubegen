@@ -678,7 +678,7 @@ public partial class World : Node3D
 		if (_player != null && _chunkManager != null)
 		{
 			// Capture player position on the main thread
-			Vector3 playerPosition = _player.Position;
+			Vector3 playerPosition = _player.GlobalPosition;
 
 			// Update last position
 			_lastPlayerPosition = playerPosition;

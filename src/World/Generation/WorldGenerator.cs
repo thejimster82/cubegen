@@ -100,16 +100,10 @@ public partial class WorldGenerator : Node3D
 		bool isNearBiomeBoundary = BiomeRegionGenerator.Instance.IsChunkNearBiomeBoundary(
 			chunkPos.X, chunkPos.Y, ChunkSize, blendDistance);
 
-		// Debug output to help understand performance improvement
-		if (chunkPos.X % 5 == 0 && chunkPos.Y % 5 == 0)
-		{
-			GD.Print($"Chunk at {chunkPos} is {(isNearBiomeBoundary ? "near" : "not near")} a biome boundary");
-		}
-
 		// OPTIMIZATION: Pre-calculate blend weights on a coarser grid if near boundary
 		// Use a 4x4 grid instead of calculating for every voxel
 		Dictionary<BiomeType, float>[,] blendWeightsGrid = null;
-		int gridSize = 4; // 4x4 grid for the chunk
+		int gridSize = 2; // 4x4 grid for the chunk
 
 		if (isNearBiomeBoundary)
 		{
@@ -307,8 +301,8 @@ public partial class WorldGenerator : Node3D
 		heightNoise = (heightNoise + 1f) * 0.5f;
 
 		// Apply a consistent base height for all biomes
-		float baseHeight = 0.3f;
-		float noiseContribution = 0.15f; // How much the noise affects the final height
+		float baseHeight = 0.2f;
+		float noiseContribution = 0.25f; // How much the noise affects the final height
 
 		// Combine base height with noise contribution
 		heightNoise = baseHeight + (heightNoise * noiseContribution);
@@ -859,18 +853,47 @@ public partial class WorldGenerator : Node3D
 	private static void GenerateDetailedTree(VoxelChunk chunk, int x, int z, int surfaceHeight, Random random)
 	{
 		// Tree parameters - doubled for higher resolution
-		int trunkHeight = random.Next(12, 20); // Doubled height for higher resolution (was 6-10)
-		int leafRadius = random.Next(4, 8);    // Doubled radius for higher resolution (was 2-4)
-		int leafHeight = random.Next(8, 12);   // Doubled height for higher resolution (was 4-6)
+		int trunkHeight = random.Next(12, 24); // Doubled height for higher resolution (was 6-10)
+		int trunkThickness = random.Next(1, 3); // Doubled height for higher resolution (was 6-10)
+		int trunkThicknessBase = random.Next(6, 8); // Doubled height for higher resolution (was 6-10)
+		int leafRadius = random.Next(6, 9);    // Doubled radius for higher resolution (was 2-4)
+		int leafHeight = random.Next(10, 11);   // Doubled height for higher resolution (was 4-6)
+		int trunkShiftX = random.Next(-6, 6);
+		int trunkShiftZ = random.Next(-6, 6);
 
 		// Generate trunk with more detail
 		// Make the trunk thicker at the base (2x2 for first few blocks)
-		for (int y = 1; y <= Math.Min(3, trunkHeight); y++)
+		for (int y = 1; y <= Math.Min(10, trunkHeight); y++)
 		{
-			// Create a 2x2 trunk base if there's room in the chunk
-			for (int dx = 0; dx <= 1; dx++)
+			for (int dx = Math.Min(-1, -trunkThicknessBase / 2 + y / 2); dx <= Math.Max(1, trunkThicknessBase / 2 - y / 2); dx++)
 			{
-				for (int dz = 0; dz <= 1; dz++)
+				for (int dz = Math.Min(-1, -trunkThicknessBase / 2 + y / 2); dz <= Math.Max(1, trunkThicknessBase / 2 - y / 2); dz++)
+				{
+					int nx = x + dx;
+					int nz = z + dz;
+
+					// We already checked chunk boundaries in AddBiomeObjects, so this should be safe
+					if (random.NextDouble() > 0.2f && surfaceHeight + y < chunk.Height)
+					{
+						chunk.SetVoxel(nx, surfaceHeight + y, nz, VoxelType.Wood);
+					}
+				}
+			}
+		}
+
+		// Continue with a 1x1 trunk for the rest of the height
+		float xFloat = x;
+		float zFloat = z;
+		for (int y = 4; y <= trunkHeight; y++)
+		{
+			xFloat += (float)trunkShiftX / (float)trunkHeight;
+			zFloat += (float)trunkShiftZ / (float)trunkHeight;
+			x = (int)xFloat;
+			z = (int)zFloat;
+			// Create a 2x2 trunk base if there's room in the chunk
+			for (int dx = 0; dx <= trunkThickness; dx++)
+			{
+				for (int dz = 0; dz <= trunkThickness; dz++)
 				{
 					int nx = x + dx;
 					int nz = z + dz;
@@ -881,15 +904,6 @@ public partial class WorldGenerator : Node3D
 						chunk.SetVoxel(nx, surfaceHeight + y, nz, VoxelType.Wood);
 					}
 				}
-			}
-		}
-
-		// Continue with a 1x1 trunk for the rest of the height
-		for (int y = 4; y <= trunkHeight; y++)
-		{
-			if (surfaceHeight + y < chunk.Height)
-			{
-				chunk.SetVoxel(x, surfaceHeight + y, z, VoxelType.Wood);
 			}
 		}
 
@@ -933,11 +947,11 @@ public partial class WorldGenerator : Node3D
 							{
 								// Add some randomness to make leaves less uniform
 								// But ensure the tree still looks full and balanced
-								if (distance > effectiveRadius - 0.8f && random.NextDouble() < 0.3f)
-								{
-									// Skip some edge leaves randomly
-									continue;
-								}
+								// if (distance > effectiveRadius - 0.8f && random.NextDouble() < 0.3f)
+								// {
+								// 	// Skip some edge leaves randomly
+								// 	continue;
+								// }
 
 								chunk.SetVoxel(nx, ny, nz, VoxelType.Leaves);
 							}

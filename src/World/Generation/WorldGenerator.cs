@@ -191,31 +191,11 @@ public partial class WorldGenerator : Node3D
 					chunk.SetVoxel(x, y, z, voxelType);
 				}
 
-				// For Islands biome, fill water above terrain up to water level
-				if (primaryBiome == BiomeType.Islands)
+				// For all biomes, fill water above terrain up to water level
+				// This ensures water is placed correctly regardless of terrain height
+				for (int y = terrainHeight; y <= waterLevelHeight && y < ChunkHeight; y++)
 				{
-					// Calculate minimum water depth (15 voxels)
-					int minWaterDepth = 15;
-
-					// Calculate the minimum water bottom level (water level - minimum depth)
-					int minWaterBottomLevel = waterLevelHeight - minWaterDepth;
-
-					// If terrain is above the minimum water bottom level, we need to adjust it
-					if (terrainHeight > minWaterBottomLevel && terrainHeight <= waterLevelHeight)
-					{
-						// Adjust terrain to ensure minimum water depth
-						// First, clear any terrain voxels that would make water too shallow
-						for (int y = minWaterBottomLevel + 1; y < terrainHeight; y++)
-						{
-							chunk.SetVoxel(x, y, z, VoxelType.Water);
-						}
-					}
-
-					// Fill water from terrain height (or adjusted terrain) to water level
-					for (int y = terrainHeight; y <= waterLevelHeight && y < ChunkHeight; y++)
-					{
-						chunk.SetVoxel(x, y, z, VoxelType.Water);
-					}
+					chunk.SetVoxel(x, y, z, VoxelType.Water);
 				}
 			}
 		}
@@ -368,18 +348,7 @@ public partial class WorldGenerator : Node3D
 			// Values below threshold become water, above become land
 			float islandThreshold = 0.55f; // Adjust to control island size
 
-			// Calculate minimum water depth (15 voxels)
-			int minWaterDepth = 15;
-
-			// Calculate the minimum water bottom level (water level - minimum depth)
-			int minWaterBottomLevel = waterLevelHeight - minWaterDepth;
-
-			if (heightNoise < islandThreshold)
-			{
-				// Below threshold - return a level that ensures proper water depth
-				return minWaterBottomLevel;
-			}
-			else
+			if (heightNoise >= islandThreshold)
 			{
 				// Above threshold - scale the remaining range to create island terrain
 				// Scale the noise to create more pronounced islands
@@ -393,19 +362,16 @@ public partial class WorldGenerator : Node3D
 
 				// Calculate final height
 				heightNoise = baseHeight + scaledNoise * noiseContribution;
-
-				// Convert to actual height value
-				int terrainHeight = Mathf.FloorToInt(heightNoise * ChunkHeight);
-
-				// Ensure islands don't create shallow water
-				if (terrainHeight > minWaterBottomLevel && terrainHeight < waterLevelHeight)
-				{
-					// If the island would create shallow water, push it down to ensure proper depth
-					return minWaterBottomLevel;
-				}
-
-				return terrainHeight;
 			}
+			else
+			{
+				// Below threshold - generate normal underwater terrain
+				// Use a lower height for underwater areas
+				heightNoise = heightNoise * 0.3f;
+			}
+
+			// Convert to actual height value and return
+			return Mathf.FloorToInt(heightNoise * ChunkHeight);
 		}
 		else
 		{
@@ -601,12 +567,6 @@ public partial class WorldGenerator : Node3D
 		// For Islands biome, handle water and islands
 		if (biomeType == BiomeType.Islands)
 		{
-			// Calculate minimum water depth (15 voxels)
-			int minWaterDepth = 15;
-
-			// Calculate the minimum water bottom level (water level - minimum depth)
-			int minWaterBottomLevel = waterLevelHeight - minWaterDepth;
-
 			// If this is at the terrain surface
 			if (y == terrainHeight - 1)
 			{

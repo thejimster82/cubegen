@@ -1,5 +1,6 @@
 using Godot;
 using System;
+using System.Reflection;
 using CubeGen.World.Common;
 using CubeGen.World.Generation;
 
@@ -114,11 +115,10 @@ public partial class Player : CharacterBody3D
 		_underwaterOverlay.SetAnchorsPreset(Control.LayoutPreset.FullRect); // Make it cover the entire screen
 		_underwaterOverlay.Size = new Vector2(1920, 1080); // Ensure it's large enough
 
-		// Use a tropical blue water color with transparency
-		// This matches the color used in BiomeMaterials for Islands biome water
-		// Make it more visible for testing
-		Color waterColor = new Color(0.0f, 0.5f, 0.8f, 0.5f);
-		_underwaterOverlay.Color = waterColor;
+		// Set a default water color with transparency (will be updated dynamically)
+		// This is just a fallback in case we can't determine the actual water color
+		Color defaultWaterColor = new Color(0.0f, 0.5f, 0.8f, 0.5f);
+		_underwaterOverlay.Color = defaultWaterColor;
 		_underwaterOverlay.Visible = false; // Hide initially
 		_underwaterOverlay.MouseFilter = Control.MouseFilterEnum.Ignore; // Make sure it doesn't block input
 
@@ -129,27 +129,7 @@ public partial class Player : CharacterBody3D
 		// This ensures it's not affected by player transformations and is always visible
 		// Use call_deferred to avoid adding a child while the parent is still setting up
 		GetTree().Root.CallDeferred("add_child", _underwaterOverlayCanvas);
-
-		// Print debug info
-		GD.Print("Underwater overlay created with color: " + waterColor);
-
-		// For testing: Make the overlay visible for a few seconds when the game starts
-		_underwaterOverlay.Visible = true;
-
-		// Create a timer to hide the overlay after 3 seconds
-		var testTimer = new Timer();
-		testTimer.WaitTime = 3.0f;
-		testTimer.OneShot = true;
-		testTimer.Timeout += () => {
-			GD.Print("Test timer expired, hiding overlay");
-			_underwaterOverlay.Visible = false;
-		};
-
-		// Use call_deferred to avoid adding a child while the parent is still setting up
-		CallDeferred("add_child", testTimer);
-
-		// Start the timer after it's added (in the next frame)
-		CallDeferred("StartTestTimer", testTimer);
+		_underwaterOverlay.Visible = false;
 	}
 
 	public override void _Input(InputEvent @event)
@@ -192,6 +172,131 @@ public partial class Player : CharacterBody3D
 		{
 			timer.Start();
 			GD.Print("Test timer started");
+		}
+	}
+
+	// Helper method to get the color of the liquid at a specific position
+	private Color GetLiquidColorAtPosition(ChunkManager chunkManager, Vector3 position)
+	{
+		try
+		{
+			// Get the voxel type at this position
+			// First convert world position to voxel coordinates
+			WorldGenerator worldGenerator = null;
+
+			// Try to find WorldGenerator to get voxel scale
+			try
+			{
+				worldGenerator = GetTree().Root.GetNodeOrNull<WorldGenerator>("World/WorldGenerator");
+
+				if (worldGenerator == null)
+					worldGenerator = GetTree().Root.GetNodeOrNull<WorldGenerator>("WorldGenerator");
+
+				if (worldGenerator == null)
+					worldGenerator = GetParent().GetNodeOrNull<WorldGenerator>("WorldGenerator");
+
+				if (worldGenerator == null)
+					worldGenerator = GetParent().GetParent()?.GetNodeOrNull<WorldGenerator>("WorldGenerator");
+			}
+			catch (Exception ex)
+			{
+				GD.PrintErr($"Error finding WorldGenerator: {ex.Message}");
+			}
+
+			float voxelScale = 1.0f;
+			if (worldGenerator != null)
+			{
+				voxelScale = worldGenerator.VoxelScale;
+
+				// If voxel scale is 0, use default of 1.0
+				if (voxelScale <= 0)
+				{
+					voxelScale = 1.0f;
+				}
+				else
+				{
+					// Convert scale to divisor (e.g., scale of 0.5 means 2x resolution)
+					voxelScale = 1.0f / voxelScale;
+				}
+			}
+
+			// Convert world position to voxel coordinates
+			float playerScale = 1.0f;
+			if (Scale != Vector3.One)
+			{
+				playerScale = Scale.X; // Get player scale
+			}
+
+			// Apply both scales to convert world position to voxel coordinates
+			int worldX = Mathf.FloorToInt(position.X * voxelScale / playerScale);
+			int worldY = Mathf.FloorToInt(position.Y * voxelScale / playerScale);
+			int worldZ = Mathf.FloorToInt(position.Z * voxelScale / playerScale);
+
+			// Get the voxel type at this position
+			VoxelType voxelType = chunkManager.GetVoxelType(worldX, worldY, worldZ);
+
+			// If it's water, return a blue color
+			if (voxelType == VoxelType.Water)
+			{
+				// Try to get the water material from the scene
+				try
+				{
+					// Look for water materials in the scene
+					var meshes = GetTree().Root.FindChildren("*", "MeshInstance3D", true, false);
+					foreach (var node in meshes)
+					{
+						if (node is MeshInstance3D mesh)
+						{
+							// Check if the mesh has a material
+							if (mesh.MaterialOverride is StandardMaterial3D stdMat)
+							{
+								// Check if this might be a water material based on its color
+								Color color = stdMat.AlbedoColor;
+								if (color.B > 0.5f && color.B > color.R && color.B > color.G)
+								{
+									// This looks like a blue water material
+									return color;
+								}
+							}
+							// Also check mesh surface materials
+							else if (mesh.Mesh != null)
+							{
+								for (int i = 0; i < mesh.Mesh.GetSurfaceCount(); i++)
+								{
+									var material = mesh.Mesh.SurfaceGetMaterial(i);
+									if (material is StandardMaterial3D surfaceMat)
+									{
+										Color color = surfaceMat.AlbedoColor;
+										if (color.B > 0.5f && color.B > color.R && color.B > color.G)
+										{
+											// This looks like a blue water material
+											return color;
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					GD.PrintErr($"Error finding water material: {ex.Message}");
+				}
+
+				// Default water color if we couldn't find a material
+				return new Color(0.0f, 0.5f, 0.8f); // Default blue water
+			}
+			else
+			{
+				// For any other voxel type, return a default blue water color
+				// This is a fallback in case we're in a liquid that's not specifically water
+				return new Color(0.0f, 0.5f, 0.8f);
+			}
+		}
+		catch (Exception ex)
+		{
+			GD.PrintErr($"Error in GetLiquidColorAtPosition: {ex.Message}");
+			return new Color(0.0f, 0.5f, 0.8f); // Default blue water as fallback
 		}
 	}
 
@@ -507,6 +612,17 @@ public partial class Player : CharacterBody3D
 			if (chunkManager != null)
 			{
 				cameraInWater = IsPositionInWater(chunkManager, cameraPosition);
+
+				// If camera is in water, update the overlay color based on the water color
+				if (cameraInWater)
+				{
+					// Get the water color from the voxel at the camera position
+					Color waterColor = GetLiquidColorAtPosition(chunkManager, cameraPosition);
+
+					// Apply the water color to the overlay with transparency
+					waterColor.A = 0.5f; // Set transparency
+					_underwaterOverlay.Color = waterColor;
+				}
 			}
 
 			// Store current state for debug output

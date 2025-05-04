@@ -93,6 +93,12 @@ namespace CubeGen.World.Common
             return category == VoxelCategory.Terrain || category == VoxelCategory.Structure;
         }
 
+        // Check if a voxel type is water
+        public static bool IsWater(VoxelType voxelType)
+        {
+            return voxelType == VoxelType.Water;
+        }
+
         // Get the scale factor for a voxel type
         public static float GetScaleFactor(VoxelType voxelType)
         {

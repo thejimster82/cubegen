@@ -13,6 +13,7 @@ public partial class WorldGenerator : Node3D
 	[Export] public int ChunkSize { get; set; } = 16; // Size of each chunk in voxels
 	[Export] public int ChunkHeight { get; set; } = 128; // Maximum height of the world
 	[Export] public float VoxelScale { get; set; } = 0.5f; // Scale of each voxel (0.5 = double resolution)
+	[Export] public float WaterLevel { get; set; } = 0.18f; // Water level as a fraction of chunk height
 	public int ViewDistance { get; set; } = 5;
 
 	// Public constant for chunk size to be used by other classes
@@ -167,6 +168,9 @@ public partial class WorldGenerator : Node3D
 				// Generate blended terrain height based on all contributing biomes
 				int terrainHeight = GenerateBlendedTerrainHeight(worldX, worldZ, biomeBlendWeights);
 
+				// Calculate water level height in voxels
+				int waterLevelHeight = Mathf.FloorToInt(WaterLevel * ChunkHeight);
+
 				// Fill voxels from bottom to terrain height
 				for (int y = 0; y < terrainHeight && y < ChunkHeight; y++)
 				{
@@ -174,6 +178,33 @@ public partial class WorldGenerator : Node3D
 					// This keeps the biome colors distinct while still blending heights
 					VoxelType voxelType = DetermineVoxelType(y, terrainHeight, primaryBiome);
 					chunk.SetVoxel(x, y, z, voxelType);
+				}
+
+				// For Water and Islands biomes, fill water above terrain up to water level
+				if (primaryBiome == BiomeType.Water || primaryBiome == BiomeType.Islands)
+				{
+					// Calculate minimum water depth (15 voxels)
+					int minWaterDepth = 15;
+
+					// Calculate the minimum water bottom level (water level - minimum depth)
+					int minWaterBottomLevel = waterLevelHeight - minWaterDepth;
+
+					// If terrain is above the minimum water bottom level, we need to adjust it
+					if (terrainHeight > minWaterBottomLevel && terrainHeight <= waterLevelHeight)
+					{
+						// Adjust terrain to ensure minimum water depth
+						// First, clear any terrain voxels that would make water too shallow
+						for (int y = minWaterBottomLevel + 1; y < terrainHeight; y++)
+						{
+							chunk.SetVoxel(x, y, z, VoxelType.Water);
+						}
+					}
+
+					// Fill water from terrain height (or adjusted terrain) to water level
+					for (int y = terrainHeight; y <= waterLevelHeight && y < ChunkHeight; y++)
+					{
+						chunk.SetVoxel(x, y, z, VoxelType.Water);
+					}
 				}
 			}
 		}
@@ -240,6 +271,20 @@ public partial class WorldGenerator : Node3D
 		FastNoiseLite biomeNoise = new FastNoiseLite();
 		biomeNoise.Seed = Seed;
 
+		// Apply a consistent base height for all biomes
+		float baseHeight = 0.2f;
+		float noiseContribution = 0.25f; // How much the noise affects the final height
+
+		// Define water level height in voxels (used consistently throughout the code)
+		int waterLevelHeight = Mathf.FloorToInt(WaterLevel * ChunkHeight);
+
+		// For water biome, return a fixed height below the base height
+		if (biomeType == BiomeType.Water)
+		{
+			// Return a fixed water level
+			return waterLevelHeight;
+		}
+
 		// Set biome-specific noise characteristics
 		switch (biomeType)
 		{
@@ -292,6 +337,16 @@ public partial class WorldGenerator : Node3D
 				biomeNoise.FractalLacunarity = 1.8f;
 				biomeNoise.FractalGain = 0.3f;
 				break;
+
+			case BiomeType.Islands:
+				// Islands: Medium frequency, higher octaves for varied island terrain
+				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				biomeNoise.Frequency = 0.02f; // Higher frequency for smaller islands
+				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
+				biomeNoise.FractalOctaves = 3;
+				biomeNoise.FractalLacunarity = 2.0f;
+				biomeNoise.FractalGain = 0.5f;
+				break;
 		}
 
 		// Get noise value with biome-specific settings
@@ -300,12 +355,57 @@ public partial class WorldGenerator : Node3D
 		// Convert noise from [-1, 1] to [0, 1]
 		heightNoise = (heightNoise + 1f) * 0.5f;
 
-		// Apply a consistent base height for all biomes
-		float baseHeight = 0.2f;
-		float noiseContribution = 0.25f; // How much the noise affects the final height
+		// Special handling for Islands biome
+		if (biomeType == BiomeType.Islands)
+		{
+			// Create islands by thresholding the noise
+			// Values below threshold become water, above become land
+			float islandThreshold = 0.55f; // Adjust to control island size
 
-		// Combine base height with noise contribution
-		heightNoise = baseHeight + (heightNoise * noiseContribution);
+			// Calculate minimum water depth (15 voxels)
+			int minWaterDepth = 15;
+
+			// Calculate the minimum water bottom level (water level - minimum depth)
+			int minWaterBottomLevel = waterLevelHeight - minWaterDepth;
+
+			if (heightNoise < islandThreshold)
+			{
+				// Below threshold - return a level that ensures proper water depth
+				return minWaterBottomLevel;
+			}
+			else
+			{
+				// Above threshold - scale the remaining range to create island terrain
+				// Scale the noise to create more pronounced islands
+				float scaledNoise = ((heightNoise - islandThreshold) / (1.0f - islandThreshold));
+
+				// Apply a curve to make islands more pronounced
+				scaledNoise = scaledNoise * scaledNoise * 1.5f;
+
+				// Limit the maximum height to avoid extremely tall islands
+				scaledNoise = Mathf.Min(scaledNoise, 0.8f);
+
+				// Calculate final height
+				heightNoise = baseHeight + scaledNoise * noiseContribution;
+
+				// Convert to actual height value
+				int terrainHeight = Mathf.FloorToInt(heightNoise * ChunkHeight);
+
+				// Ensure islands don't create shallow water
+				if (terrainHeight > minWaterBottomLevel && terrainHeight < waterLevelHeight)
+				{
+					// If the island would create shallow water, push it down to ensure proper depth
+					return minWaterBottomLevel;
+				}
+
+				return terrainHeight;
+			}
+		}
+		else
+		{
+			// Standard terrain generation for other biomes
+			heightNoise = baseHeight + (heightNoise * noiseContribution);
+		}
 
 		// Convert to actual height value
 		int height = Mathf.FloorToInt(heightNoise * ChunkHeight);
@@ -481,13 +581,83 @@ public partial class WorldGenerator : Node3D
 		return result;
 	}
 
-	private static VoxelType DetermineVoxelType(int y, int terrainHeight, BiomeType biomeType)
+	private VoxelType DetermineVoxelType(int y, int terrainHeight, BiomeType biomeType)
 	{
+		// Calculate water level height in voxels
+		int waterLevelHeight = Mathf.FloorToInt(WaterLevel * ChunkHeight);
+
 		// Bedrock at bottom
 		if (y == 0)
 			return VoxelType.Bedrock;
 
-		// Surface layer and layers just below
+		// For Water biome, everything up to water level is sand/dirt/stone, above is water
+		if (biomeType == BiomeType.Water)
+		{
+			// If this is above terrain height but below or at water level, it should be water
+			if (y > terrainHeight && y <= waterLevelHeight)
+			{
+				return VoxelType.Water;
+			}
+
+			// Underwater terrain
+			if (y == terrainHeight - 1)
+				return VoxelType.Sand; // Sand at the bottom of water
+			else if (y >= terrainHeight - 4)
+				return VoxelType.Sand; // More sand below that
+			else if (y < terrainHeight * 0.6f)
+				return VoxelType.Stone; // Stone for deeper layers
+			else
+				return VoxelType.Dirt; // Dirt in between
+		}
+
+		// For Islands biome, handle water and islands
+		if (biomeType == BiomeType.Islands)
+		{
+			// Calculate minimum water depth (15 voxels)
+			int minWaterDepth = 15;
+
+			// Calculate the minimum water bottom level (water level - minimum depth)
+			int minWaterBottomLevel = waterLevelHeight - minWaterDepth;
+
+			// If this is at the terrain surface
+			if (y == terrainHeight - 1)
+			{
+				// If the terrain is at or below water level, use sand (beach)
+				if (terrainHeight <= waterLevelHeight)
+				{
+					// For underwater terrain, use sand at the bottom
+					return VoxelType.Sand; // Islands have sandy beaches
+				}
+				else
+				{
+					return VoxelType.Grass; // Islands have grass on top above water level
+				}
+			}
+			// Layers just below surface
+			else if (y >= terrainHeight - 4)
+			{
+				// If the terrain is at or below water level, use sand
+				if (terrainHeight <= waterLevelHeight)
+				{
+					return VoxelType.Sand; // More sand under islands
+				}
+				else
+				{
+					return VoxelType.Dirt; // Dirt under grass
+				}
+			}
+			// Stone for deeper layers
+			else if (y < terrainHeight * 0.6f)
+			{
+				return VoxelType.Stone;
+			}
+			else
+			{
+				return VoxelType.Dirt;
+			}
+		}
+
+		// Surface layer and layers just below for other biomes
 		if (y == terrainHeight - 1)
 		{
 			// Top layer depends on biome
@@ -797,6 +967,65 @@ public partial class WorldGenerator : Node3D
 								}
 							}
 							break;
+
+						case BiomeType.Water:
+							// Water biome doesn't have any features on land
+							// But we could add some underwater features in the future
+							break;
+
+						case BiomeType.Islands:
+							// Add palm trees on islands
+							if (random.NextDouble() < 0.015) // Higher chance for palm trees
+							{
+								if (surfaceHeight >= 0)
+								{
+									// Check if we can place a palm tree here (no overlap with other features)
+									// Palm trees need a larger radius (5) to prevent overlap
+									if (CanPlaceFeature(featureMap, x, z, 5, chunkSize))
+									{
+										// Only place palm trees on sand
+										if (chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Sand)
+										{
+											GeneratePalmTree(chunk, x, z, surfaceHeight, random);
+
+											// Mark the area as occupied
+											MarkFeaturePosition(featureMap, x, z, 5, chunkSize);
+										}
+									}
+								}
+							}
+							// Add seashells on beaches
+							else if (random.NextDouble() < 0.03) // Higher chance for seashells
+							{
+								if (surfaceHeight >= 0)
+								{
+									// Check if we can place a seashell here (no overlap with other features)
+									// Seashells need a small radius (2) to prevent overlap
+									if (CanPlaceFeature(featureMap, x, z, 2, chunkSize))
+									{
+										// Only place seashells on sand
+										if (chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Sand)
+										{
+											// Use the decoration system to place seashells
+											Vector2I worldPos = new Vector2I(worldX, worldZ);
+											DecorationClusters.DecorationPlacement seashellPlacement = new DecorationClusters.DecorationPlacement(
+												VoxelType.Seashell,
+												new Vector2(random.Next(-20, 20) / 100.0f, random.Next(-20, 20) / 100.0f),
+												random.Next(0, 360),
+												0.8f + (float)random.NextDouble() * 0.4f
+											);
+
+											// Place the seashell
+											chunk.SetVoxel(x, surfaceHeight + 1, z, VoxelType.Seashell);
+											chunk.SetDecorationPlacement(x, surfaceHeight + 1, z, seashellPlacement);
+
+											// Mark the area as occupied
+											MarkFeaturePosition(featureMap, x, z, 2, chunkSize);
+										}
+									}
+								}
+							}
+							break;
 					}
 				}
 			}
@@ -948,10 +1177,6 @@ public partial class WorldGenerator : Node3D
 								// Add some randomness to make leaves less uniform
 								// But ensure the tree still looks full and balanced
 								// if (distance > effectiveRadius - 0.8f && random.NextDouble() < 0.3f)
-								// {
-								// 	// Skip some edge leaves randomly
-								// 	continue;
-								// }
 
 								chunk.SetVoxel(nx, ny, nz, VoxelType.Leaves);
 							}
@@ -1334,6 +1559,120 @@ public partial class WorldGenerator : Node3D
 						}
 					}
 				}
+			}
+		}
+	}
+
+	private static void GeneratePalmTree(VoxelChunk chunk, int x, int z, int surfaceHeight, Random random)
+	{
+		// Palm tree parameters
+		int trunkHeight = random.Next(12, 18); // Taller than regular trees
+		int frondLength = random.Next(6, 10);  // Length of palm fronds
+		int frondCount = random.Next(5, 8);    // Number of fronds
+
+		// Trunk bend parameters
+		int bendDirection = random.Next(0, 4); // 0=+x, 1=-x, 2=+z, 3=-z
+		float bendAmount = 0.2f + (float)random.NextDouble() * 0.3f; // 0.2 to 0.5
+
+		// Generate trunk with bend
+		float xOffset = 0;
+		float zOffset = 0;
+
+		for (int y = 1; y <= trunkHeight; y++)
+		{
+			// Calculate bend offset
+			float bendFactor = (float)y / trunkHeight;
+			float currentBend = bendAmount * bendFactor * bendFactor; // Quadratic bend (more at top)
+
+			switch (bendDirection)
+			{
+				case 0: xOffset = currentBend * y; break;
+				case 1: xOffset = -currentBend * y; break;
+				case 2: zOffset = currentBend * y; break;
+				case 3: zOffset = -currentBend * y; break;
+			}
+
+			int nx = x + (int)xOffset;
+			int nz = z + (int)zOffset;
+
+			// Check chunk boundaries
+			if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size && surfaceHeight + y < chunk.Height)
+			{
+				chunk.SetVoxel(nx, surfaceHeight + y, nz, VoxelType.Wood);
+			}
+		}
+
+		// Calculate top of trunk position
+		int topX = x + (int)(xOffset);
+		int topZ = z + (int)(zOffset);
+		int topY = surfaceHeight + trunkHeight;
+
+		// Generate palm fronds (leaves)
+		for (int i = 0; i < frondCount; i++)
+		{
+			// Calculate frond direction
+			float angle = (float)i / frondCount * 2 * Mathf.Pi;
+			float dirX = Mathf.Cos(angle);
+			float dirZ = Mathf.Sin(angle);
+
+			// Generate frond
+			for (int j = 1; j <= frondLength; j++)
+			{
+				// Calculate position along frond
+				int frondX = topX + (int)(dirX * j);
+				int frondZ = topZ + (int)(dirZ * j);
+
+				// Calculate height - fronds curve downward
+				float heightOffset = -0.5f * j * j / frondLength + j * 0.5f;
+				int frondY = topY + (int)heightOffset;
+
+				// Check chunk boundaries
+				if (frondX >= 0 && frondX < chunk.Size && frondZ >= 0 && frondZ < chunk.Size &&
+					frondY >= 0 && frondY < chunk.Height)
+				{
+					// Add leaves
+					chunk.SetVoxel(frondX, frondY, frondZ, VoxelType.Leaves);
+
+					// Add some width to the frond
+					if (j > 1 && j < frondLength - 1)
+					{
+						// Add leaves to sides of the frond
+						int sideX1 = frondX + (int)(dirZ);
+						int sideZ1 = frondZ - (int)(dirX);
+						int sideX2 = frondX - (int)(dirZ);
+						int sideZ2 = frondZ + (int)(dirX);
+
+						// Check chunk boundaries for side leaves
+						if (sideX1 >= 0 && sideX1 < chunk.Size && sideZ1 >= 0 && sideZ1 < chunk.Size &&
+							frondY >= 0 && frondY < chunk.Height && random.NextDouble() < 0.7f)
+						{
+							chunk.SetVoxel(sideX1, frondY, sideZ1, VoxelType.Leaves);
+						}
+
+						if (sideX2 >= 0 && sideX2 < chunk.Size && sideZ2 >= 0 && sideZ2 < chunk.Size &&
+							frondY >= 0 && frondY < chunk.Height && random.NextDouble() < 0.7f)
+						{
+							chunk.SetVoxel(sideX2, frondY, sideZ2, VoxelType.Leaves);
+						}
+					}
+				}
+			}
+		}
+
+		// Add coconuts at the top
+		int coconutCount = random.Next(0, 3);
+		for (int i = 0; i < coconutCount; i++)
+		{
+			int coconutX = topX + random.Next(-1, 2);
+			int coconutZ = topZ + random.Next(-1, 2);
+			int coconutY = topY - random.Next(0, 2);
+
+			// Check chunk boundaries
+			if (coconutX >= 0 && coconutX < chunk.Size && coconutZ >= 0 && coconutZ < chunk.Size &&
+				coconutY >= 0 && coconutY < chunk.Height)
+			{
+				// Use wood voxel type for coconuts
+				chunk.SetVoxel(coconutX, coconutY, coconutZ, VoxelType.Wood);
 			}
 		}
 	}

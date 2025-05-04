@@ -98,6 +98,16 @@ public class VoxelChunk
         return false;
     }
 
+    // Check if a voxel is water
+    public bool IsVoxelWater(int x, int y, int z)
+    {
+        if (IsInBounds(x, y, z))
+        {
+            return _voxels[x][y][z] == VoxelType.Water;
+        }
+        return false;
+    }
+
     // Get world position of this chunk
     public Vector3 GetWorldPosition()
     {

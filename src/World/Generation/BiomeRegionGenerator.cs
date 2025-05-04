@@ -120,7 +120,39 @@ namespace CubeGen.World.Generation
 			// Convert to list for easier manipulation
 			foreach (BiomeType biomeType in biomeTypesArray)
 			{
-				availableBiomes.Add(biomeType);
+				// Add biome types with appropriate probabilities
+				// Water and Islands biomes should be less common
+				if (biomeType == BiomeType.Water)
+				{
+					// Only 10% chance to add Water biome to available biomes
+					if (random.NextDouble() < 0.1)
+					{
+						availableBiomes.Add(biomeType);
+					}
+				}
+				else if (biomeType == BiomeType.Islands)
+				{
+					// Only 15% chance to add Islands biome to available biomes
+					if (random.NextDouble() < 0.15)
+					{
+						availableBiomes.Add(biomeType);
+					}
+				}
+				else
+				{
+					// Always add other biome types
+					availableBiomes.Add(biomeType);
+				}
+			}
+
+			// If we have no biomes available (unlikely but possible), add the standard biomes
+			if (availableBiomes.Count == 0)
+			{
+				availableBiomes.Add(BiomeType.Plains);
+				availableBiomes.Add(BiomeType.Forest);
+				availableBiomes.Add(BiomeType.Desert);
+				availableBiomes.Add(BiomeType.Mountains);
+				availableBiomes.Add(BiomeType.Tundra);
 			}
 
 			// Find neighboring cells by sampling points around this cell
@@ -142,10 +174,18 @@ namespace CubeGen.World.Generation
 			// If we've removed all biomes, add them back (can happen with limited biome types)
 			if (availableBiomes.Count == 0)
 			{
-				foreach (BiomeType biomeType in biomeTypesArray)
-				{
-					availableBiomes.Add(biomeType);
-				}
+				// Add back standard biomes with higher probability
+				availableBiomes.Add(BiomeType.Plains);
+				availableBiomes.Add(BiomeType.Forest);
+				availableBiomes.Add(BiomeType.Desert);
+				availableBiomes.Add(BiomeType.Mountains);
+				availableBiomes.Add(BiomeType.Tundra);
+
+				// Add water and islands with lower probability
+				if (random.NextDouble() < 0.1)
+					availableBiomes.Add(BiomeType.Water);
+				if (random.NextDouble() < 0.15)
+					availableBiomes.Add(BiomeType.Islands);
 			}
 
 			// Select a random biome from the available ones

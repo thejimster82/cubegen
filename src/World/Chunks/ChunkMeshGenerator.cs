@@ -504,6 +504,14 @@ public class ChunkMeshGenerator
 
     private void AddVoxelFaces(VoxelChunk chunk, int x, int y, int z, VoxelType voxelType, MeshData meshData)
     {
+        // Special handling for water voxels
+        if (VoxelProperties.IsWater(voxelType))
+        {
+            AddWaterVoxelFaces(chunk, x, y, z, voxelType, meshData);
+            return;
+        }
+
+        // Regular handling for non-water voxels
         // Check each of the 6 faces
 
         // Top face (Y+)
@@ -541,6 +549,112 @@ public class ChunkMeshGenerator
         {
             AddFace(FaceDirection.Left, new Vector3(x, y, z), voxelType, meshData, chunk);
         }
+    }
+
+    private void AddWaterVoxelFaces(VoxelChunk chunk, int x, int y, int z, VoxelType voxelType, MeshData meshData)
+    {
+        // For water, we only add the top face if it's exposed to air
+        // and side faces if they're exposed to air or non-water blocks
+
+        // Top face (Y+) - only if exposed to air
+        if (y == chunk.Height - 1 || chunk.GetVoxel(x, y + 1, z) == VoxelType.Air)
+        {
+            // Water top face is slightly lower than a full block
+            AddWaterTopFace(new Vector3(x, y, z), voxelType, meshData, chunk);
+        }
+
+        // Bottom face (Y-) - only if exposed to air (rare, but possible)
+        if (y == 0 || chunk.GetVoxel(x, y - 1, z) == VoxelType.Air)
+        {
+            AddFace(FaceDirection.Bottom, new Vector3(x, y, z), voxelType, meshData, chunk);
+        }
+
+        // Front face (Z+) - only if exposed to air or non-water
+        if (z == chunk.Size - 1 ||
+            (chunk.GetVoxel(x, y, z + 1) != VoxelType.Water && !IsVoxelSolidForAO(chunk, x, y, z + 1)))
+        {
+            AddFace(FaceDirection.Front, new Vector3(x, y, z), voxelType, meshData, chunk);
+        }
+
+        // Back face (Z-) - only if exposed to air or non-water
+        if (z == 0 ||
+            (chunk.GetVoxel(x, y, z - 1) != VoxelType.Water && !IsVoxelSolidForAO(chunk, x, y, z - 1)))
+        {
+            AddFace(FaceDirection.Back, new Vector3(x, y, z), voxelType, meshData, chunk);
+        }
+
+        // Right face (X+) - only if exposed to air or non-water
+        if (x == chunk.Size - 1 ||
+            (chunk.GetVoxel(x + 1, y, z) != VoxelType.Water && !IsVoxelSolidForAO(chunk, x + 1, y, z)))
+        {
+            AddFace(FaceDirection.Right, new Vector3(x, y, z), voxelType, meshData, chunk);
+        }
+
+        // Left face (X-) - only if exposed to air or non-water
+        if (x == 0 ||
+            (chunk.GetVoxel(x - 1, y, z) != VoxelType.Water && !IsVoxelSolidForAO(chunk, x - 1, y, z)))
+        {
+            AddFace(FaceDirection.Left, new Vector3(x, y, z), voxelType, meshData, chunk);
+        }
+    }
+
+    private void AddWaterTopFace(Vector3 position, VoxelType voxelType, MeshData meshData, VoxelChunk chunk)
+    {
+        // Get current vertex count
+        int vertexCount = meshData.Vertices.Count;
+
+        // Get UV coordinates based on voxel type
+        Vector2[] faceUVs = GetUVsForVoxelType(voxelType, FaceDirection.Top);
+
+        // Get scale from the chunk
+        float chunkScale = chunk.Scale;
+        int x = (int)position.X;
+        int y = (int)position.Y;
+        int z = (int)position.Z;
+
+        // Get voxel-specific scale factor
+        float voxelScaleFactor = VoxelScaleHelper.GetScaleFactor(voxelType);
+
+        // Calculate the final scale (chunk scale * voxel scale factor)
+        float finalScale = chunkScale * voxelScaleFactor;
+
+        // Calculate the base position with chunk scale
+        Vector3 basePosition = position * chunkScale;
+
+        // Calculate AO values for each vertex of this face
+        float[] aoValues = new float[4];
+        for (int i = 0; i < 4; i++)
+        {
+            aoValues[i] = CalculateAO(chunk, x, y, z, FaceDirection.Top, i);
+        }
+
+        // Water top face is slightly lower than a full block (0.9 instead of 1.0)
+        float waterSurfaceHeight = 0.9f;
+
+        // Add vertices for water top face (slightly lower than a full block)
+        meshData.Vertices.Add(basePosition + new Vector3(0, waterSurfaceHeight, 0) * finalScale);
+        meshData.Vertices.Add(basePosition + new Vector3(1, waterSurfaceHeight, 0) * finalScale);
+        meshData.Vertices.Add(basePosition + new Vector3(1, waterSurfaceHeight, 1) * finalScale);
+        meshData.Vertices.Add(basePosition + new Vector3(0, waterSurfaceHeight, 1) * finalScale);
+
+        // Add normals
+        for (int i = 0; i < 4; i++) meshData.Normals.Add(Vector3.Up);
+
+        // Add UVs
+        for (int i = 0; i < 4; i++)
+        {
+            meshData.UVs.Add(faceUVs[i]);
+            meshData.AmbientOcclusion.Add(aoValues[i]);
+        }
+
+        // Add indices (two triangles to form a quad)
+        meshData.Indices.Add(vertexCount);
+        meshData.Indices.Add(vertexCount + 1);
+        meshData.Indices.Add(vertexCount + 2);
+
+        meshData.Indices.Add(vertexCount);
+        meshData.Indices.Add(vertexCount + 2);
+        meshData.Indices.Add(vertexCount + 3);
     }
 
     private void AddFace(FaceDirection direction, Vector3 position, VoxelType voxelType,
@@ -780,6 +894,13 @@ public class ChunkMeshGenerator
             // Special case: don't consider decoration types as solid for AO calculations
             // This ensures blocks remain visible even with decorations on top
             if (VoxelProperties.IsDecoration(voxelType))
+            {
+                return false;
+            }
+
+            // Special case: water is not solid for AO calculations
+            // This ensures proper lighting for underwater blocks
+            if (VoxelProperties.IsWater(voxelType))
             {
                 return false;
             }

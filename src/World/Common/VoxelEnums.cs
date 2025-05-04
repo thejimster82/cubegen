@@ -9,7 +9,9 @@ namespace CubeGen.World.Common
         Forest,
         Desert,
         Mountains,
-        Tundra
+        Tundra,
+        Water,
+        Islands
     }
 
     public enum VoxelType

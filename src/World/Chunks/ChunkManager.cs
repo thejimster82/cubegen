@@ -50,6 +50,53 @@ public partial class ChunkManager : Node3D
         _meshGenerator = new ChunkMeshGenerator(this);
     }
 
+    // Method to get voxel type across chunk boundaries
+    public VoxelType GetVoxelType(int worldX, int worldY, int worldZ)
+    {
+        // Convert world coordinates to chunk coordinates
+        Vector2I chunkPos = new Vector2I(
+            Mathf.FloorToInt((float)worldX / _chunkSize),
+            Mathf.FloorToInt((float)worldZ / _chunkSize)
+        );
+
+        // Calculate local coordinates within the chunk
+        int localX = worldX - (chunkPos.X * _chunkSize);
+        int localY = worldY;
+        int localZ = worldZ - (chunkPos.Y * _chunkSize);
+
+        // First check if we have the chunk data directly
+        if (_chunkData.TryGetValue(chunkPos, out VoxelChunk chunk))
+        {
+            return chunk.GetVoxel(localX, localY, localZ);
+        }
+
+        // If no chunk data, check if we have a mesh with chunk data
+        if (_chunks.TryGetValue(chunkPos, out ChunkMesh chunkMesh))
+        {
+            // Get the VoxelChunk from the ChunkMesh
+            chunk = chunkMesh.GetChunk();
+            if (chunk != null)
+            {
+                return chunk.GetVoxel(localX, localY, localZ);
+            }
+        }
+
+        // For Y out of bounds
+        if (worldY < 0)
+        {
+            // Below the world is bedrock
+            return VoxelType.Bedrock;
+        }
+        else if (worldY >= _chunkHeight)
+        {
+            // Above the world is air
+            return VoxelType.Air;
+        }
+
+        // If chunk doesn't exist or is out of bounds, assume air
+        return VoxelType.Air;
+    }
+
     // Method to get voxel data across chunk boundaries
     public bool IsVoxelSolid(int worldX, int worldY, int worldZ)
     {
@@ -113,6 +160,16 @@ public partial class ChunkManager : Node3D
 
         // If chunk doesn't exist or is out of bounds, assume air
         return false;
+    }
+
+    // Method to check if a voxel is occluding for ambient occlusion calculations
+    public bool IsVoxelOccluding(int worldX, int worldY, int worldZ)
+    {
+        // Get the voxel type first
+        VoxelType voxelType = GetVoxelType(worldX, worldY, worldZ);
+
+        // Use the VoxelProperties.IsOccluding method to determine if this voxel occludes light
+        return VoxelProperties.IsOccluding(voxelType);
     }
 
     public void AddChunk(VoxelChunk chunk)

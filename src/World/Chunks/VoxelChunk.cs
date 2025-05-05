@@ -108,6 +108,26 @@ public class VoxelChunk
         return false;
     }
 
+    // Check if a voxel is occluding for ambient occlusion calculations
+    public bool IsVoxelOccluding(int x, int y, int z)
+    {
+        if (IsInBounds(x, y, z))
+        {
+            VoxelType type = _voxels[x][y][z];
+            return VoxelProperties.IsOccluding(type);
+        }
+
+        // For out-of-bounds positions in the Y direction
+        if (y < 0 || y >= Height)
+        {
+            // Below the chunk is occluding (ground), above is not
+            return y < 0;
+        }
+
+        // For out-of-bounds positions in X and Z, assume not occluding
+        return false;
+    }
+
     // Get world position of this chunk
     public Vector3 GetWorldPosition()
     {

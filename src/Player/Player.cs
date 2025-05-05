@@ -1,5 +1,8 @@
 using Godot;
 using System;
+using System.Reflection;
+using CubeGen.World.Common;
+using CubeGen.World.Generation;
 
 public partial class Player : CharacterBody3D
 {
@@ -13,17 +16,54 @@ public partial class Player : CharacterBody3D
 	[Export] public float Acceleration { get; set; } = 0.25f; // Movement acceleration
 	[Export] public float MaxStepHeight { get; set; } = 0.5f; // Increased from 0.3125f for better stepping with larger character
 
+	// Water physics properties
+	[Export] public float WaterDragFactor { get; set; } = 0.7f; // Slows movement in water
+	[Export] public float WaterBuoyancy { get; set; } = 0.8f; // How much the player floats in water
+	[Export] public float SwimSpeed { get; set; } = 2.0f; // Swimming speed when pressing jump in water
+	[Export] public float WaterSurfaceOffset { get; set; } = 0.5f; // How far to float above water surface
+
 	private Node3D _head;
 	private Node3D _cameraMount;
 	private Camera3D _camera;
+	private SpringArm3D _springArm;
 	private float _gravity = ProjectSettings.GetSetting("physics/3d/default_gravity").AsSingle();
 	private float _cameraRotation = 0.0f;
+	private bool _isInWater = false; // Tracks if player is in water
+	private Label _waterIndicator; // UI indicator for when player is in water
+	private ColorRect _waterDebugIndicator; // Visual debug indicator for water detection
+	private CanvasLayer _underwaterOverlayCanvas; // Canvas layer for underwater effect
+	private ColorRect _underwaterOverlay; // Translucent overlay for underwater effect
+	private float _currentCameraDistance; // For smoothing camera movement
 
 	public override void _Ready()
 	{
 		_head = GetNode<Node3D>("Head");
 		_cameraMount = GetNode<Node3D>("CameraMount");
 		_camera = GetNode<Camera3D>("CameraMount/Camera3D");
+
+		// Let's take a completely different approach - instead of reparenting,
+		// we'll create a SpringArm3D but keep the original camera setup
+
+		// Create the SpringArm3D node
+		_springArm = new SpringArm3D
+		{
+			Name = "SpringArm3D",
+			SpringLength = CameraDistance,
+			Margin = 0.01f, // Small margin to prevent camera from getting too close to surfaces
+			CollisionMask = 1 // Use the default collision layer
+		};
+
+		// Add the SpringArm3D to the camera mount
+		_cameraMount.AddChild(_springArm);
+
+		// Position the SpringArm3D at the origin of the camera mount
+		_springArm.Position = Vector3.Zero;
+
+		// Initialize the current camera distance for smooth transitions
+		_currentCameraDistance = CameraDistance;
+
+		// We'll use the SpringArm3D for collision detection only
+		// The camera will remain as a direct child of the camera mount
 
 		// Initialize camera position
 		UpdateCameraPosition();
@@ -44,6 +84,78 @@ public partial class Player : CharacterBody3D
 		// Additional physics properties
 		WallMinSlideAngle = 0.1f; // Allow sliding on very slight walls
 		MaxSlides = 10; // Increase maximum slides for better movement around obstacles
+
+		// Create water indicator UI
+		CreateWaterIndicator();
+	}
+
+	// Create a UI indicator for when the player is in water
+	private void CreateWaterIndicator()
+	{
+		// Create a new Control node for UI
+		var uiControl = new Control();
+		uiControl.Name = "UI";
+		uiControl.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+		AddChild(uiControl);
+
+		// Create a label for water indicator
+		_waterIndicator = new Label();
+		_waterIndicator.Name = "WaterIndicator";
+		_waterIndicator.Text = "SWIMMING";
+		_waterIndicator.HorizontalAlignment = HorizontalAlignment.Center;
+		_waterIndicator.VerticalAlignment = VerticalAlignment.Top;
+		_waterIndicator.Position = new Vector2(0, 50);
+		_waterIndicator.Size = new Vector2(200, 50);
+		_waterIndicator.Visible = false; // Hide initially
+
+		// Make the text larger
+		_waterIndicator.AddThemeFontSizeOverride("font_size", 24);
+
+		// Style the label
+		_waterIndicator.AddThemeColorOverride("font_color", new Color(0, 0.7f, 1.0f));
+		_waterIndicator.AddThemeConstantOverride("outline_size", 2);
+		_waterIndicator.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0));
+
+		// Add the label to the UI
+		uiControl.AddChild(_waterIndicator);
+
+		// Create a visual indicator for debugging water detection
+		_waterDebugIndicator = new ColorRect();
+		_waterDebugIndicator.Name = "WaterDebugIndicator";
+		_waterDebugIndicator.Size = new Vector2(20, 20);
+		_waterDebugIndicator.Position = new Vector2(20, 20);
+		_waterDebugIndicator.Color = new Color(1, 0, 0); // Red when not in water
+
+		// Add the debug indicator to the UI
+		uiControl.AddChild(_waterDebugIndicator);
+
+		// Create a CanvasLayer for the underwater overlay
+		// This ensures it's attached to the camera's view rather than the player
+		_underwaterOverlayCanvas = new CanvasLayer();
+		_underwaterOverlayCanvas.Name = "UnderwaterOverlayCanvas";
+		_underwaterOverlayCanvas.Layer = 10; // Use a higher layer to ensure it's visible
+
+		// Create a full-screen underwater overlay
+		_underwaterOverlay = new ColorRect();
+		_underwaterOverlay.Name = "UnderwaterOverlay";
+		_underwaterOverlay.SetAnchorsPreset(Control.LayoutPreset.FullRect); // Make it cover the entire screen
+		_underwaterOverlay.Size = new Vector2(1920, 1080); // Ensure it's large enough
+
+		// Set a default water color with transparency (will be updated dynamically)
+		// This is just a fallback in case we can't determine the actual water color
+		Color defaultWaterColor = new Color(0.0f, 0.5f, 0.8f, 0.5f);
+		_underwaterOverlay.Color = defaultWaterColor;
+		_underwaterOverlay.Visible = false; // Hide initially
+		_underwaterOverlay.MouseFilter = Control.MouseFilterEnum.Ignore; // Make sure it doesn't block input
+
+		// Add the overlay to the canvas layer
+		_underwaterOverlayCanvas.AddChild(_underwaterOverlay);
+
+		// Add the canvas layer directly to the scene root instead of the player
+		// This ensures it's not affected by player transformations and is always visible
+		// Use call_deferred to avoid adding a child while the parent is still setting up
+		GetTree().Root.CallDeferred("add_child", _underwaterOverlayCanvas);
+		_underwaterOverlay.Visible = false;
 	}
 
 	public override void _Input(InputEvent @event)
@@ -70,32 +182,616 @@ public partial class Player : CharacterBody3D
 			else
 				Input.MouseMode = Input.MouseModeEnum.Captured;
 		}
+
+		// Toggle underwater overlay with F4 (for testing)
+		if (@event is InputEventKey keyEvent2 && keyEvent2.Pressed && keyEvent2.Keycode == Key.F4 && _underwaterOverlay != null)
+		{
+			_underwaterOverlay.Visible = !_underwaterOverlay.Visible;
+			GD.Print($"Underwater overlay toggled: {_underwaterOverlay.Visible}");
+		}
+	}
+
+	// Helper method to start the test timer (called via CallDeferred)
+	private void StartTestTimer(Timer timer)
+	{
+		if (timer != null && IsInstanceValid(timer))
+		{
+			timer.Start();
+			GD.Print("Test timer started");
+		}
+	}
+
+	// Helper method to get the color of the liquid at a specific position
+	private Color GetLiquidColorAtPosition(ChunkManager chunkManager, Vector3 position)
+	{
+		try
+		{
+			// Get the voxel type at this position
+			// First convert world position to voxel coordinates
+			WorldGenerator worldGenerator = null;
+
+			// Try to find WorldGenerator to get voxel scale
+			try
+			{
+				worldGenerator = GetTree().Root.GetNodeOrNull<WorldGenerator>("World/WorldGenerator");
+
+				if (worldGenerator == null)
+					worldGenerator = GetTree().Root.GetNodeOrNull<WorldGenerator>("WorldGenerator");
+
+				if (worldGenerator == null)
+					worldGenerator = GetParent().GetNodeOrNull<WorldGenerator>("WorldGenerator");
+
+				if (worldGenerator == null)
+					worldGenerator = GetParent().GetParent()?.GetNodeOrNull<WorldGenerator>("WorldGenerator");
+			}
+			catch (Exception ex)
+			{
+				GD.PrintErr($"Error finding WorldGenerator: {ex.Message}");
+			}
+
+			float voxelScale = 1.0f;
+			if (worldGenerator != null)
+			{
+				voxelScale = worldGenerator.VoxelScale;
+
+				// If voxel scale is 0, use default of 1.0
+				if (voxelScale <= 0)
+				{
+					voxelScale = 1.0f;
+				}
+				else
+				{
+					// Convert scale to divisor (e.g., scale of 0.5 means 2x resolution)
+					voxelScale = 1.0f / voxelScale;
+				}
+			}
+
+			// Convert world position to voxel coordinates
+			float playerScale = 1.0f;
+			if (Scale != Vector3.One)
+			{
+				playerScale = Scale.X; // Get player scale
+			}
+
+			// Apply both scales to convert world position to voxel coordinates
+			int worldX = Mathf.FloorToInt(position.X * voxelScale / playerScale);
+			int worldY = Mathf.FloorToInt(position.Y * voxelScale / playerScale);
+			int worldZ = Mathf.FloorToInt(position.Z * voxelScale / playerScale);
+
+			// Get the voxel type at this position
+			VoxelType voxelType = chunkManager.GetVoxelType(worldX, worldY, worldZ);
+
+			// If it's water, return a blue color
+			if (voxelType == VoxelType.Water)
+			{
+				// Try to get the water material from the scene
+				try
+				{
+					// Look for water materials in the scene
+					var meshes = GetTree().Root.FindChildren("*", "MeshInstance3D", true, false);
+					foreach (var node in meshes)
+					{
+						if (node is MeshInstance3D mesh)
+						{
+							// Check if the mesh has a material
+							if (mesh.MaterialOverride is StandardMaterial3D stdMat)
+							{
+								// Check if this might be a water material based on its color
+								Color color = stdMat.AlbedoColor;
+								if (color.B > 0.5f && color.B > color.R && color.B > color.G)
+								{
+									// This looks like a blue water material
+									return color;
+								}
+							}
+							// Also check mesh surface materials
+							else if (mesh.Mesh != null)
+							{
+								for (int i = 0; i < mesh.Mesh.GetSurfaceCount(); i++)
+								{
+									var material = mesh.Mesh.SurfaceGetMaterial(i);
+									if (material is StandardMaterial3D surfaceMat)
+									{
+										Color color = surfaceMat.AlbedoColor;
+										if (color.B > 0.5f && color.B > color.R && color.B > color.G)
+										{
+											// This looks like a blue water material
+											return color;
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+				catch (Exception ex)
+				{
+					GD.PrintErr($"Error finding water material: {ex.Message}");
+				}
+
+				// Default water color if we couldn't find a material
+				return new Color(0.0f, 0.5f, 0.8f); // Default blue water
+			}
+			else
+			{
+				// For any other voxel type, return a default blue water color
+				// This is a fallback in case we're in a liquid that's not specifically water
+				return new Color(0.0f, 0.5f, 0.8f);
+			}
+		}
+		catch (Exception ex)
+		{
+			GD.PrintErr($"Error in GetLiquidColorAtPosition: {ex.Message}");
+			return new Color(0.0f, 0.5f, 0.8f); // Default blue water as fallback
+		}
 	}
 
 	private void UpdateCameraPosition()
 	{
 		// Calculate camera position based on rotation and distance
 		float height = CameraHeight + _cameraRotation * 2.0f; // Adjust height based on rotation (reduced multiplier)
-		float distance = CameraDistance - _cameraRotation * 1.0f; // Adjust distance based on rotation (reduced multiplier)
+		float targetDistance = CameraDistance - _cameraRotation * 1.0f; // Adjust distance based on rotation (reduced multiplier)
 
-		// Set camera transform - position only, keep the rotation from camera mount
-		_camera.Position = new Vector3(0, height, distance);
+		// Update the spring arm for collision detection
+		_springArm.SpringLength = targetDistance;
 
-		// Make camera look at player's head
+		// Use the SpringArm3D to detect collisions
+		float hitLength = _springArm.GetHitLength();
+
+		// Determine the target distance based on collision detection
+		float targetCameraDistance;
+		if (hitLength < targetDistance)
+		{
+			// Apply a small margin to prevent clipping
+			targetCameraDistance = hitLength - 0.1f;
+
+			// Ensure we don't go into negative distance
+			targetCameraDistance = Mathf.Max(targetCameraDistance, 0.1f);
+		}
+		else
+		{
+			// No collision, use the calculated distance
+			targetCameraDistance = targetDistance;
+		}
+
+		// Smooth the camera distance transition
+		// Use a smaller smoothing factor when moving camera closer (to avoid clipping)
+		float smoothFactor = targetCameraDistance < _currentCameraDistance ? 0.5f : 0.1f;
+		_currentCameraDistance = Mathf.Lerp(_currentCameraDistance, targetCameraDistance, smoothFactor);
+
+		// Position the camera with the smoothed distance
+		_camera.Position = new Vector3(0, height, _currentCameraDistance);
+
+		// Make the camera look at the player's head
 		_camera.LookAt(_head.GlobalPosition);
+	}
+
+	// Check if the player is in water
+	private bool CheckIfInWater()
+	{
+		// Get the chunk manager from the scene
+		ChunkManager chunkManager = null;
+
+		// Try different paths to find the ChunkManager
+		// This makes the code more robust to different scene structures
+		try
+		{
+			// Try to find ChunkManager in various possible locations
+			chunkManager = GetParent().GetNodeOrNull<ChunkManager>("WorldGenerator/ChunkManager");
+
+			if (chunkManager == null)
+				chunkManager = GetTree().Root.GetNodeOrNull<ChunkManager>("World/WorldGenerator/ChunkManager");
+
+			if (chunkManager == null)
+				chunkManager = GetTree().Root.GetNodeOrNull<ChunkManager>("WorldGenerator/ChunkManager");
+
+			if (chunkManager == null)
+				chunkManager = GetParent().GetParent()?.GetNodeOrNull<ChunkManager>("WorldGenerator/ChunkManager");
+
+			if (chunkManager == null)
+			{
+				GD.PrintErr("ChunkManager not found in scene");
+				return false;
+			}
+		}
+		catch (Exception ex)
+		{
+			// Log the error but continue with default values
+			GD.PrintErr($"Error finding ChunkManager: {ex.Message}");
+			return false;
+		}
+
+		// Get player's position in world coordinates
+		Vector3 playerPos = GlobalPosition;
+
+		// Get the player's collision shape to determine appropriate check points
+		var collisionShape = GetNode<CollisionShape3D>("CollisionShape3D");
+		float playerHeight = 1.5f; // Default height
+		float playerRadius = 0.5f; // Default radius
+
+		if (collisionShape != null && collisionShape.Shape is CapsuleShape3D capsule)
+		{
+			playerHeight = capsule.Height;
+			playerRadius = capsule.Radius;
+
+			// Only print this occasionally to avoid spam
+			if (Engine.GetProcessFrames() % 300 == 0)
+			{
+				GD.Print($"Player collision shape: height={playerHeight}, radius={playerRadius}");
+			}
+		}
+
+		// Check at center of player
+		bool isInWater = false;
+		if (IsPositionInWater(chunkManager, new Vector3(playerPos.X, playerPos.Y+playerHeight/2, playerPos.Z)))
+			isInWater = true;
+
+		return isInWater;
+	}
+
+	// Helper method to check if a specific position is in water
+	private bool IsPositionInWater(ChunkManager chunkManager, Vector3 position)
+	{
+		try
+		{
+			// Get the world generator to access voxel scale
+			WorldGenerator worldGenerator = null;
+
+			// Try different paths to find the WorldGenerator
+			// This makes the code more robust to different scene structures
+			try
+			{
+				// Try to find WorldGenerator in various possible locations
+				worldGenerator = GetTree().Root.GetNodeOrNull<WorldGenerator>("World/WorldGenerator");
+
+				if (worldGenerator == null)
+					worldGenerator = GetTree().Root.GetNodeOrNull<WorldGenerator>("WorldGenerator");
+
+				if (worldGenerator == null)
+					worldGenerator = GetParent().GetNodeOrNull<WorldGenerator>("WorldGenerator");
+
+				if (worldGenerator == null)
+					worldGenerator = GetParent().GetParent()?.GetNodeOrNull<WorldGenerator>("WorldGenerator");
+			}
+			catch (Exception ex)
+			{
+				// Log the error but continue with default values
+				GD.PrintErr($"Error finding WorldGenerator: {ex.Message}");
+			}
+
+			float voxelScale = 1.0f;
+			if (worldGenerator != null)
+			{
+				// Get the voxel scale from the world generator
+				voxelScale = worldGenerator.VoxelScale;
+
+				// If voxel scale is 0, use default of 1.0
+				if (voxelScale <= 0)
+				{
+					voxelScale = 1.0f;
+				}
+				else
+				{
+					// Convert scale to divisor (e.g., scale of 0.5 means 2x resolution)
+					voxelScale = 1.0f / voxelScale;
+				}
+			}
+
+			// Convert world position to voxel coordinates
+			// Account for player scale and voxel scale
+			float playerScale = 1.0f;
+			if (Scale != Vector3.One)
+			{
+				playerScale = Scale.X; // Get player scale
+			}
+
+			// Apply both scales to convert world position to voxel coordinates
+			int worldX = Mathf.FloorToInt(position.X * voxelScale / playerScale);
+			int worldY = Mathf.FloorToInt(position.Y * voxelScale / playerScale);
+			int worldZ = Mathf.FloorToInt(position.Z * voxelScale / playerScale);
+
+			// Use the ChunkManager's GetVoxelType method to get the voxel type at this position
+			VoxelType voxelType = chunkManager.GetVoxelType(worldX, worldY, worldZ);
+
+			// Debug output for specific points (limit to avoid spam)
+			if (Engine.GetProcessFrames() % 120 == 0)
+			{
+				GD.Print($"Checking position: {position}, voxel coords: ({worldX}, {worldY}, {worldZ}), voxel type: {voxelType}");
+			}
+
+			// Check if it's water
+			return voxelType == VoxelType.Water;
+		}
+		catch (Exception ex)
+		{
+			GD.PrintErr($"Error checking water: {ex.Message}");
+			return false;
+		}
+	}
+
+	// Find the Y coordinate of the water surface
+	private float FindWaterSurfaceLevel()
+	{
+		// Get the chunk manager from the scene
+		ChunkManager chunkManager = null;
+
+		// Try different paths to find the ChunkManager
+		// This makes the code more robust to different scene structures
+		try
+		{
+			// Try to find ChunkManager in various possible locations
+			chunkManager = GetParent().GetNodeOrNull<ChunkManager>("WorldGenerator/ChunkManager");
+
+			if (chunkManager == null)
+				chunkManager = GetTree().Root.GetNodeOrNull<ChunkManager>("World/WorldGenerator/ChunkManager");
+
+			if (chunkManager == null)
+				chunkManager = GetTree().Root.GetNodeOrNull<ChunkManager>("WorldGenerator/ChunkManager");
+
+			if (chunkManager == null)
+				chunkManager = GetParent().GetParent()?.GetNodeOrNull<ChunkManager>("WorldGenerator/ChunkManager");
+
+			if (chunkManager == null)
+			{
+				GD.PrintErr("ChunkManager not found in scene");
+				return GlobalPosition.Y; // Return current position if can't find chunk manager
+			}
+		}
+		catch (Exception ex)
+		{
+			// Log the error but continue with default values
+			GD.PrintErr($"Error finding ChunkManager: {ex.Message}");
+			return GlobalPosition.Y;
+		}
+
+		// Get player's position in world coordinates
+		Vector3 playerPos = GlobalPosition;
+
+		// Get the world generator to access voxel scale
+		WorldGenerator worldGenerator = null;
+
+		// Try different paths to find the WorldGenerator
+		try
+		{
+			// Try to find WorldGenerator in various possible locations
+			worldGenerator = GetTree().Root.GetNodeOrNull<WorldGenerator>("World/WorldGenerator");
+
+			if (worldGenerator == null)
+				worldGenerator = GetTree().Root.GetNodeOrNull<WorldGenerator>("WorldGenerator");
+
+			if (worldGenerator == null)
+				worldGenerator = GetParent().GetNodeOrNull<WorldGenerator>("WorldGenerator");
+
+			if (worldGenerator == null)
+				worldGenerator = GetParent().GetParent()?.GetNodeOrNull<WorldGenerator>("WorldGenerator");
+		}
+		catch (Exception ex)
+		{
+			// Log the error but continue with default values
+			GD.PrintErr($"Error finding WorldGenerator: {ex.Message}");
+		}
+
+		float voxelScale = 1.0f;
+		if (worldGenerator != null)
+		{
+			// Get the voxel scale from the world generator
+			voxelScale = worldGenerator.VoxelScale;
+
+			// If voxel scale is 0, use default of 1.0
+			if (voxelScale <= 0)
+			{
+				voxelScale = 1.0f;
+			}
+		}
+
+		// Search upward from the player's position to find the water surface
+		float maxSearchHeight = 10.0f; // Maximum search distance
+		float step = 0.25f; // Step size for search
+
+		for (float yOffset = 0; yOffset <= maxSearchHeight; yOffset += step)
+		{
+			Vector3 checkPos = new Vector3(playerPos.X, playerPos.Y + yOffset, playerPos.Z);
+
+			// If this position is not water, we've found the surface
+			if (!IsPositionInWater(chunkManager, checkPos))
+			{
+				// Return the Y coordinate of the water surface (just below this point)
+				return playerPos.Y + yOffset - (step / 2.0f);
+			}
+		}
+
+		// If we didn't find a surface, return a position slightly above the player
+		return playerPos.Y + 1.0f;
 	}
 
 	public override void _PhysicsProcess(double delta)
 	{
 		Vector3 velocity = Velocity;
 
-		// Add gravity
-		if (!IsOnFloor())
-			velocity.Y -= _gravity * (float)delta;
+		// Check if player is in water
+		bool wasInWater = _isInWater;
+		_isInWater = CheckIfInWater();
 
-		// Handle jump
-		if (Input.IsActionJustPressed("ui_accept") && IsOnFloor())
-			velocity.Y = JumpVelocity;
+		// Update water indicator visibility
+		if (_waterIndicator != null)
+		{
+			_waterIndicator.Visible = _isInWater;
+		}
+
+		// Update debug indicator color
+		if (_waterDebugIndicator != null)
+		{
+			_waterDebugIndicator.Color = _isInWater ? new Color(0, 0.7f, 1.0f) : new Color(1, 0, 0);
+		}
+
+		// Update underwater overlay visibility
+		if (_underwaterOverlay != null)
+		{
+			// Check if the camera is underwater
+			bool cameraInWater = false;
+
+			// Get the world position of the camera
+			Vector3 cameraPosition = _camera.GlobalPosition;
+
+			// Get the chunk manager
+			ChunkManager chunkManager = null;
+
+			// Try different paths to find the ChunkManager
+			// This makes the code more robust to different scene structures
+			try
+			{
+				// Try to find ChunkManager in various possible locations
+				chunkManager = GetParent().GetNodeOrNull<ChunkManager>("WorldGenerator/ChunkManager");
+
+				if (chunkManager == null)
+					chunkManager = GetTree().Root.GetNodeOrNull<ChunkManager>("World/WorldGenerator/ChunkManager");
+
+				if (chunkManager == null)
+					chunkManager = GetTree().Root.GetNodeOrNull<ChunkManager>("WorldGenerator/ChunkManager");
+
+				if (chunkManager == null)
+					chunkManager = GetParent().GetParent()?.GetNodeOrNull<ChunkManager>("WorldGenerator/ChunkManager");
+			}
+			catch (Exception ex)
+			{
+				// Log the error but continue with default values
+				if (Engine.GetProcessFrames() % 300 == 0)
+				{
+					GD.PrintErr($"Error finding ChunkManager: {ex.Message}");
+				}
+			}
+
+			// Check if the camera position is in water
+			if (chunkManager != null)
+			{
+				cameraInWater = IsPositionInWater(chunkManager, cameraPosition);
+
+				// If camera is in water, update the overlay color based on the water color
+				if (cameraInWater)
+				{
+					// Get the water color from the voxel at the camera position
+					Color waterColor = GetLiquidColorAtPosition(chunkManager, cameraPosition);
+
+					// Apply the water color to the overlay with transparency
+					waterColor.A = 0.5f; // Set transparency
+					_underwaterOverlay.Color = waterColor;
+				}
+			}
+
+			// Store current state for debug output
+			bool currentVisibility = _underwaterOverlay.Visible;
+
+			// Update visibility - only show the overlay when the camera is underwater
+			_underwaterOverlay.Visible = cameraInWater;
+
+			// Always print debug info every few seconds
+			if (Engine.GetProcessFrames() % 120 == 0)
+			{
+				GD.Print($"Underwater debug - Camera in water: {cameraInWater}, Overlay visible: {_underwaterOverlay.Visible}, Canvas layer: {_underwaterOverlayCanvas.Layer}");
+			}
+
+			// Debug output when underwater state changes
+			if (currentVisibility != cameraInWater)
+			{
+				GD.Print($"Camera underwater state changed: {cameraInWater}");
+			}
+		}
+
+		// Print debug message when water state changes
+		if (_isInWater != wasInWater)
+		{
+			if (_isInWater)
+			{
+				GD.Print("Player entered water");
+			}
+			else
+			{
+				GD.Print("Player exited water");
+			}
+		}
+
+		// Apply different physics based on water state
+		if (_isInWater)
+		{
+			// Find the water surface level
+			float waterSurfaceY = FindWaterSurfaceLevel();
+
+			// Get the player's collision shape to determine height
+			var collisionShape = GetNode<CollisionShape3D>("CollisionShape3D");
+			float playerHeight = 1.5f; // Default height
+			float playerRadius = 0.5f; // Default radius
+
+			if (collisionShape != null && collisionShape.Shape is CapsuleShape3D capsule)
+			{
+				playerHeight = capsule.Height;
+				playerRadius = capsule.Radius;
+			}
+
+			// Calculate the target position - we want the player to float with half their body in water
+			// This means the player's center should be at the water surface
+
+			// Set the target Y position to the water surface level
+			float targetY = waterSurfaceY;
+
+			// Add a small offset to fine-tune the floating height
+			float floatHeightOffset = 0.1f; // Positive value to float higher
+			targetY += floatHeightOffset;
+
+			// Calculate buoyancy force based on distance from target position
+			float distanceFromTarget = targetY - GlobalPosition.Y;
+
+			// Apply buoyancy force based on distance from target position
+			float buoyancyForce;
+
+			// Increase buoyancy slightly to counteract sinking
+			float buoyancyMultiplier = 1.2f; // Increased from 1.0
+
+			if (distanceFromTarget > 0)
+			{
+				// Player is below target - apply upward buoyancy (stronger)
+				buoyancyForce = buoyancyMultiplier * WaterBuoyancy * distanceFromTarget * (float)delta;
+			}
+			else
+			{
+				// Player is above target - apply downward force
+				// Use a slightly weaker downward force to prevent sinking
+				buoyancyForce = 0.8f * WaterBuoyancy * distanceFromTarget * (float)delta;
+			}
+
+			// Apply buoyancy force
+			velocity.Y += buoyancyForce;
+
+			// Add a moderate damping effect to prevent oscillation
+			velocity.Y *= 0.95f; // Less damping (was 0.9f)
+
+			// Apply a very small constant force to fine-tune the equilibrium position
+			// Positive value for upward force, negative for downward
+			velocity.Y += 0.01f; // Small upward force to counteract sinking
+
+			// Handle swimming up when jump is pressed in water
+			if (Input.IsActionPressed("ui_accept"))
+			{
+				velocity.Y = SwimSpeed;
+			}
+
+			// Debug output
+			if (Engine.GetProcessFrames() % 60 == 0)
+			{
+				GD.Print($"Water physics: surface={waterSurfaceY:F2}, player={GlobalPosition.Y:F2}, " +
+					$"target={targetY:F2}, distance={distanceFromTarget:F2}, " +
+					$"force={buoyancyForce:F2}, velocity={velocity.Y:F2}");
+			}
+		}
+		else
+		{
+			// Regular gravity when not in water
+			if (!IsOnFloor())
+				velocity.Y -= _gravity * (float)delta;
+
+			// Regular jump when on floor and not in water
+			if (Input.IsActionJustPressed("ui_accept") && IsOnFloor())
+				velocity.Y = JumpVelocity;
+		}
 
 		// Store the original Y velocity for stair stepping
 		float originalY = velocity.Y;
@@ -127,11 +823,12 @@ public partial class Player : CharacterBody3D
 		// Handle movement with acceleration and friction
 		if (direction != Vector3.Zero)
 		{
-			// Calculate target velocity
-			Vector3 targetVelocity = direction * Speed;
+			// Calculate target velocity - slower in water
+			float currentSpeed = _isInWater ? Speed * (1.0f - WaterDragFactor) : Speed;
+			Vector3 targetVelocity = direction * currentSpeed;
 
 			// Apply acceleration
-			if (IsOnFloor())
+			if (IsOnFloor() && !_isInWater)
 			{
 				// Smoother acceleration on ground
 				velocity.X = Mathf.Lerp(velocity.X, targetVelocity.X, Acceleration);
@@ -139,18 +836,21 @@ public partial class Player : CharacterBody3D
 			}
 			else
 			{
-				// Less control in air
-				velocity.X = Mathf.Lerp(velocity.X, targetVelocity.X, Acceleration * 0.5f);
-				velocity.Z = Mathf.Lerp(velocity.Z, targetVelocity.Z, Acceleration * 0.5f);
+				// Less control in air or water
+				float waterAcceleration = _isInWater ? Acceleration * 0.7f : Acceleration * 0.5f;
+				velocity.X = Mathf.Lerp(velocity.X, targetVelocity.X, waterAcceleration);
+				velocity.Z = Mathf.Lerp(velocity.Z, targetVelocity.Z, waterAcceleration);
 			}
 
 			// No player rotation - movement is purely relative to camera direction
 		}
-		else if (IsOnFloor())
+		else if (IsOnFloor() || _isInWater)
 		{
-			// Apply friction when on ground and not actively moving
-			velocity.X = Mathf.Lerp(velocity.X, 0, Friction);
-			velocity.Z = Mathf.Lerp(velocity.Z, 0, Friction);
+			// Apply friction when on ground or in water and not actively moving
+			// More friction in water
+			float frictionFactor = _isInWater ? Friction * 1.5f : Friction;
+			velocity.X = Mathf.Lerp(velocity.X, 0, frictionFactor);
+			velocity.Z = Mathf.Lerp(velocity.Z, 0, frictionFactor);
 		}
 
 		Velocity = velocity;

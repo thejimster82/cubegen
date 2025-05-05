@@ -147,32 +147,7 @@ namespace CubeGen.World.Generation
 			// Convert to list for easier manipulation
 			foreach (BiomeType biomeType in biomeTypesArray)
 			{
-				// Add biome types with appropriate probabilities
-				// Islands biome should be more common for debugging
-				if (biomeType == BiomeType.Islands)
-				{
-					// 40% chance to add Islands biome to available biomes (increased from 15%)
-					if (random.NextDouble() < 0.40)
-					{
-						availableBiomes.Add(biomeType);
-					}
-				}
-				else
-				{
-					// Always add other biome types
-					availableBiomes.Add(biomeType);
-				}
-			}
-
-			// If we have no biomes available (unlikely but possible), add the standard biomes
-			if (availableBiomes.Count == 0)
-			{
-				availableBiomes.Add(BiomeType.Plains);
-				availableBiomes.Add(BiomeType.Forest);
-				availableBiomes.Add(BiomeType.Desert);
-				availableBiomes.Add(BiomeType.Mountains);
-				availableBiomes.Add(BiomeType.Tundra);
-				availableBiomes.Add(BiomeType.Islands);
+				availableBiomes.Add(biomeType);
 			}
 
 			// Find neighboring cells by sampling points around this cell
@@ -189,18 +164,6 @@ namespace CubeGen.World.Generation
 					BiomeType neighborBiome = _cellToBiomeMap[neighborId];
 					availableBiomes.Remove(neighborBiome);
 				}
-			}
-
-			// If we've removed all biomes, add them back (can happen with limited biome types)
-			if (availableBiomes.Count == 0)
-			{
-				// Add back standard biomes with higher probability
-				availableBiomes.Add(BiomeType.Plains);
-				availableBiomes.Add(BiomeType.Forest);
-				availableBiomes.Add(BiomeType.Desert);
-				availableBiomes.Add(BiomeType.Mountains);
-				availableBiomes.Add(BiomeType.Tundra);
-				availableBiomes.Add(BiomeType.Islands);
 			}
 
 			// Select a random biome from the available ones

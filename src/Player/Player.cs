@@ -25,6 +25,7 @@ public partial class Player : CharacterBody3D
 	private Node3D _head;
 	private Node3D _cameraMount;
 	private Camera3D _camera;
+	private SpringArm3D _springArm;
 	private float _gravity = ProjectSettings.GetSetting("physics/3d/default_gravity").AsSingle();
 	private float _cameraRotation = 0.0f;
 	private bool _isInWater = false; // Tracks if player is in water
@@ -32,12 +33,37 @@ public partial class Player : CharacterBody3D
 	private ColorRect _waterDebugIndicator; // Visual debug indicator for water detection
 	private CanvasLayer _underwaterOverlayCanvas; // Canvas layer for underwater effect
 	private ColorRect _underwaterOverlay; // Translucent overlay for underwater effect
+	private float _currentCameraDistance; // For smoothing camera movement
 
 	public override void _Ready()
 	{
 		_head = GetNode<Node3D>("Head");
 		_cameraMount = GetNode<Node3D>("CameraMount");
 		_camera = GetNode<Camera3D>("CameraMount/Camera3D");
+
+		// Let's take a completely different approach - instead of reparenting,
+		// we'll create a SpringArm3D but keep the original camera setup
+
+		// Create the SpringArm3D node
+		_springArm = new SpringArm3D
+		{
+			Name = "SpringArm3D",
+			SpringLength = CameraDistance,
+			Margin = 0.01f, // Small margin to prevent camera from getting too close to surfaces
+			CollisionMask = 1 // Use the default collision layer
+		};
+
+		// Add the SpringArm3D to the camera mount
+		_cameraMount.AddChild(_springArm);
+
+		// Position the SpringArm3D at the origin of the camera mount
+		_springArm.Position = Vector3.Zero;
+
+		// Initialize the current camera distance for smooth transitions
+		_currentCameraDistance = CameraDistance;
+
+		// We'll use the SpringArm3D for collision detection only
+		// The camera will remain as a direct child of the camera mount
 
 		// Initialize camera position
 		UpdateCameraPosition();
@@ -304,12 +330,39 @@ public partial class Player : CharacterBody3D
 	{
 		// Calculate camera position based on rotation and distance
 		float height = CameraHeight + _cameraRotation * 2.0f; // Adjust height based on rotation (reduced multiplier)
-		float distance = CameraDistance - _cameraRotation * 1.0f; // Adjust distance based on rotation (reduced multiplier)
+		float targetDistance = CameraDistance - _cameraRotation * 1.0f; // Adjust distance based on rotation (reduced multiplier)
 
-		// Set camera transform - position only, keep the rotation from camera mount
-		_camera.Position = new Vector3(0, height, distance);
+		// Update the spring arm for collision detection
+		_springArm.SpringLength = targetDistance;
 
-		// Make camera look at player's head
+		// Use the SpringArm3D to detect collisions
+		float hitLength = _springArm.GetHitLength();
+
+		// Determine the target distance based on collision detection
+		float targetCameraDistance;
+		if (hitLength < targetDistance)
+		{
+			// Apply a small margin to prevent clipping
+			targetCameraDistance = hitLength - 0.1f;
+
+			// Ensure we don't go into negative distance
+			targetCameraDistance = Mathf.Max(targetCameraDistance, 0.1f);
+		}
+		else
+		{
+			// No collision, use the calculated distance
+			targetCameraDistance = targetDistance;
+		}
+
+		// Smooth the camera distance transition
+		// Use a smaller smoothing factor when moving camera closer (to avoid clipping)
+		float smoothFactor = targetCameraDistance < _currentCameraDistance ? 0.5f : 0.1f;
+		_currentCameraDistance = Mathf.Lerp(_currentCameraDistance, targetCameraDistance, smoothFactor);
+
+		// Position the camera with the smoothed distance
+		_camera.Position = new Vector3(0, height, _currentCameraDistance);
+
+		// Make the camera look at the player's head
 		_camera.LookAt(_head.GlobalPosition);
 	}
 

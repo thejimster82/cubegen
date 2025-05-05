@@ -40,7 +40,7 @@ current = true
 fov = 60.0
 
 [node name="Player" parent="." instance=ExtResource("6_yvnqm")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 60, 0)
+transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 60, 0)
 
 [node name="DebugInfo" type="Label" parent="."]
 offset_left = 20.0

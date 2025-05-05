@@ -253,10 +253,11 @@ public partial class Player : CharacterBody3D
 				playerScale = Scale.X; // Get player scale
 			}
 
-			// Apply both scales to convert world position to voxel coordinates
-			int worldX = Mathf.FloorToInt(position.X * voxelScale / playerScale);
-			int worldY = Mathf.FloorToInt(position.Y * voxelScale / playerScale);
-			int worldZ = Mathf.FloorToInt(position.Z * voxelScale / playerScale);
+			// Apply voxel scale to convert world position to voxel coordinates
+			// We don't divide by playerScale here to be consistent with IsPositionInWater
+			int worldX = Mathf.FloorToInt(position.X * voxelScale);
+			int worldY = Mathf.FloorToInt(position.Y * voxelScale);
+			int worldZ = Mathf.FloorToInt(position.Z * voxelScale);
 
 			// Get the voxel type at this position
 			VoxelType voxelType = chunkManager.GetVoxelType(worldX, worldY, worldZ);
@@ -423,7 +424,29 @@ public partial class Player : CharacterBody3D
 
 		// Check at center of player
 		bool isInWater = false;
-		if (IsPositionInWater(chunkManager, new Vector3(playerPos.X, playerPos.Y+playerHeight/2, playerPos.Z)))
+
+		// Get player scale to adjust check position
+		float playerScale = 1.0f;
+		if (Scale != Vector3.One)
+		{
+			playerScale = Scale.X;
+		}
+
+		// Adjust the check position based on player scale
+		// For a 2x scaled player, we need to check at the actual center of the scaled model
+		Vector3 checkPosition = new Vector3(
+			playerPos.X,
+			playerPos.Y + (playerHeight * playerScale) / 2,
+			playerPos.Z
+		);
+
+		// Debug output
+		if (Engine.GetProcessFrames() % 120 == 0)
+		{
+			GD.Print($"Water check: Player scale={playerScale}, Check position={checkPosition}, Player position={playerPos}");
+		}
+
+		if (IsPositionInWater(chunkManager, checkPosition))
 			isInWater = true;
 
 		return isInWater;
@@ -486,9 +509,11 @@ public partial class Player : CharacterBody3D
 			}
 
 			// Apply both scales to convert world position to voxel coordinates
-			int worldX = Mathf.FloorToInt(position.X * voxelScale / playerScale);
-			int worldY = Mathf.FloorToInt(position.Y * voxelScale / playerScale);
-			int worldZ = Mathf.FloorToInt(position.Z * voxelScale / playerScale);
+			// When converting world position to voxel coordinates, we should multiply by playerScale, not divide
+			// This is because a larger player means the world is effectively smaller relative to the player
+			int worldX = Mathf.FloorToInt(position.X * voxelScale);
+			int worldY = Mathf.FloorToInt(position.Y * voxelScale);
+			int worldZ = Mathf.FloorToInt(position.Z * voxelScale);
 
 			// Use the ChunkManager's GetVoxelType method to get the voxel type at this position
 			VoxelType voxelType = chunkManager.GetVoxelType(worldX, worldY, worldZ);
@@ -584,9 +609,22 @@ public partial class Player : CharacterBody3D
 			}
 		}
 
+		// Get player scale to adjust check position
+		float playerScale = 1.0f;
+		if (Scale != Vector3.One)
+		{
+			playerScale = Scale.X;
+		}
+
 		// Search upward from the player's position to find the water surface
-		float maxSearchHeight = 10.0f; // Maximum search distance
-		float step = 0.25f; // Step size for search
+		float maxSearchHeight = 10.0f * playerScale; // Maximum search distance adjusted for player scale
+		float step = 0.25f * playerScale; // Step size for search adjusted for player scale
+
+		// Debug output
+		if (Engine.GetProcessFrames() % 120 == 0)
+		{
+			GD.Print($"Water surface search: Player scale={playerScale}, Max height={maxSearchHeight}, Step={step}");
+		}
 
 		for (float yOffset = 0; yOffset <= maxSearchHeight; yOffset += step)
 		{
@@ -730,11 +768,19 @@ public partial class Player : CharacterBody3D
 			// Calculate the target position - we want the player to float with half their body in water
 			// This means the player's center should be at the water surface
 
+			// Get player scale to adjust floating position
+			float playerScale = 1.0f;
+			if (Scale != Vector3.One)
+			{
+				playerScale = Scale.X;
+			}
+
 			// Set the target Y position to the water surface level
 			float targetY = waterSurfaceY;
 
 			// Add a small offset to fine-tune the floating height
-			float floatHeightOffset = 0.1f; // Positive value to float higher
+			// Scale the offset based on player scale
+			float floatHeightOffset = 0.1f * playerScale; // Positive value to float higher
 			targetY += floatHeightOffset;
 
 			// Calculate buoyancy force based on distance from target position
@@ -744,7 +790,14 @@ public partial class Player : CharacterBody3D
 			float buoyancyForce;
 
 			// Increase buoyancy slightly to counteract sinking
-			float buoyancyMultiplier = 1.2f; // Increased from 1.0
+			// Scale the buoyancy multiplier based on player scale
+			float buoyancyMultiplier = 1.2f * playerScale; // Increased from 1.0 and scaled with player
+
+			// Debug output
+			if (Engine.GetProcessFrames() % 120 == 0)
+			{
+				GD.Print($"Water physics: Player scale={playerScale}, Buoyancy multiplier={buoyancyMultiplier}");
+			}
 
 			if (distanceFromTarget > 0)
 			{
@@ -755,7 +808,7 @@ public partial class Player : CharacterBody3D
 			{
 				// Player is above target - apply downward force
 				// Use a slightly weaker downward force to prevent sinking
-				buoyancyForce = 0.8f * WaterBuoyancy * distanceFromTarget * (float)delta;
+				buoyancyForce = 0.8f * playerScale * WaterBuoyancy * distanceFromTarget * (float)delta;
 			}
 
 			// Apply buoyancy force
@@ -766,12 +819,14 @@ public partial class Player : CharacterBody3D
 
 			// Apply a very small constant force to fine-tune the equilibrium position
 			// Positive value for upward force, negative for downward
-			velocity.Y += 0.01f; // Small upward force to counteract sinking
+			// Scale this force with player scale
+			velocity.Y += 0.01f * playerScale; // Small upward force to counteract sinking
 
 			// Handle swimming up when jump is pressed in water
 			if (Input.IsActionPressed("ui_accept"))
 			{
-				velocity.Y = SwimSpeed;
+				// Scale swim speed with player scale
+				velocity.Y = SwimSpeed * playerScale;
 			}
 
 			// Debug output

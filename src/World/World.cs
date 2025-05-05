@@ -674,6 +674,7 @@ public partial class World : Node3D
 	private void SpawnPlayer()
 	{
 		_player = PlayerScene.Instantiate<Player>();
+		_player.Scale = new Vector3(2, 2, 2);
 		AddChild(_player);
 
 		// Position player above the terrain at spawn point

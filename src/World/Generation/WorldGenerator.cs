@@ -41,7 +41,7 @@ public partial class WorldGenerator : Node3D
 		{
 			GD.Print("ChunkManager found, initializing...");
 			_chunkManager.Initialize(ChunkSize, ChunkHeight);
-			GenerateInitialChunks(ViewDistance);
+			GenerateInitialChunks(viewDistance: 1);
 		}
 		else
 		{
@@ -58,7 +58,7 @@ public partial class WorldGenerator : Node3D
 			InitializeStaticNoise(Seed);
 		}
 
-	private void GenerateInitialChunks(int viewDistance)
+	private void GenerateInitialChunks(int viewDistance = 1)
 	{
 		// Generate chunks around origin
 		GD.Print($"Generating initial chunks with view distance: {viewDistance}");

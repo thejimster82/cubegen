@@ -36,47 +36,47 @@ namespace CubeGen.World.Materials
             _colorNoise = new FastNoiseLite();
             _colorNoise.Seed = seed;
             _colorNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-            _colorNoise.Frequency = 0.005f; // Very low frequency for broader, more noticeable gradients
+            _colorNoise.Frequency = 0.008f; // Increased frequency for more noticeable gradients
             _colorNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-            _colorNoise.FractalOctaves = 3;
-            _colorNoise.FractalLacunarity = 2.0f;
-            _colorNoise.FractalGain = 0.6f; // Increased gain for more pronounced effect
+            _colorNoise.FractalOctaves = 3; // More octaves for more complex patterns
+            _colorNoise.FractalLacunarity = 2.2f; // Increased lacunarity for more variation between scales
+            _colorNoise.FractalGain = 0.65f; // Higher gain for more dramatic effect
 
             // Initialize detail noise (smaller variations)
             _detailNoise = new FastNoiseLite();
             _detailNoise.Seed = seed + 1000;
             _detailNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-            _detailNoise.Frequency = 0.03f; // Adjusted for better balance with primary noise
+            _detailNoise.Frequency = 0.03f; // Higher frequency for more dramatic local variations
             _detailNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-            _detailNoise.FractalOctaves = 2;
-            _detailNoise.FractalGain = 0.5f;
+            _detailNoise.FractalOctaves = 3; // More octaves for more complex patterns
+            _detailNoise.FractalGain = 0.6f; // Higher gain for more dramatic effect
 
-                        // Initialize detail noise (smaller variations)
+            // Initialize R channel noise (used for hue variation)
             _rNoise = new FastNoiseLite();
             _rNoise.Seed = seed + 2000;
             _rNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-            _rNoise.Frequency = 0.03f; // Adjusted for better balance with primary noise
+            _rNoise.Frequency = 0.012f; // Increased frequency for more dramatic hue variations
             _rNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-            _rNoise.FractalOctaves = 2;
-            _rNoise.FractalGain = 0.5f;
+            _rNoise.FractalOctaves = 3; // More octaves for more complex patterns
+            _rNoise.FractalGain = 0.6f; // Higher gain for more dramatic effect
 
-                        // Initialize detail noise (smaller variations)
+            // Initialize G channel noise
             _gNoise = new FastNoiseLite();
             _gNoise.Seed = seed + 3000;
             _gNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-            _gNoise.Frequency = 0.03f; // Adjusted for better balance with primary noise
+            _gNoise.Frequency = 0.01f;
             _gNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-            _gNoise.FractalOctaves = 2;
-            _gNoise.FractalGain = 0.5f;
+            _gNoise.FractalOctaves = 1;
+            _gNoise.FractalGain = 0.3f;
 
-                        // Initialize detail noise (smaller variations)
+            // Initialize B channel noise
             _bNoise = new FastNoiseLite();
             _bNoise.Seed = seed + 4000;
             _bNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-            _bNoise.Frequency = 0.03f; // Adjusted for better balance with primary noise
+            _bNoise.Frequency = 0.01f;
             _bNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-            _bNoise.FractalOctaves = 2;
-            _bNoise.FractalGain = 0.5f;
+            _bNoise.FractalOctaves = 1;
+            _bNoise.FractalGain = 0.3f;
 
             // Set up variation intensity for different voxel types
             InitializeVariationIntensity();
@@ -91,31 +91,38 @@ namespace CubeGen.World.Materials
         /// </summary>
         private static void InitializeVariationIntensity()
         {
-            // Default to moderate variation for all types
+            // Default to a high variation for all types
             foreach (VoxelType type in Enum.GetValues(typeof(VoxelType)))
             {
-                _variationIntensity.Add(type, 0.5f);
+                _variationIntensity.Add(type, 1.0f);
             }
 
             // Set specific variation intensities for natural materials
-            _variationIntensity[VoxelType.Grass] = 0.45f;     // 45% variation for grass (increased from 35%)
-            _variationIntensity[VoxelType.Dirt] = 0.4f;       // 40% variation for dirt (increased from 30%)
-            _variationIntensity[VoxelType.Stone] = 0.35f;     // 35% variation for stone (increased from 25%)
-            _variationIntensity[VoxelType.Sand] = 0.4f;       // 40% variation for sand (increased from 30%)
-            _variationIntensity[VoxelType.Wood] = 0.3f;       // 30% variation for wood (increased from 20%)
-            _variationIntensity[VoxelType.Leaves] = 0.45f;    // 45% variation for leaves (increased from 35%)
+            // Using high values for more dramatic variations
+            _variationIntensity[VoxelType.Grass] = 1.2f;      // 120% variation for grass
+            _variationIntensity[VoxelType.Dirt] = 1.0f;       // 100% variation for dirt
+            _variationIntensity[VoxelType.Stone] = 0.9f;      // 90% variation for stone
+            _variationIntensity[VoxelType.Sand] = 0.5f;       // 100% variation for sand
+            _variationIntensity[VoxelType.Wood] = 0.9f;       // 90% variation for wood
+            _variationIntensity[VoxelType.Leaves] = 1.2f;     // 120% variation for leaves
 
-            // Less variation for manufactured/uniform materials
-            _variationIntensity[VoxelType.Bedrock] = 0.25f;   // 25% variation for bedrock (increased from 15%)
-            _variationIntensity[VoxelType.Cloud] = 0.3f;      // 30% variation for clouds (increased from 20%)
+            // Less variation for manufactured/uniform materials but still significant
+            _variationIntensity[VoxelType.Bedrock] = 0.8f;    // 80% variation for bedrock
+            _variationIntensity[VoxelType.Cloud] = 0.9f;      // 90% variation for clouds
 
-            // Water can have some variation
-            _variationIntensity[VoxelType.Water] = 0.3f;      // 30% variation for water (increased from 20%)
+            // Water can have significant variation
+            _variationIntensity[VoxelType.Water] = 0.9f;      // 90% variation for water
 
-            // Decorations can have more variation
-            _variationIntensity[VoxelType.TallGrass] = 0.5f;  // 50% variation for tall grass (increased from 40%)
-            _variationIntensity[VoxelType.Flower] = 0.4f;     // 40% variation for flowers (increased from 30%)
-            _variationIntensity[VoxelType.Mushroom] = 0.4f;   // 40% variation for mushrooms (increased from 30%)
+            // Decorations can have extreme variation
+            _variationIntensity[VoxelType.TallGrass] = 1f;  // 130% variation for tall grass
+            _variationIntensity[VoxelType.Flower] = 1.2f;     // 120% variation for flowers
+            _variationIntensity[VoxelType.Mushroom] = 1.2f;   // 120% variation for mushrooms
+
+            // Additional voxel types
+            _variationIntensity[VoxelType.Snow] = 0.9f;       // 90% variation for snow
+            _variationIntensity[VoxelType.Cactus] = 1.0f;     // 100% variation for cactus
+            _variationIntensity[VoxelType.IceBlock] = 0.8f;   // 80% variation for ice
+            _variationIntensity[VoxelType.SnowLeaves] = 1.0f; // 100% variation for snow-covered leaves
         }
 
         /// <summary>
@@ -123,7 +130,7 @@ namespace CubeGen.World.Materials
         /// </summary>
         /// <param name="baseColor">The original color from the material</param>
         /// <param name="worldX">World X coordinate</param>
-        /// <param name="worldY">World Y coordinate</param>
+        /// <param name="worldY">World Y coordinate (not used in current implementation)</param>
         /// <param name="worldZ">World Z coordinate</param>
         /// <param name="voxelType">Type of voxel</param>
         /// <returns>A new color with variation applied</returns>
@@ -136,32 +143,40 @@ namespace CubeGen.World.Materials
             }
 
             // Get variation intensity for this voxel type
-            float intensity = 0.1f; // Default
-            if (_variationIntensity.ContainsKey(voxelType))
+            if (!_variationIntensity.TryGetValue(voxelType, out float intensity))
             {
-                intensity = _variationIntensity[voxelType];
+                intensity = 0.1f; // Use default if not found
             }
 
-            // Get noise values at this position
-            float primaryNoise = _colorNoise.GetNoise2D(worldX, worldZ) * 3;
-            // Uncomment to use detail noise for additional variation
-            float detailNoise = _detailNoise.GetNoise2D(worldX, worldZ) * 3;
-            float rNoise = _rNoise.GetNoise2D(worldX, worldZ) * 3;
-            float gNoise = _gNoise.GetNoise2D(worldX, worldZ) * 3;
-            float bNoise = _bNoise.GetNoise2D(worldX, worldZ) * 3;
+            // Get noise values at this position - use a single noise value for more consistent coloring
+            float primaryNoise = _colorNoise.GetNoise2D(worldX, worldZ);
+            float detailNoise = _detailNoise.GetNoise2D(worldX, worldZ) * 0.5f;
 
-            // Calculate variation factor from noise
-            float variationFactor = primaryNoise * intensity + detailNoise * intensity;
+            // Calculate variation factor from noise - keep it within a smaller range
+            // Map the noise from [-1,1] to [0,1] range
+            float variationFactor = (primaryNoise + detailNoise + 2.0f) * 0.5f * intensity;
 
-            // Apply variation to each color channel with different multipliers
-            // These different multipliers create more natural-looking variations by
-            // shifting the color balance rather than just darkening/lightening
-            float r = Mathf.Clamp(baseColor.R * (1.0f - variationFactor * rNoise), 0.0f, 1.0f);
-            float g = Mathf.Clamp(baseColor.G * (1.0f - variationFactor * gNoise), 0.0f, 1.0f);
-            float b = Mathf.Clamp(baseColor.B * (1.0f - variationFactor * bNoise), 0.0f, 1.0f);
+            // Instead of varying RGB channels independently (which creates rainbow effects),
+            // use a more controlled approach that maintains the color's character
 
-            // Create new color with variation
-            return new Color(r, g, b, baseColor.A);
+            // Extract HSV components from the base color
+            baseColor.ToHsv(out float h, out float s, out float v);
+
+            // Allow more significant hue variation (within ±15% of the original hue)
+            // This creates more pronounced color variations while still keeping colors in the same family
+            float hueVariation = ((_rNoise.GetNoise2D(worldX, worldZ) + 1.0f) * 0.15f) - 0.1f;
+            h = Mathf.Wrap(h + hueVariation, 0.0f, 1.0f);
+
+            // Vary saturation and value more dramatically
+            // This creates much more noticeable variations while still maintaining some character of the original color
+            s = Mathf.Clamp(s * (0.6f + variationFactor * 0.8f), 0.0f, 1.0f);
+            v = Mathf.Clamp(v * (0.5f + variationFactor * 1.0f), 0.0f, 1.0f);
+
+            // Convert back to RGB
+            Color variedColor = Color.FromHsv(h, s, v);
+            variedColor.A = baseColor.A;
+
+            return variedColor;
         }
     }
 }

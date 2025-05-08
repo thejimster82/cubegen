@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Threading;
 using CubeGen.World.Common;
 using CubeGen.World.Generation;
+using CubeGen.World.Materials;
 
 public class ChunkMeshGenerator
 {
@@ -17,6 +18,9 @@ public class ChunkMeshGenerator
     public ChunkMeshGenerator(ChunkManager chunkManager)
     {
         _chunkManager = chunkManager;
+
+        // The ColorVariationGenerator is now initialized in World.cs with the world seed
+        // No need to initialize it here with a fixed seed
 
         // Start the worker thread
         _workerThread = new Thread(ProcessChunks);
@@ -392,14 +396,23 @@ public class ChunkMeshGenerator
                     normals.AddRange(meshData.Normals);
                     uvs.AddRange(meshData.UVs);
 
-                    // Convert AO values to colors (grayscale)
-                    foreach (float ao in meshData.AmbientOcclusion)
+                    // Apply vertex colors from mesh data if available, otherwise use AO values
+                    if (meshData.Colors.Count > 0)
                     {
-                        // Create a color with RGB all set to the AO value
-                        // Use a more subtle effect by blending with white
-                        // This makes the AO less pronounced but still visible
-                        float blendedAO = 0.7f + (ao * 0.3f); // Scale AO to be between 0.7 and 1.0
-                        colors.Add(new Color(blendedAO, blendedAO, blendedAO));
+                        // Use the pre-calculated colors that include both AO and color variations
+                        colors.AddRange(meshData.Colors);
+                    }
+                    else
+                    {
+                        // Convert AO values to colors (grayscale) - fallback for backward compatibility
+                        foreach (float ao in meshData.AmbientOcclusion)
+                        {
+                            // Create a color with RGB all set to the AO value
+                            // Use a more subtle effect by blending with white
+                            // This makes the AO less pronounced but still visible
+                            float blendedAO = 0.7f + (ao * 0.3f); // Scale AO to be between 0.7 and 1.0
+                            colors.Add(new Color(blendedAO, blendedAO, blendedAO));
+                        }
                     }
 
                     // Adjust indices to account for vertex offset
@@ -679,11 +692,46 @@ public class ChunkMeshGenerator
         // Add normals
         for (int i = 0; i < 4; i++) meshData.Normals.Add(Vector3.Up);
 
-        // Add UVs
+        // Get world coordinates for this voxel for color variation
+        int worldPosX = chunk.Position.X * chunk.Size + x;
+        int worldPosY = y;
+        int worldPosZ = chunk.Position.Y * chunk.Size + z;
+
+        // Get biome type for this position
+        BiomeType biomeType = CubeGen.World.Generation.WorldGenerator.GetBiomeType(worldPosX, worldPosZ);
+
+        // Get base color for this voxel type and biome
+        Color baseColor = GetColorForVoxelType(voxelType, biomeType, worldPosX, worldPosY, worldPosZ);
+
+        // Add UVs and colors
         for (int i = 0; i < 4; i++)
         {
             meshData.UVs.Add(faceUVs[i]);
             meshData.AmbientOcclusion.Add(aoValues[i]);
+
+            // Create a slightly varied color for each vertex to create more natural gradients
+            // Use a small offset for each vertex to create subtle variations
+            float xOffset = (i % 2 == 0) ? -0.5f : 0.5f;
+            float zOffset = (i < 2) ? -0.5f : 0.5f;
+
+            // Get varied color for this specific vertex
+            Color vertexColor = ColorVariationGenerator.GetVariedColor(
+                baseColor,
+                worldPosX + xOffset,
+                worldPosY,
+                worldPosZ + zOffset,
+                voxelType
+            );
+
+            // Apply AO to the vertex color with a more subtle effect
+            // This allows the color variations to be more visible while still having AO
+            float blendedAO = 0.8f + (aoValues[i] * 0.2f); // Scale AO to be between 0.8 and 1.0 (less pronounced)
+            vertexColor.R *= blendedAO;
+            vertexColor.G *= blendedAO;
+            vertexColor.B *= blendedAO;
+
+            // Add the color to the mesh data
+            meshData.Colors.Add(vertexColor);
         }
 
         // Add indices (two triangles to form a quad)
@@ -735,6 +783,17 @@ public class ChunkMeshGenerator
             aoValues[i] = CalculateAO(chunk, x, y, z, direction, i);
         }
 
+        // Get world coordinates for this voxel for color variation
+        int worldX = chunk.Position.X * chunk.Size + x;
+        int worldY = y;
+        int worldZ = chunk.Position.Y * chunk.Size + z;
+
+        // Get biome type for this position
+        BiomeType biomeType = CubeGen.World.Generation.WorldGenerator.GetBiomeType(worldX, worldZ);
+
+        // Get base color for this voxel type and biome
+        Color baseColor = GetColorForVoxelType(voxelType, biomeType, worldX, worldY, worldZ);
+
         // Check if we need to flip the triangulation to avoid AO artifacts
         bool flipTriangulation = false;
 
@@ -742,11 +801,11 @@ public class ChunkMeshGenerator
         // This is critical for avoiding seams at chunk boundaries
         // We'll use a deterministic pattern based on world position, not local position
         // This ensures the same triangulation is used on both sides of a chunk boundary
-        int worldX = chunk.Position.X * chunk.Size + x;
-        int worldZ = chunk.Position.Y * chunk.Size + z;
+        int triangulationX = chunk.Position.X * chunk.Size + x;
+        int triangulationZ = chunk.Position.Y * chunk.Size + z;
 
         // Use a deterministic pattern based on world position
-        flipTriangulation = ((worldX + worldZ) % 2 == 0);
+        flipTriangulation = ((triangulationX + triangulationZ) % 2 == 0);
 
         // For interior faces, we could use AO-based triangulation, but for consistency
         // we'll use the same deterministic pattern everywhere
@@ -799,11 +858,35 @@ public class ChunkMeshGenerator
                 break;
         }
 
-        // Add UVs
+        // Add UVs and colors
         for (int i = 0; i < 4; i++)
         {
             meshData.UVs.Add(faceUVs[i]);
             meshData.AmbientOcclusion.Add(aoValues[i]);
+
+            // Create a slightly varied color for each vertex to create more natural gradients
+            // Use a small offset for each vertex to create subtle variations
+            float xOffset = (i % 2 == 0) ? -0.5f : 0.5f;
+            float zOffset = (i < 2) ? -0.5f : 0.5f;
+
+            // Get varied color for this specific vertex
+            Color vertexColor = ColorVariationGenerator.GetVariedColor(
+                baseColor,
+                worldX + xOffset,
+                worldY,
+                worldZ + zOffset,
+                voxelType
+            );
+
+            // Apply AO to the vertex color with a more subtle effect
+            // This allows the color variations to be more visible while still having AO
+            float blendedAO = 0.8f + (aoValues[i] * 0.2f); // Scale AO to be between 0.8 and 1.0 (less pronounced)
+            vertexColor.R *= blendedAO;
+            vertexColor.G *= blendedAO;
+            vertexColor.B *= blendedAO;
+
+            // Add the color to the mesh data
+            meshData.Colors.Add(vertexColor);
         }
 
         // Add indices (two triangles to form a quad)
@@ -1012,8 +1095,9 @@ public class ChunkMeshGenerator
         int worldZ = chunk.Position.Y * chunk.Size + z;
         BiomeType biomeType = CubeGen.World.Generation.WorldGenerator.GetBiomeType(worldX, worldZ);
 
-        // Get the material color for this voxel type and biome
-        Color baseColor = GetColorForVoxelType(voxelType, biomeType);
+        // Get the material color for this voxel type and biome with color variation
+        int worldY = y;
+        Color baseColor = GetColorForVoxelType(voxelType, biomeType, worldX, worldY, worldZ);
 
         // Get the decoration model
         List<DecorationModels.DecorationVoxel> decorationVoxels = DecorationModels.GetDecorationModel(voxelType, baseColor);
@@ -1072,7 +1156,7 @@ public class ChunkMeshGenerator
     }
 
     // Helper method to get the color for a voxel type in a specific biome
-    private Color GetColorForVoxelType(VoxelType voxelType, BiomeType biomeType)
+    private Color GetColorForVoxelType(VoxelType voxelType, BiomeType biomeType, int worldX = 0, int worldY = 0, int worldZ = 0)
     {
         // Default color (white)
         Color color = new Color(1.0f, 1.0f, 1.0f);
@@ -1085,6 +1169,8 @@ public class ChunkMeshGenerator
         {
             color = standardMaterial.AlbedoColor;
         }
+
+        color = ColorVariationGenerator.GetVariedColor(color, worldX, worldY, worldZ, voxelType);
 
         return color;
     }
@@ -1145,11 +1231,21 @@ public class ChunkMeshGenerator
         meshData.Normals.Add(normal);
         meshData.Normals.Add(normal);
 
-        // Add colors
-        meshData.Colors.Add(color);
-        meshData.Colors.Add(color);
-        meshData.Colors.Add(color);
-        meshData.Colors.Add(color);
+        // Add colors with slight variations for more natural look
+        // Create subtle variations for each vertex
+        for (int i = 0; i < 4; i++)
+        {
+            // Apply a very subtle random variation to each vertex color
+            // This helps break up the uniformity of decoration voxels
+            float variation = 0.95f + (GD.Randf() * 0.1f); // 0.95 to 1.05 range
+            Color variedColor = new Color(
+                Mathf.Clamp(color.R * variation, 0, 1),
+                Mathf.Clamp(color.G * variation, 0, 1),
+                Mathf.Clamp(color.B * variation, 0, 1),
+                color.A
+            );
+            meshData.Colors.Add(variedColor);
+        }
 
         // Add UVs (simple mapping)
         meshData.UVs.Add(new Vector2(0, 0));

@@ -56,6 +56,10 @@ public partial class World : Node3D
 			Random random = new Random();
 			Seed = random.Next();
 		}
+
+		// Initialize the color variation generator with the same seed
+		CubeGen.World.Materials.ColorVariationGenerator.Initialize(Seed);
+
 		_worldGenerator.Initialize(Seed, ViewDistance);
 
 		// Note: BiomeRegionGenerator is now initialized in WorldGenerator._Ready()
@@ -408,9 +412,6 @@ public partial class World : Node3D
 		_mapVisualizer.Name = "MapVisualizer";
 		_mapVisualizer.Visible = false;
 
-		// Create a mesh for the map
-		CreateMapMesh();
-
 		// Add a directional light for better terrain visualization
 		DirectionalLight3D light = new DirectionalLight3D();
 		light.LightEnergy = 0.8f;
@@ -431,123 +432,6 @@ public partial class World : Node3D
 
 		// Add to scene
 		AddChild(_mapVisualizer);
-	}
-
-	private void CreateMapMesh()
-	{
-		// Create a new ArrayMesh
-		ArrayMesh mesh = new ArrayMesh();
-
-		// Create surface arrays
-		Godot.Collections.Array arrays = new Godot.Collections.Array();
-		arrays.Resize((int)Mesh.ArrayType.Max);
-
-		// Create vertices, colors, indices, and normals
-		List<Vector3> vertices = new List<Vector3>();
-		List<Color> colors = new List<Color>();
-		List<int> indices = new List<int>();
-		List<Vector3> normals = new List<Vector3>();
-
-		// Initialize biome colors
-		Dictionary<BiomeType, Color> biomeColors = new Dictionary<BiomeType, Color>
-		{
-			{ BiomeType.Plains, new Color(0.4f, 0.83f, 0.3f) },
-			{ BiomeType.Forest, new Color(0.2f, 0.6f, 0.2f) },
-			{ BiomeType.Desert, new Color(0.95f, 0.85f, 0.5f) },
-			{ BiomeType.Mountains, new Color(0.5f, 0.5f, 0.6f) },
-			{ BiomeType.Tundra, new Color(0.95f, 0.97f, 1.0f) },
-			{ BiomeType.Islands, new Color(0.8f, 0.9f, 0.6f) }    // Light green-yellow for islands
-		};
-
-		// Calculate half size for centering
-		float halfSize = MapSize * MapTileSize / 2.0f;
-
-		// Height scale factor for the map (to make terrain features visible but not too extreme)
-		float heightScale = 0.5f;
-
-		// Create a grid of quads
-		for (int x = 0; x < MapSize; x++)
-		{
-			for (int z = 0; z < MapSize; z++)
-			{
-				// Calculate world position
-				float worldX = x * MapTileSize - halfSize;
-				float worldZ = z * MapTileSize - halfSize;
-
-				// Get biome type for this position
-				int sampleX = (int)(worldX);
-				int sampleZ = (int)(worldZ);
-				BiomeType biomeType = WorldGenerator.GetBiomeType(sampleX, sampleZ);
-
-				// Get terrain height for each corner of the quad
-				float heightNW = GetTerrainHeight(sampleX, sampleZ, biomeType) * heightScale;
-				float heightNE = GetTerrainHeight(sampleX + (int)MapTileSize, sampleZ, biomeType) * heightScale;
-				float heightSE = GetTerrainHeight(sampleX + (int)MapTileSize, sampleZ + (int)MapTileSize, biomeType) * heightScale;
-				float heightSW = GetTerrainHeight(sampleX, sampleZ + (int)MapTileSize, biomeType) * heightScale;
-
-				// Get color for this biome
-				Color biomeColor = biomeColors[biomeType];
-
-				// Add vertices for a quad with height information
-				int baseIndex = vertices.Count;
-
-				vertices.Add(new Vector3(worldX, heightNW, worldZ));                           // NW
-				vertices.Add(new Vector3(worldX + MapTileSize, heightNE, worldZ));             // NE
-				vertices.Add(new Vector3(worldX + MapTileSize, heightSE, worldZ + MapTileSize)); // SE
-				vertices.Add(new Vector3(worldX, heightSW, worldZ + MapTileSize));             // SW
-
-				// Calculate normal for this quad (for proper lighting)
-				Vector3 edge1 = vertices[baseIndex + 1] - vertices[baseIndex];     // NE - NW
-				Vector3 edge2 = vertices[baseIndex + 3] - vertices[baseIndex];     // SW - NW
-				Vector3 normal = edge1.Cross(edge2).Normalized();
-
-				// Add normals for each vertex
-				normals.Add(normal);
-				normals.Add(normal);
-				normals.Add(normal);
-				normals.Add(normal);
-
-				// Add colors for each vertex
-				colors.Add(biomeColor);
-				colors.Add(biomeColor);
-				colors.Add(biomeColor);
-				colors.Add(biomeColor);
-
-				// Add indices for two triangles to form a quad
-				indices.Add(baseIndex);
-				indices.Add(baseIndex + 1);
-				indices.Add(baseIndex + 2);
-
-				indices.Add(baseIndex);
-				indices.Add(baseIndex + 2);
-				indices.Add(baseIndex + 3);
-			}
-		}
-
-		// Set arrays
-		arrays[(int)Mesh.ArrayType.Vertex] = vertices.ToArray();
-		arrays[(int)Mesh.ArrayType.Normal] = normals.ToArray();
-		arrays[(int)Mesh.ArrayType.Color] = colors.ToArray();
-		arrays[(int)Mesh.ArrayType.Index] = indices.ToArray();
-
-		// Create surface
-		mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
-
-		// Create mesh instance
-		MeshInstance3D mapMesh = new MeshInstance3D();
-		mapMesh.Mesh = mesh;
-
-		// Create material
-		StandardMaterial3D material = new StandardMaterial3D();
-		material.VertexColorUseAsAlbedo = true;
-		material.ShadingMode = BaseMaterial3D.ShadingModeEnum.PerPixel; // Use per-pixel shading for better terrain features
-		material.CullMode = BaseMaterial3D.CullModeEnum.Back; // Cull back faces
-
-		// Set material
-		mapMesh.MaterialOverride = material;
-
-		// Add to visualizer
-		_mapVisualizer.AddChild(mapMesh);
 	}
 
 	// Helper method to get terrain height for map visualization

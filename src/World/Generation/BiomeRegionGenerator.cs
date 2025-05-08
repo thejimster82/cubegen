@@ -89,7 +89,7 @@ namespace CubeGen.World.Generation
 			// Check if properly initialized
 			if (!_isProperlyInitialized)
 			{
-				GD.PrintErr("BiomeRegionGenerator not properly initialized in GetBiomeType. Waiting for proper initialization.");
+				// GD.PrintErr("BiomeRegionGenerator not properly initialized in GetBiomeType. Waiting for proper initialization.");
 				// Return a default biome type instead of initializing with a default seed
 				return BiomeType.Plains;
 			}
@@ -228,7 +228,7 @@ namespace CubeGen.World.Generation
 			// Check if properly initialized
 			if (!_isProperlyInitialized)
 			{
-				GD.PrintErr("BiomeRegionGenerator not properly initialized in GetCellValue. Returning default value.");
+				// GD.PrintErr("BiomeRegionGenerator not properly initialized in GetCellValue. Returning default value.");
 				return 0.0f;
 			}
 
@@ -244,7 +244,7 @@ namespace CubeGen.World.Generation
 			// Check if properly initialized
 			if (!_isProperlyInitialized)
 			{
-				GD.PrintErr("BiomeRegionGenerator not properly initialized in IsNearBoundary. Returning default value.");
+				// GD.PrintErr("BiomeRegionGenerator not properly initialized in IsNearBoundary. Returning default value.");
 				return false;
 			}
 
@@ -283,7 +283,7 @@ namespace CubeGen.World.Generation
 			// Check if properly initialized
 			if (!_isProperlyInitialized)
 			{
-				GD.PrintErr("BiomeRegionGenerator not properly initialized in GetDistanceToBoundary. Returning default distance.");
+				// GD.PrintErr("BiomeRegionGenerator not properly initialized in GetDistanceToBoundary. Returning default distance.");
 				return 100.0f; // Return a large value to indicate "far from boundary"
 			}
 
@@ -357,7 +357,7 @@ namespace CubeGen.World.Generation
 			// Check if properly initialized
 			if (!_isProperlyInitialized)
 			{
-				GD.PrintErr("BiomeRegionGenerator not properly initialized in GetCellId. Returning default cell ID.");
+				// GD.PrintErr("BiomeRegionGenerator not properly initialized in GetCellId. Returning default cell ID.");
 				// Return a consistent default cell ID
 				return 500; // Arbitrary but consistent value
 			}
@@ -380,7 +380,7 @@ namespace CubeGen.World.Generation
 			// Check if properly initialized
 			if (!_isProperlyInitialized)
 			{
-				GD.PrintErr("BiomeRegionGenerator not properly initialized in GetBiomeTypeForCell. Returning default biome.");
+				// GD.PrintErr("BiomeRegionGenerator not properly initialized in GetBiomeTypeForCell. Returning default biome.");
 				return BiomeType.Plains;
 			}
 
@@ -405,7 +405,7 @@ namespace CubeGen.World.Generation
 			// Check if properly initialized
 			if (!_isProperlyInitialized)
 			{
-				GD.PrintErr("BiomeRegionGenerator not properly initialized in GetNearestRegionCenter. Using default center.");
+				// GD.PrintErr("BiomeRegionGenerator not properly initialized in GetNearestRegionCenter. Using default center.");
 				return new Vector2(worldX, worldZ); // Return the input position as fallback
 			}
 
@@ -520,7 +520,7 @@ namespace CubeGen.World.Generation
 			// Check if properly initialized
 			if (!_isProperlyInitialized)
 			{
-				GD.PrintErr("BiomeRegionGenerator not properly initialized in IsChunkNearBiomeBoundary. Returning false.");
+				// GD.PrintErr("BiomeRegionGenerator not properly initialized in IsChunkNearBiomeBoundary. Returning false.");
 				return false;
 			}
 			// Check corners and center of the chunk
@@ -600,7 +600,7 @@ namespace CubeGen.World.Generation
 			// Check if properly initialized
 			if (!_isProperlyInitialized)
 			{
-				GD.PrintErr("BiomeRegionGenerator not properly initialized in GetNeighboringBiomes. Returning default biome only.");
+				// GD.PrintErr("BiomeRegionGenerator not properly initialized in GetNeighboringBiomes. Returning default biome only.");
 				biomesWithDistances[BiomeType.Plains] = 0f;
 				return biomesWithDistances;
 			}
@@ -661,7 +661,7 @@ namespace CubeGen.World.Generation
 			// Check if properly initialized
 			if (!_isProperlyInitialized)
 			{
-				GD.PrintErr("BiomeRegionGenerator not properly initialized in CalculateBiomeBlendWeights. Returning default biome only.");
+				// GD.PrintErr("BiomeRegionGenerator not properly initialized in CalculateBiomeBlendWeights. Returning default biome only.");
 				blendWeights[BiomeType.Plains] = 1.0f;
 				return blendWeights;
 			}

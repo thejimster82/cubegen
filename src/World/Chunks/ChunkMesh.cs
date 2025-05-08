@@ -784,5 +784,6 @@ public partial class ChunkMesh : Node3D
         public List<Vector2> UVs { get; set; } = new List<Vector2>();
         public List<int> Indices { get; set; } = new List<int>();
         public List<float> AmbientOcclusion { get; set; } = new List<float>();
+        public List<Color> Colors { get; set; } = new List<Color>();
     }
 }

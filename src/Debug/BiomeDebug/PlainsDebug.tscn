@@ -13,6 +13,7 @@ script = ExtResource("1_yvnqm")
 [node name="WorldGenerator" type="Node3D" parent="."]
 script = ExtResource("2_yvnqm")
 WorldSize = Vector2i(32, 32)
+ChunkSize = 128
 VoxelScale = 0.75
 
 [node name="ChunkManager" type="Node3D" parent="WorldGenerator"]
@@ -46,8 +47,10 @@ transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 60, 0)
 offset_left = 20.0
 offset_top = 20.0
 offset_right = 300.0
-offset_bottom = 100.0
-text = "Plains Biome Debug
+offset_bottom = 160.0
+text = "Plains Biome Debug with Region-Based Hills
 Use WASD to move
 Space to jump
-Mouse to look around"
+Mouse to look around
+Hills only appear in specific regions (50% of the biome)
+Explore to find both flat plains and hilly areas"

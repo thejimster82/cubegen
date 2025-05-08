@@ -455,13 +455,14 @@ public partial class World : Node3D
 				break;
 
 			case BiomeType.Plains:
-				// Plains: Medium-low frequency, low octaves for gentle rolling hills
+				// Plains: Enhanced terrain with more pronounced hills
+				// Use a combination of noise types for more interesting terrain
 				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				biomeNoise.Frequency = 0.01f;
+				biomeNoise.Frequency = 0.008f; // Lower frequency for larger features
 				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-				biomeNoise.FractalOctaves = 2;
-				biomeNoise.FractalLacunarity = 2.0f;
-				biomeNoise.FractalGain = 0.4f;
+				biomeNoise.FractalOctaves = 3; // More octaves for more detail
+				biomeNoise.FractalLacunarity = 2.2f; // Higher lacunarity for more variation between scales
+				biomeNoise.FractalGain = 0.5f; // Higher gain for more pronounced hills
 				break;
 
 			case BiomeType.Forest:
@@ -524,8 +525,86 @@ public partial class World : Node3D
 			noiseContribution = 0.25f; // More variation for islands
 		}
 
-		// Combine base height with noise contribution
-		heightNoise = baseHeight + (heightNoise * noiseContribution);
+		// Special case for Plains biome to add hills in specific regions
+		if (biomeType == BiomeType.Plains)
+		{
+			// Create a region noise to determine where hills should appear
+			FastNoiseLite regionNoise = new FastNoiseLite();
+			regionNoise.Seed = Seed + 200; // Different seed for region variation
+			regionNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+			regionNoise.Frequency = 0.002f; // Very low frequency for large regions
+
+			// Get region value to determine if this area should have hills
+			float regionValue = regionNoise.GetNoise2D(worldX, worldZ);
+
+			// Convert from [-1, 1] to [0, 1]
+			regionValue = (regionValue + 1f) * 0.5f;
+
+			// Only generate hills in specific regions (where region noise is above threshold)
+			// This creates distinct hilly and flat areas within the Plains biome
+			float regionThreshold = 0.5f; // 50% of the Plains biome will have hills
+
+			if (regionValue > regionThreshold)
+			{
+				// Calculate how far we are into the hill region for smooth transitions
+				float regionBlend = Mathf.Clamp((regionValue - regionThreshold) / 0.1f, 0f, 1f);
+
+				// Create a second noise instance for hills
+				FastNoiseLite hillsNoise = new FastNoiseLite();
+				hillsNoise.Seed = Seed + 42; // Different seed for hill variation
+				hillsNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				hillsNoise.Frequency = 0.005f; // Lower frequency for larger hills
+				hillsNoise.FractalType = FastNoiseLite.FractalTypeEnum.Ridged; // Ridged fractal for more defined hills
+				hillsNoise.FractalOctaves = 2;
+				hillsNoise.FractalLacunarity = 2.0f;
+				hillsNoise.FractalGain = 0.7f; // Higher gain for more pronounced hills
+
+				// Get domain warping noise for more natural hill placement
+				FastNoiseLite warpNoise = new FastNoiseLite();
+				warpNoise.Seed = Seed + 100;
+				warpNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Simplex;
+				warpNoise.Frequency = 0.008f;
+
+				// Apply domain warping to coordinates for more natural hill shapes
+				float warpX = warpNoise.GetNoise2D(worldX, worldZ) * 20.0f;
+				float warpZ = warpNoise.GetNoise2D(worldX + 500, worldZ + 500) * 20.0f;
+
+				// Get hill noise with warped coordinates
+				float hillNoise = hillsNoise.GetNoise2D(worldX + warpX, worldZ + warpZ);
+
+				// Convert from [-1, 1] to [0, 1]
+				hillNoise = (hillNoise + 1f) * 0.5f;
+
+				// Only add hills where the hill noise is above a threshold
+				float hillThreshold = 0.55f;
+				float hillContribution = 0.0f;
+
+				if (hillNoise > hillThreshold)
+				{
+					// Scale the hill contribution based on how far above the threshold
+					float hillFactor = (hillNoise - hillThreshold) / (1.0f - hillThreshold);
+
+					// Apply a curve to make hills more pronounced
+					hillFactor = hillFactor * hillFactor * 1.2f;
+
+					// Add hill height to the base terrain, scaled by region blend for smooth transitions
+					hillContribution = hillFactor * 0.15f * regionBlend; // Hill height factor with region blending
+				}
+
+				// Combine base terrain with hills
+				heightNoise = baseHeight + (heightNoise * noiseContribution) + hillContribution;
+			}
+			else
+			{
+				// Standard terrain generation for flat areas of Plains biome
+				heightNoise = baseHeight + (heightNoise * noiseContribution);
+			}
+		}
+		else
+		{
+			// Standard terrain generation for other biomes
+			heightNoise = baseHeight + (heightNoise * noiseContribution);
+		}
 
 		// Return height value scaled for visualization
 		return heightNoise * 100.0f; // Scale to a reasonable height for visualization

@@ -540,16 +540,80 @@ public partial class World : Node3D
 			// Convert from [-1, 1] to [0, 1]
 			regionValue = (regionValue + 1f) * 0.5f;
 
-			// Only generate hills in specific regions (where region noise is above threshold)
-			// This creates distinct hilly and flat areas within the Plains biome
-			float regionThreshold = 0.5f; // 50% of the Plains biome will have hills
+			// Create a second region noise for steep hills
+			FastNoiseLite steepRegionNoise = new FastNoiseLite();
+			steepRegionNoise.Seed = Seed + 300; // Different seed for steep hill regions
+			steepRegionNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+			steepRegionNoise.Frequency = 0.001f; // Even lower frequency for larger, more distinct steep regions
 
-			if (regionValue > regionThreshold)
+			// Get steep region value
+			float steepRegionValue = steepRegionNoise.GetNoise2D(worldX, worldZ);
+
+			// Convert from [-1, 1] to [0, 1]
+			steepRegionValue = (steepRegionValue + 1f) * 0.5f;
+
+			// Define thresholds for different terrain types
+			float hillRegionThreshold = 0.5f; // 50% of the Plains biome will have hills
+			float steepHillRegionThreshold = 0.85f; // 15% of the Plains biome will have steep hills
+
+			// Create domain warping noise for more natural hill placement (shared by both hill types)
+			FastNoiseLite warpNoise = new FastNoiseLite();
+			warpNoise.Seed = Seed + 100;
+			warpNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Simplex;
+			warpNoise.Frequency = 0.008f;
+
+			// Apply domain warping to coordinates for more natural hill shapes
+			float warpX = warpNoise.GetNoise2D(worldX, worldZ) * 20.0f;
+			float warpZ = warpNoise.GetNoise2D(worldX + 500, worldZ + 500) * 20.0f;
+
+			// Check if we're in a steep hill region
+			if (steepRegionValue > steepHillRegionThreshold)
+			{
+				// Calculate how far we are into the steep hill region for smooth transitions
+				float steepRegionBlend = Mathf.Clamp((steepRegionValue - steepHillRegionThreshold) / 0.1f, 0f, 1f);
+
+				// Create a noise instance for steep hills
+				FastNoiseLite steepHillsNoise = new FastNoiseLite();
+				steepHillsNoise.Seed = Seed + 150; // Different seed for steep hill variation
+				steepHillsNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				steepHillsNoise.Frequency = 0.006f; // Slightly higher frequency for more varied steep hills
+				steepHillsNoise.FractalType = FastNoiseLite.FractalTypeEnum.Ridged; // Ridged fractal for more defined hills
+				steepHillsNoise.FractalOctaves = 3; // More octaves for more detailed steep hills
+				steepHillsNoise.FractalLacunarity = 2.5f; // Higher lacunarity for more variation
+				steepHillsNoise.FractalGain = 0.8f; // Higher gain for more dramatic steep hills
+
+				// Get steep hill noise with warped coordinates
+				float steepHillNoise = steepHillsNoise.GetNoise2D(worldX + warpX, worldZ + warpZ);
+
+				// Convert from [-1, 1] to [0, 1]
+				steepHillNoise = (steepHillNoise + 1f) * 0.5f;
+
+				// Only add steep hills where the noise is above a threshold
+				float steepHillThreshold = 0.5f; // Lower threshold to create more steep hills within the region
+				float steepHillContribution = 0.0f;
+
+				if (steepHillNoise > steepHillThreshold)
+				{
+					// Scale the steep hill contribution based on how far above the threshold
+					float steepHillFactor = (steepHillNoise - steepHillThreshold) / (1.0f - steepHillThreshold);
+
+					// Apply a curve to make steep hills more pronounced
+					steepHillFactor = steepHillFactor * steepHillFactor * 1.5f; // More dramatic curve
+
+					// Add steep hill height to the base terrain, scaled by region blend for smooth transitions
+					steepHillContribution = steepHillFactor * 0.25f * steepRegionBlend; // Higher factor for steeper hills
+				}
+
+				// Combine base terrain with steep hills
+				heightNoise = baseHeight + (heightNoise * noiseContribution) + steepHillContribution;
+			}
+			// Check if we're in a regular hill region
+			else if (regionValue > hillRegionThreshold)
 			{
 				// Calculate how far we are into the hill region for smooth transitions
-				float regionBlend = Mathf.Clamp((regionValue - regionThreshold) / 0.1f, 0f, 1f);
+				float regionBlend = Mathf.Clamp((regionValue - hillRegionThreshold) / 0.1f, 0f, 1f);
 
-				// Create a second noise instance for hills
+				// Create a noise instance for regular hills
 				FastNoiseLite hillsNoise = new FastNoiseLite();
 				hillsNoise.Seed = Seed + 42; // Different seed for hill variation
 				hillsNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
@@ -558,16 +622,6 @@ public partial class World : Node3D
 				hillsNoise.FractalOctaves = 2;
 				hillsNoise.FractalLacunarity = 2.0f;
 				hillsNoise.FractalGain = 0.7f; // Higher gain for more pronounced hills
-
-				// Get domain warping noise for more natural hill placement
-				FastNoiseLite warpNoise = new FastNoiseLite();
-				warpNoise.Seed = Seed + 100;
-				warpNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Simplex;
-				warpNoise.Frequency = 0.008f;
-
-				// Apply domain warping to coordinates for more natural hill shapes
-				float warpX = warpNoise.GetNoise2D(worldX, worldZ) * 20.0f;
-				float warpZ = warpNoise.GetNoise2D(worldX + 500, worldZ + 500) * 20.0f;
 
 				// Get hill noise with warped coordinates
 				float hillNoise = hillsNoise.GetNoise2D(worldX + warpX, worldZ + warpZ);

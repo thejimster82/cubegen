@@ -47,10 +47,11 @@ transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 60, 0)
 offset_left = 20.0
 offset_top = 20.0
 offset_right = 300.0
-offset_bottom = 160.0
-text = "Plains Biome Debug with Region-Based Hills
+offset_bottom = 180.0
+text = "Plains Biome Debug with Multi-Level Hills
 Use WASD to move
 Space to jump
 Mouse to look around
-Hills only appear in specific regions (50% of the biome)
-Explore to find both flat plains and hilly areas"
+Regular hills: 50% of the biome
+Steep hills: 15% of the biome
+Explore to find flat plains, rolling hills, and steep mountains"

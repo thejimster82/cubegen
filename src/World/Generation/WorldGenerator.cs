@@ -211,6 +211,9 @@ public partial class WorldGenerator : Node3D
 	// Static biome noise for use by other classes
 	private static FastNoiseLite _staticBiomeNoise;
 
+	// Static sub-biome noise for ForestLands internal variation
+	private static FastNoiseLite _subBiomeNoise;
+
 	// Initialize static noise
 	private static void InitializeStaticNoise(int seed)
 	{
@@ -220,6 +223,56 @@ public partial class WorldGenerator : Node3D
 			_staticBiomeNoise.Seed = seed + 1000; // Different seed for biome variation
 			_staticBiomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
 			_staticBiomeNoise.Frequency = 0.006f; // Doubled frequency for higher resolution (was 0.003f)
+		}
+
+		if (_subBiomeNoise == null)
+		{
+			_subBiomeNoise = new FastNoiseLite();
+			_subBiomeNoise.Seed = seed + 2000; // Different seed for sub-biome variation
+			_subBiomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+			_subBiomeNoise.Frequency = 0.004f; // Medium frequency for medium-sized areas
+			_subBiomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
+			_subBiomeNoise.FractalOctaves = 2; // Lower octaves for smoother transitions
+			_subBiomeNoise.FractalLacunarity = 2.0f;
+			_subBiomeNoise.FractalGain = 0.5f;
+		}
+	}
+
+	// Enum to represent sub-biome types within ForestLands
+	private enum ForestLandsSubBiome
+	{
+		Forest,
+		Plains,
+		Mountains
+	}
+
+	// Get the sub-biome type for a position within the ForestLands biome
+	private static ForestLandsSubBiome GetForestLandsSubBiome(int worldX, int worldZ)
+	{
+		// Make sure static noise is initialized
+		if (_subBiomeNoise == null)
+		{
+			InitializeStaticNoise(0); // Use default seed if not initialized yet
+		}
+
+		// Get noise value for this position
+		float noiseValue = _subBiomeNoise.GetNoise2D(worldX, worldZ);
+
+		// Convert from [-1, 1] to [0, 1]
+		noiseValue = (noiseValue + 1f) * 0.5f;
+
+		// Divide into three equal ranges for the three sub-biomes
+		if (noiseValue < 0.333f)
+		{
+			return ForestLandsSubBiome.Plains;
+		}
+		else if (noiseValue < 0.667f)
+		{
+			return ForestLandsSubBiome.Forest;
+		}
+		else
+		{
+			return ForestLandsSubBiome.Mountains;
 		}
 	}
 
@@ -243,12 +296,8 @@ public partial class WorldGenerator : Node3D
 		// Simple biome distribution based on noise value
 		if (biomeValue < -0.5f)
 			return BiomeType.Desert;
-		else if (biomeValue < -0.2f)
-			return BiomeType.Plains;
-		else if (biomeValue < 0.2f)
-			return BiomeType.Forest;
 		else if (biomeValue < 0.5f)
-			return BiomeType.Mountains;
+			return BiomeType.ForestLands;
 		else
 			return BiomeType.Tundra;
 	}
@@ -284,36 +333,6 @@ public partial class WorldGenerator : Node3D
 				biomeNoise.FractalGain = 0.5f;
 				break;
 
-			case BiomeType.Plains:
-				// Plains: Medium-low frequency, low octaves for gentle rolling hills
-				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				biomeNoise.Frequency = 0.01f;
-				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-				biomeNoise.FractalOctaves = 2;
-				biomeNoise.FractalLacunarity = 2.0f;
-				biomeNoise.FractalGain = 0.4f;
-				break;
-
-			case BiomeType.Forest:
-				// Forest: Medium frequency, medium octaves for varied terrain
-				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				biomeNoise.Frequency = 0.012f;
-				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-				biomeNoise.FractalOctaves = 3;
-				biomeNoise.FractalLacunarity = 2.0f;
-				biomeNoise.FractalGain = 0.5f;
-				break;
-
-			case BiomeType.Mountains:
-				// Mountains: Medium-high frequency, ridged fractal for more dramatic terrain
-				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				biomeNoise.Frequency = 0.015f;
-				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Ridged;
-				biomeNoise.FractalOctaves = 4;
-				biomeNoise.FractalLacunarity = 2.2f;
-				biomeNoise.FractalGain = 0.6f;
-				break;
-
 			case BiomeType.Tundra:
 				// Tundra: Medium frequency, low gain for flatter terrain with occasional features
 				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
@@ -332,6 +351,83 @@ public partial class WorldGenerator : Node3D
 				biomeNoise.FractalOctaves = 3;
 				biomeNoise.FractalLacunarity = 2.0f;
 				biomeNoise.FractalGain = 0.5f;
+				break;
+
+			case BiomeType.ForestLands:
+			default:
+				// Get the sub-biome type for this position
+				ForestLandsSubBiome subBiome = GetForestLandsSubBiome(worldX, worldZ);
+
+				// Set noise characteristics based on sub-biome
+				switch (subBiome)
+				{
+					case ForestLandsSubBiome.Plains:
+						// Plains: Medium-low frequency, low octaves for gentle rolling hills
+						biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+						biomeNoise.Frequency = 0.01f;
+						biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
+						biomeNoise.FractalOctaves = 2;
+						biomeNoise.FractalLacunarity = 2.0f;
+						biomeNoise.FractalGain = 0.4f;
+						break;
+
+					case ForestLandsSubBiome.Forest:
+						// Forest: Medium frequency, medium octaves for varied terrain
+						biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+						biomeNoise.Frequency = 0.012f;
+						biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
+						biomeNoise.FractalOctaves = 3;
+						biomeNoise.FractalLacunarity = 2.0f;
+						biomeNoise.FractalGain = 0.5f;
+						break;
+
+					case ForestLandsSubBiome.Mountains:
+						// Mountains: Medium-high frequency, ridged fractal for more dramatic terrain
+						biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+						biomeNoise.Frequency = 0.015f;
+						biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Ridged;
+						biomeNoise.FractalOctaves = 4;
+						biomeNoise.FractalLacunarity = 2.2f;
+						biomeNoise.FractalGain = 0.6f;
+
+						// Add extra height for mountains
+						baseHeight += 0.1f;
+						break;
+				}
+
+				// Create smooth transitions between sub-biomes
+				// Get distances to other sub-biome boundaries
+				float blendDistance = 20.0f; // Distance in blocks for blending
+
+				// Sample points around the current position to detect nearby sub-biomes
+				bool nearBoundary = false;
+				ForestLandsSubBiome neighborSubBiome = subBiome;
+
+				// Check in a small radius for different sub-biomes
+				for (int dx = -5; dx <= 5; dx += 5)
+				{
+					for (int dz = -5; dz <= 5; dz += 5)
+					{
+						if (dx == 0 && dz == 0) continue;
+
+						ForestLandsSubBiome nearbySubBiome = GetForestLandsSubBiome(worldX + dx, worldZ + dz);
+						if (nearbySubBiome != subBiome)
+						{
+							nearBoundary = true;
+							neighborSubBiome = nearbySubBiome;
+							break;
+						}
+					}
+					if (nearBoundary) break;
+				}
+
+				// If we're near a boundary, blend the height
+				if (nearBoundary && subBiome == ForestLandsSubBiome.Mountains && neighborSubBiome != ForestLandsSubBiome.Mountains)
+				{
+					// Reduce the mountain height near boundaries with other sub-biomes
+					// This creates smoother transitions from mountains to other areas
+					baseHeight -= 0.05f;
+				}
 				break;
 		}
 
@@ -405,7 +501,7 @@ public partial class WorldGenerator : Node3D
 		if (biomeBlendWeights.Count == 2)
 		{
 			bool hasFullWeight = false;
-			BiomeType fullWeightBiome = BiomeType.Plains; // Default, will be overwritten
+			BiomeType fullWeightBiome = BiomeType.ForestLands; // Default, will be overwritten
 
 			foreach (var entry in biomeBlendWeights)
 			{
@@ -451,7 +547,7 @@ public partial class WorldGenerator : Node3D
 		else
 		{
 			// Fallback to default biome if no weights
-			return GenerateTerrainHeight(worldX, worldZ, BiomeType.Plains);
+			return GenerateTerrainHeight(worldX, worldZ, BiomeType.ForestLands);
 		}
 
 		// Convert to integer height
@@ -624,8 +720,48 @@ public partial class WorldGenerator : Node3D
 					return VoxelType.Sand;
 				case BiomeType.Tundra:
 					return VoxelType.Snow;
+				case BiomeType.ForestLands:
 				default:
-					return VoxelType.Grass;
+					// We don't have worldX/worldZ here, so we need to use a consistent approach
+					// Use the terrainHeight as a seed for the sub-biome determination
+					// This ensures consistent sub-biome detection for the same terrain height
+					int subBiomeSeed = terrainHeight * 100 + Seed;
+					Random subBiomeRandom = new Random(subBiomeSeed);
+					float subBiomeValue = (float)subBiomeRandom.NextDouble();
+
+					// Determine sub-biome type based on the random value
+					if (subBiomeValue < 0.333f)
+					{
+						// Plains sub-biome
+						return VoxelType.Grass;
+					}
+					else if (subBiomeValue < 0.667f)
+					{
+						// Forest sub-biome
+						return VoxelType.Grass;
+					}
+					else
+					{
+						// Mountains sub-biome
+						// Use a secondary noise to determine if this should be stone or grass
+						FastNoiseLite localNoise = new FastNoiseLite();
+						localNoise.Seed = Seed + 7890;
+						localNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+						localNoise.Frequency = 0.02f;
+
+						float localValue = localNoise.GetNoise2D(terrainHeight * 10, y * 5);
+						localValue = (localValue + 1f) * 0.5f;
+
+						// Higher chance of stone in mountainous areas
+						if (localValue > 0.6f)
+						{
+							return VoxelType.Stone;
+						}
+						else
+						{
+							return VoxelType.Grass;
+						}
+					}
 			}
 		}
 		else if (y >= terrainHeight - 4)
@@ -637,8 +773,46 @@ public partial class WorldGenerator : Node3D
 					return VoxelType.Sand;
 				case BiomeType.Tundra:
 					return VoxelType.Dirt;
+				case BiomeType.ForestLands:
 				default:
-					return VoxelType.Dirt;
+					// Use the same sub-biome determination as for the surface layer
+					int subBiomeSeed = terrainHeight * 100 + Seed;
+					Random subBiomeRandom = new Random(subBiomeSeed);
+					float subBiomeValue = (float)subBiomeRandom.NextDouble();
+
+					// Determine sub-biome type based on the random value
+					if (subBiomeValue < 0.333f)
+					{
+						// Plains sub-biome - regular dirt
+						return VoxelType.Dirt;
+					}
+					else if (subBiomeValue < 0.667f)
+					{
+						// Forest sub-biome - rich dirt
+						return VoxelType.Dirt;
+					}
+					else
+					{
+						// Mountains sub-biome - more stone
+						// Use a secondary noise to determine if this should be stone or dirt
+						FastNoiseLite localNoise = new FastNoiseLite();
+						localNoise.Seed = Seed + 7890;
+						localNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+						localNoise.Frequency = 0.02f;
+
+						float localValue = localNoise.GetNoise2D(terrainHeight * 10, y * 5);
+						localValue = (localValue + 1f) * 0.5f;
+
+						// Higher chance of stone in mountainous areas
+						if (localValue > 0.5f && y < terrainHeight - 2)
+						{
+							return VoxelType.Stone;
+						}
+						else
+						{
+							return VoxelType.Dirt;
+						}
+					}
 			}
 		}
 
@@ -758,26 +932,6 @@ public partial class WorldGenerator : Node3D
 				{
 					switch (biomeType)
 					{
-						case BiomeType.Forest:
-							// Add trees in Forest biome
-							if (random.NextDouble() < 0.01) // Adjusted to a more reasonable value
-							{
-								if (surfaceHeight >= 0)
-								{
-									// Check if we can place a tree here (no overlap with other features)
-									// Trees need a larger radius (6) to prevent overlap
-									if (CanPlaceFeature(featureMap, x, z, 6, chunkSize))
-									{
-										// More lenient check - allow trees on any solid surface in forest biome
-										GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
-
-										// Mark the area as occupied
-										MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
-									}
-								}
-							}
-							break;
-
 						case BiomeType.Desert:
 							// Add cacti in Desert biome
 							if (random.NextDouble() < 0.008) // Adjusted to a more reasonable value
@@ -810,79 +964,6 @@ public partial class WorldGenerator : Node3D
 
 										// Mark the area as occupied
 										MarkFeaturePosition(featureMap, x, z, 5, chunkSize);
-									}
-								}
-							}
-							break;
-
-						case BiomeType.Plains:
-							// Add small bushes in Plains biome
-							if (random.NextDouble() < 0.01) // Adjusted to a more reasonable value
-							{
-								if (surfaceHeight >= 0)
-								{
-									// Check if we can place a bush here (no overlap with other features)
-									// Bushes need a small radius (3) to prevent overlap
-									if (CanPlaceFeature(featureMap, x, z, 3, chunkSize))
-									{
-										// More lenient check - allow bushes on any solid surface in plains biome
-										GenerateBush(chunk, x, z, surfaceHeight, random);
-
-										// Mark the area as occupied
-										MarkFeaturePosition(featureMap, x, z, 3, chunkSize);
-									}
-								}
-							}
-							// Add occasional lone trees in Plains biome
-							else if (random.NextDouble() < 0.004) // Adjusted to a more reasonable value
-							{
-								if (surfaceHeight >= 0)
-								{
-									// Check if we can place a tree here (no overlap with other features)
-									// Trees need a larger radius (6) to prevent overlap
-									if (CanPlaceFeature(featureMap, x, z, 6, chunkSize))
-									{
-										// More lenient check - allow trees on any solid surface in plains biome
-										GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
-
-										// Mark the area as occupied
-										MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
-									}
-								}
-							}
-							break;
-
-						case BiomeType.Mountains:
-							// Add rock spires in Mountains biome
-							if (random.NextDouble() < 0.007) // Adjusted to a more reasonable value
-							{
-								if (surfaceHeight >= 0)
-								{
-									// Check if we can place a rock spire here (no overlap with other features)
-									// Rock spires need a medium radius (5) to prevent overlap
-									if (CanPlaceFeature(featureMap, x, z, 5, chunkSize))
-									{
-										// More lenient check - allow rock spires on any solid surface in mountains biome
-										GenerateRockSpire(chunk, x, z, surfaceHeight, random);
-
-										// Mark the area as occupied
-										MarkFeaturePosition(featureMap, x, z, 5, chunkSize);
-									}
-								}
-							}
-							// Add boulders in Mountains biome
-							else if (random.NextDouble() < 0.01) // Adjusted to a more reasonable value
-							{
-								if (surfaceHeight >= 0)
-								{
-									// Check if we can place a boulder here (no overlap with other features)
-									// Boulders need a medium radius (4) to prevent overlap
-									if (CanPlaceFeature(featureMap, x, z, 4, chunkSize))
-									{
-										GenerateBoulder(chunk, x, z, surfaceHeight, random);
-
-										// Mark the area as occupied
-										MarkFeaturePosition(featureMap, x, z, 4, chunkSize);
 									}
 								}
 							}
@@ -984,6 +1065,90 @@ public partial class WorldGenerator : Node3D
 										}
 									}
 								}
+							}
+							break;
+
+						case BiomeType.ForestLands:
+							// Get the sub-biome type for this position
+							ForestLandsSubBiome subBiome = GetForestLandsSubBiome(worldX, worldZ);
+
+							// Add features based on sub-biome type
+							switch (subBiome)
+							{
+								case ForestLandsSubBiome.Plains:
+									// PLAINS SUB-BIOME
+									// Add small bushes
+									if (random.NextDouble() < 0.015)
+									{
+										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 3, chunkSize))
+										{
+											GenerateBush(chunk, x, z, surfaceHeight, random);
+											MarkFeaturePosition(featureMap, x, z, 3, chunkSize);
+										}
+									}
+									// Add occasional lone trees
+									else if (random.NextDouble() < 0.006)
+									{
+										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 6, chunkSize))
+										{
+											GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
+											MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
+										}
+									}
+									break;
+
+								case ForestLandsSubBiome.Forest:
+									// FOREST SUB-BIOME
+									// Add trees with higher density
+									if (random.NextDouble() < 0.02)
+									{
+										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 6, chunkSize))
+										{
+											GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
+											MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
+										}
+									}
+									// Add bushes between trees
+									else if (random.NextDouble() < 0.012)
+									{
+										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 3, chunkSize))
+										{
+											GenerateBush(chunk, x, z, surfaceHeight, random);
+											MarkFeaturePosition(featureMap, x, z, 3, chunkSize);
+										}
+									}
+									break;
+
+								case ForestLandsSubBiome.Mountains:
+									// MOUNTAINS SUB-BIOME
+									// Add rock spires
+									if (random.NextDouble() < 0.01)
+									{
+										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 5, chunkSize))
+										{
+											GenerateRockSpire(chunk, x, z, surfaceHeight, random);
+											MarkFeaturePosition(featureMap, x, z, 5, chunkSize);
+										}
+									}
+									// Add boulders
+									else if (random.NextDouble() < 0.015)
+									{
+										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 4, chunkSize))
+										{
+											GenerateBoulder(chunk, x, z, surfaceHeight, random);
+											MarkFeaturePosition(featureMap, x, z, 4, chunkSize);
+										}
+									}
+									// Add occasional trees even in mountainous areas
+									else if (random.NextDouble() < 0.005)
+									{
+										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 6, chunkSize))
+										{
+											GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
+											MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
+										}
+									}
+									break;
 							}
 							break;
 					}

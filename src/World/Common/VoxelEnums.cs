@@ -5,10 +5,8 @@ namespace CubeGen.World.Common
 {
     public enum BiomeType
     {
-        Plains,
-        Forest,
+        ForestLands,   // Combined biome with forest, plains, and mountain features
         Desert,
-        Mountains,
         Tundra,
         Islands
     }

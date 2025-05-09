@@ -5,7 +5,7 @@ using CubeGen.World.Generation;
 
 namespace CubeGen.Debug.BiomeDebug
 {
-    public partial class ForestDebug : Node3D
+    public partial class ForestLandsDebug : Node3D
     {
         [Export] public int ViewDistance { get; set; } = 15;
         [Export] public int Seed { get; set; } = 12345;
@@ -15,8 +15,8 @@ namespace CubeGen.Debug.BiomeDebug
 
         public override void _Ready()
         {
-            // Create a new SingleBiomeRegionGenerator for Forest biome
-            SingleBiomeRegionGenerator biomeGenerator = new SingleBiomeRegionGenerator(BiomeType.Forest);
+            // Create a new SingleBiomeRegionGenerator for ForestLands biome
+            SingleBiomeRegionGenerator biomeGenerator = new SingleBiomeRegionGenerator(BiomeType.ForestLands);
 
             // Initialize with a seed
             biomeGenerator.Initialize(Seed);
@@ -34,7 +34,7 @@ namespace CubeGen.Debug.BiomeDebug
             // Connect chunk requested signal
             _chunkManager.ChunkRequested += OnChunkRequested;
 
-            GD.Print("Forest biome debug initialized");
+            GD.Print("ForestLands biome debug initialized");
         }
 
         private void OnChunkRequested(Vector2I chunkPosition)

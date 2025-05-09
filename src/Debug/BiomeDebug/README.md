@@ -7,10 +7,8 @@ This directory contains scenes for debugging individual biomes in isolation.
 1. **BiomeDebugSelector.tscn** - Main selector scene that allows you to choose which biome to debug
 2. **BiomeDebugScene.tscn** - Interactive scene that allows switching between biomes at runtime
 3. Individual biome debug scenes:
-   - **PlainsDebug.tscn** - Debug scene for Plains biome
-   - **ForestDebug.tscn** - Debug scene for Forest biome
+   - **ForestLandsDebug.tscn** - Debug scene for ForestLands biome (combined Forest, Plains, and Mountains)
    - **DesertDebug.tscn** - Debug scene for Desert biome
-   - **MountainsDebug.tscn** - Debug scene for Mountains biome
    - **TundraDebug.tscn** - Debug scene for Tundra biome
    - **IslandsDebug.tscn** - Debug scene for Islands biome
 

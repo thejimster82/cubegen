@@ -38,23 +38,17 @@ public static class BiomeMaterials
                 // Set color based on biome and voxel type
                 switch (biomeType)
                 {
-                    case BiomeType.Plains:
-                        SetPlainsColors(material, voxelType);
-                        break;
-                    case BiomeType.Forest:
-                        SetForestColors(material, voxelType);
-                        break;
                     case BiomeType.Desert:
                         SetDesertColors(material, voxelType);
-                        break;
-                    case BiomeType.Mountains:
-                        SetMountainColors(material, voxelType);
                         break;
                     case BiomeType.Tundra:
                         SetTundraColors(material, voxelType);
                         break;
                     case BiomeType.Islands:
                         SetIslandColors(material, voxelType);
+                        break;
+                    case BiomeType.ForestLands:
+                        SetForestLandsColors(material, voxelType);
                         break;
                     default:
                         material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f);
@@ -70,154 +64,9 @@ public static class BiomeMaterials
         }
     }
 
-    private static void SetPlainsColors(StandardMaterial3D material, VoxelType voxelType)
-    {
-        switch (voxelType)
-        {
-            case VoxelType.Grass:
-                material.AlbedoColor = new Color(0.4f, 0.83f, 0.3f); // Bright green
-                break;
-            case VoxelType.Dirt:
-                material.AlbedoColor = new Color(0.6f, 0.4f, 0.2f); // Brown
-                break;
-            case VoxelType.Stone:
-                material.AlbedoColor = new Color(0.6f, 0.6f, 0.6f); // Light gray
-                break;
-            case VoxelType.Sand:
-                material.AlbedoColor = new Color(0.9f, 0.8f, 0.5f); // Tan
-                break;
-            case VoxelType.Wood:
-                material.AlbedoColor = new Color(0.65f, 0.45f, 0.25f); // Lighter brown for Plains biome
-                break;
-            case VoxelType.Leaves:
-                material.AlbedoColor = new Color(0.35f, 0.75f, 0.25f); // Brighter green for Plains biome
-                break;
 
-            // Decoration types
-            case VoxelType.TallGrass:
-                material.AlbedoColor = new Color(0.5f, 0.87f, 0.4f); // Bright green for tall grass
-                break;
-            case VoxelType.Flower:
-                material.AlbedoColor = new Color(0.95f, 0.6f, 0.7f); // Pink flower
-                break;
-            case VoxelType.Mushroom:
-                material.AlbedoColor = new Color(0.9f, 0.4f, 0.4f); // Red mushroom
-                break;
-            case VoxelType.Rock:
-                material.AlbedoColor = new Color(0.7f, 0.7f, 0.7f); // Light gray rock
-                break;
-            case VoxelType.Stick:
-                material.AlbedoColor = new Color(0.6f, 0.4f, 0.2f); // Brown stick
-                break;
-            case VoxelType.Seashell:
-                material.AlbedoColor = new Color(0.95f, 0.9f, 0.8f); // Off-white seashell
-                break;
-            case VoxelType.Water:
-                material.AlbedoColor = new Color(0.2f, 0.4f, 0.8f); // Blue
-                material.Roughness = 0.1f;
-                break;
-            case VoxelType.Snow:
-                material.AlbedoColor = new Color(0.9f, 0.9f, 0.95f); // White
-                break;
-            case VoxelType.Bedrock:
-                material.AlbedoColor = new Color(0.2f, 0.2f, 0.2f); // Dark gray
-                break;
-            case VoxelType.Cloud:
-                material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // Pure white
-                material.Roughness = 0.9f; // Soft, diffuse appearance
-                material.Metallic = 0.0f; // Non-metallic
-                break;
-            case VoxelType.Cactus:
-                material.AlbedoColor = new Color(0.4f, 0.7f, 0.4f); // Green cactus
-                break;
-            case VoxelType.IceBlock:
-                material.AlbedoColor = new Color(0.8f, 0.9f, 1.0f); // Light blue ice
-                material.Roughness = 0.1f; // Smooth and reflective
-                material.Metallic = 0.1f; // Slight metallic look for ice
-                break;
-            case VoxelType.SnowLeaves:
-                material.AlbedoColor = new Color(0.9f, 0.9f, 0.95f); // White with slight blue tint
-                break;
-            default:
-                material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // White
-                break;
-        }
-    }
 
-    private static void SetForestColors(StandardMaterial3D material, VoxelType voxelType)
-    {
-        switch (voxelType)
-        {
-            case VoxelType.Grass:
-                material.AlbedoColor = new Color(0.2f, 0.6f, 0.2f); // Dark green
-                break;
-            case VoxelType.Dirt:
-                material.AlbedoColor = new Color(0.5f, 0.3f, 0.1f); // Dark brown
-                break;
-            case VoxelType.Stone:
-                material.AlbedoColor = new Color(0.5f, 0.5f, 0.5f); // Gray
-                break;
-            case VoxelType.Sand:
-                material.AlbedoColor = new Color(0.8f, 0.7f, 0.4f); // Darker tan
-                break;
-            case VoxelType.Wood:
-                material.AlbedoColor = new Color(0.6f, 0.35f, 0.15f); // Warmer brown for Forest biome
-                break;
-            case VoxelType.Leaves:
-                material.AlbedoColor = new Color(0.25f, 0.65f, 0.2f); // Vibrant green for Forest biome
-                break;
 
-            // Decoration types
-            case VoxelType.TallGrass:
-                material.AlbedoColor = new Color(0.3f, 0.7f, 0.3f); // Dark green for forest grass
-                break;
-            case VoxelType.Flower:
-                material.AlbedoColor = new Color(0.8f, 0.3f, 0.4f); // Deep red forest flower
-                break;
-            case VoxelType.Mushroom:
-                material.AlbedoColor = new Color(0.8f, 0.3f, 0.3f); // Red mushroom
-                break;
-            case VoxelType.Rock:
-                material.AlbedoColor = new Color(0.5f, 0.5f, 0.5f); // Gray rock
-                break;
-            case VoxelType.Stick:
-                material.AlbedoColor = new Color(0.5f, 0.3f, 0.1f); // Dark brown stick
-                break;
-            case VoxelType.Seashell:
-                material.AlbedoColor = new Color(0.8f, 0.7f, 0.6f); // Tan seashell
-                break;
-
-            case VoxelType.Water:
-                material.AlbedoColor = new Color(0.1f, 0.3f, 0.6f); // Darker blue
-                material.Roughness = 0.1f;
-                break;
-            case VoxelType.Snow:
-                material.AlbedoColor = new Color(0.9f, 0.9f, 0.95f); // White
-                break;
-            case VoxelType.Bedrock:
-                material.AlbedoColor = new Color(0.2f, 0.2f, 0.2f); // Dark gray
-                break;
-            case VoxelType.Cloud:
-                material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // Pure white
-                material.Roughness = 0.9f; // Soft, diffuse appearance
-                material.Metallic = 0.0f; // Non-metallic
-                break;
-            case VoxelType.Cactus:
-                material.AlbedoColor = new Color(0.35f, 0.6f, 0.35f); // Darker green cactus
-                break;
-            case VoxelType.IceBlock:
-                material.AlbedoColor = new Color(0.7f, 0.8f, 0.9f); // Blueish ice
-                material.Roughness = 0.1f;
-                material.Metallic = 0.1f;
-                break;
-            case VoxelType.SnowLeaves:
-                material.AlbedoColor = new Color(0.85f, 0.9f, 0.85f); // Snow-covered leaves
-                break;
-            default:
-                material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // White
-                break;
-        }
-    }
 
     private static void SetDesertColors(StandardMaterial3D material, VoxelType voxelType)
     {
@@ -294,80 +143,7 @@ public static class BiomeMaterials
         }
     }
 
-    private static void SetMountainColors(StandardMaterial3D material, VoxelType voxelType)
-    {
-        switch (voxelType)
-        {
-            case VoxelType.Grass:
-                material.AlbedoColor = new Color(0.3f, 0.5f, 0.3f); // Mountain grass
-                break;
-            case VoxelType.Dirt:
-                material.AlbedoColor = new Color(0.4f, 0.3f, 0.2f); // Dark soil
-                break;
-            case VoxelType.Stone:
-                material.AlbedoColor = new Color(0.4f, 0.4f, 0.45f); // Dark stone
-                break;
-            case VoxelType.Sand:
-                material.AlbedoColor = new Color(0.7f, 0.6f, 0.5f); // Rocky sand
-                break;
-            case VoxelType.Wood:
-                material.AlbedoColor = new Color(0.4f, 0.3f, 0.2f); // Dark wood
-                break;
-            case VoxelType.Leaves:
-                material.AlbedoColor = new Color(0.3f, 0.4f, 0.2f); // Pine green
-                break;
 
-            // Decoration types
-            case VoxelType.TallGrass:
-                material.AlbedoColor = new Color(0.35f, 0.55f, 0.35f); // Mountain grass
-                break;
-            case VoxelType.Flower:
-                material.AlbedoColor = new Color(0.6f, 0.4f, 0.6f); // Purple mountain flower
-                break;
-            case VoxelType.Mushroom:
-                material.AlbedoColor = new Color(0.5f, 0.3f, 0.3f); // Dark red mushroom
-                break;
-            case VoxelType.Rock:
-                material.AlbedoColor = new Color(0.45f, 0.45f, 0.5f); // Slate gray rock
-                break;
-            case VoxelType.Stick:
-                material.AlbedoColor = new Color(0.4f, 0.3f, 0.2f); // Dark wood stick
-                break;
-            case VoxelType.Seashell:
-                material.AlbedoColor = new Color(0.7f, 0.7f, 0.7f); // Gray mountain shell
-                break;
-
-            case VoxelType.Water:
-                material.AlbedoColor = new Color(0.1f, 0.2f, 0.4f); // Mountain lake blue
-                material.Roughness = 0.1f;
-                break;
-            case VoxelType.Snow:
-                material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // Bright white
-                break;
-            case VoxelType.Bedrock:
-                material.AlbedoColor = new Color(0.15f, 0.15f, 0.15f); // Very dark gray
-                break;
-            case VoxelType.Cloud:
-                material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // Pure white
-                material.Roughness = 0.9f; // Soft, diffuse appearance
-                material.Metallic = 0.0f; // Non-metallic
-                break;
-            case VoxelType.Cactus:
-                material.AlbedoColor = new Color(0.3f, 0.5f, 0.25f); // Dark green mountain cactus
-                break;
-            case VoxelType.IceBlock:
-                material.AlbedoColor = new Color(0.6f, 0.7f, 0.8f); // Grayish-blue mountain ice
-                material.Roughness = 0.15f;
-                material.Metallic = 0.1f;
-                break;
-            case VoxelType.SnowLeaves:
-                material.AlbedoColor = new Color(0.8f, 0.85f, 0.9f); // Bluish-white snow leaves
-                break;
-            default:
-                material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // White
-                break;
-        }
-    }
 
     private static void SetTundraColors(StandardMaterial3D material, VoxelType voxelType)
     {
@@ -445,6 +221,81 @@ public static class BiomeMaterials
     }
 
 
+
+    private static void SetForestLandsColors(StandardMaterial3D material, VoxelType voxelType)
+    {
+        switch (voxelType)
+        {
+            case VoxelType.Grass:
+                material.AlbedoColor = new Color(0.25f, 0.65f, 0.25f); // Rich forest grass
+                break;
+            case VoxelType.Dirt:
+                material.AlbedoColor = new Color(0.55f, 0.35f, 0.15f); // Rich forest soil
+                break;
+            case VoxelType.Stone:
+                material.AlbedoColor = new Color(0.45f, 0.45f, 0.5f); // Slate gray stone
+                break;
+            case VoxelType.Sand:
+                material.AlbedoColor = new Color(0.85f, 0.75f, 0.45f); // Forest sand
+                break;
+            case VoxelType.Wood:
+                material.AlbedoColor = new Color(0.65f, 0.4f, 0.2f); // Rich wood color
+                break;
+            case VoxelType.Leaves:
+                material.AlbedoColor = new Color(0.2f, 0.6f, 0.25f); // Vibrant forest leaves
+                break;
+
+            // Decoration types
+            case VoxelType.TallGrass:
+                material.AlbedoColor = new Color(0.35f, 0.75f, 0.35f); // Forest grass
+                break;
+            case VoxelType.Flower:
+                material.AlbedoColor = new Color(0.85f, 0.4f, 0.5f); // Forest flower
+                break;
+            case VoxelType.Mushroom:
+                material.AlbedoColor = new Color(0.75f, 0.35f, 0.35f); // Red mushroom
+                break;
+            case VoxelType.Rock:
+                material.AlbedoColor = new Color(0.5f, 0.5f, 0.55f); // Mountain rock
+                break;
+            case VoxelType.Stick:
+                material.AlbedoColor = new Color(0.55f, 0.35f, 0.15f); // Forest stick
+                break;
+            case VoxelType.Seashell:
+                material.AlbedoColor = new Color(0.85f, 0.8f, 0.7f); // Forest shell
+                break;
+
+            case VoxelType.Water:
+                material.AlbedoColor = new Color(0.15f, 0.35f, 0.65f); // Clear forest water
+                material.Roughness = 0.1f;
+                break;
+            case VoxelType.Snow:
+                material.AlbedoColor = new Color(0.95f, 0.95f, 0.95f); // White snow
+                break;
+            case VoxelType.Bedrock:
+                material.AlbedoColor = new Color(0.2f, 0.2f, 0.25f); // Dark gray
+                break;
+            case VoxelType.Cloud:
+                material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // Pure white
+                material.Roughness = 0.9f; // Soft, diffuse appearance
+                material.Metallic = 0.0f; // Non-metallic
+                break;
+            case VoxelType.Cactus:
+                material.AlbedoColor = new Color(0.4f, 0.65f, 0.35f); // Forest cactus (rare)
+                break;
+            case VoxelType.IceBlock:
+                material.AlbedoColor = new Color(0.7f, 0.8f, 0.9f); // Blue ice
+                material.Roughness = 0.1f;
+                material.Metallic = 0.1f;
+                break;
+            case VoxelType.SnowLeaves:
+                material.AlbedoColor = new Color(0.85f, 0.9f, 0.85f); // Snow-covered leaves
+                break;
+            default:
+                material.AlbedoColor = new Color(1.0f, 1.0f, 1.0f); // White
+                break;
+        }
+    }
 
     private static void SetIslandColors(StandardMaterial3D material, VoxelType voxelType)
     {

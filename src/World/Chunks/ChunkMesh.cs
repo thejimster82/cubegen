@@ -44,8 +44,8 @@ public partial class ChunkMesh : Node3D
                 }
                 else
                 {
-                    // Use the Plains biome as default if no material is provided
-                    _materials[type] = BiomeMaterials.GetMaterial(BiomeType.Plains, type);
+                    // Use the ForestLands biome as default if no material is provided
+                    _materials[type] = BiomeMaterials.GetMaterial(BiomeType.ForestLands, type);
                 }
             }
         }

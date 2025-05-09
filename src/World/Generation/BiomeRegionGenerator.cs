@@ -91,7 +91,7 @@ namespace CubeGen.World.Generation
 			{
 				GD.PrintErr("BiomeRegionGenerator not properly initialized in GetBiomeType. Waiting for proper initialization.");
 				// Return a default biome type instead of initializing with a default seed
-				return BiomeType.Plains;
+				return BiomeType.ForestLands;
 			}
 
 			// Apply domain warping to the coordinates
@@ -147,7 +147,20 @@ namespace CubeGen.World.Generation
 			// Convert to list for easier manipulation
 			foreach (BiomeType biomeType in biomeTypesArray)
 			{
-				availableBiomes.Add(biomeType);
+				// Add the biome to the available list
+				// Give ForestLands a higher chance of being selected by adding it multiple times
+				if (biomeType == BiomeType.ForestLands)
+				{
+					// Add ForestLands multiple times to increase its probability
+					for (int i = 0; i < 3; i++) // Adding it 3 times gives it 3x the chance
+					{
+						availableBiomes.Add(biomeType);
+					}
+				}
+				else
+				{
+					availableBiomes.Add(biomeType);
+				}
 			}
 
 			// Find neighboring cells by sampling points around this cell
@@ -162,7 +175,17 @@ namespace CubeGen.World.Generation
 				if (_cellToBiomeMap.ContainsKey(neighborId))
 				{
 					BiomeType neighborBiome = _cellToBiomeMap[neighborId];
-					availableBiomes.Remove(neighborBiome);
+					// Remove all instances of this biome type
+					availableBiomes.RemoveAll(b => b == neighborBiome);
+				}
+			}
+
+			// If no biomes are available (all neighbors use different biomes), use all biomes again
+			if (availableBiomes.Count == 0)
+			{
+				foreach (BiomeType biomeType in biomeTypesArray)
+				{
+					availableBiomes.Add(biomeType);
 				}
 			}
 
@@ -381,7 +404,7 @@ namespace CubeGen.World.Generation
 			if (!_isProperlyInitialized)
 			{
 				GD.PrintErr("BiomeRegionGenerator not properly initialized in GetBiomeTypeForCell. Returning default biome.");
-				return BiomeType.Plains;
+				return BiomeType.ForestLands;
 			}
 
 			// If we haven't assigned a biome to this cell yet, do so now
@@ -601,7 +624,7 @@ namespace CubeGen.World.Generation
 			if (!_isProperlyInitialized)
 			{
 				GD.PrintErr("BiomeRegionGenerator not properly initialized in GetNeighboringBiomes. Returning default biome only.");
-				biomesWithDistances[BiomeType.Plains] = 0f;
+				biomesWithDistances[BiomeType.ForestLands] = 0f;
 				return biomesWithDistances;
 			}
 
@@ -662,7 +685,7 @@ namespace CubeGen.World.Generation
 			if (!_isProperlyInitialized)
 			{
 				GD.PrintErr("BiomeRegionGenerator not properly initialized in CalculateBiomeBlendWeights. Returning default biome only.");
-				blendWeights[BiomeType.Plains] = 1.0f;
+				blendWeights[BiomeType.ForestLands] = 1.0f;
 				return blendWeights;
 			}
 

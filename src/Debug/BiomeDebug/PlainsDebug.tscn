@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3 uid="uid://c8yvxw0vf4yec"]
+[gd_scene load_steps=7 format=3 uid="uid://b22f74nw5pxff"]
 
 [ext_resource type="Script" uid="uid://c7ij7mfck4cb2" path="res://src/Debug/BiomeDebug/PlainsDebug.cs" id="1_yvnqm"]
 [ext_resource type="Script" uid="uid://cjlr7mfi4phey" path="res://src/World/Generation/WorldGenerator.cs" id="2_yvnqm"]
@@ -9,6 +9,8 @@
 
 [node name="PlainsDebug" type="Node3D"]
 script = ExtResource("1_yvnqm")
+ViewDistance = null
+Seed = null
 
 [node name="WorldGenerator" type="Node3D" parent="."]
 script = ExtResource("2_yvnqm")

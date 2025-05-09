@@ -15,7 +15,7 @@ namespace CubeGen.Debug.BiomeDebug
 		private WorldGenerator _worldGenerator;
 		private ChunkManager _chunkManager;
 		private Camera3D _camera;
-		private BiomeType _currentBiome = BiomeType.Plains;
+		private BiomeType _currentBiome = BiomeType.ForestLands;
 		private SingleBiomeRegionGenerator _biomeGenerator;
 		private Label _biomeLabel;
 		private OptionButton _biomeSelector;

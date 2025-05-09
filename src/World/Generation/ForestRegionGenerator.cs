@@ -19,7 +19,7 @@ namespace CubeGen.World.Generation
 
         private FastNoiseLite _regionNoise;
         private FastNoiseLite _warpNoise;
-        private int _seed;
+        // Removed unused _seed field
         private static ForestRegionGenerator _instance;
 
         // Singleton instance
@@ -38,7 +38,7 @@ namespace CubeGen.World.Generation
         // Initialize with a specific seed
         public void Initialize(int seed)
         {
-            _seed = seed;
+            // Removed assignment to unused _seed field
 
             // Initialize region noise with even lower frequency for larger, more cohesive regions
             _regionNoise = new FastNoiseLite();
@@ -75,10 +75,11 @@ namespace CubeGen.World.Generation
             regionValue = (regionValue + 1f) * 0.5f;
 
             // Determine sub-region based on noise value
-            // 30% ForestPlains, 40% RegularForest, 30% ForestMountains
-            if (regionValue < 0.3f)
+            // 45% ForestPlains, 35% RegularForest, 20% ForestMountains
+            // Increased plains regions from 30% to 45%
+            if (regionValue < 0.45f)
                 return ForestSubRegion.ForestPlains;
-            else if (regionValue < 0.7f)
+            else if (regionValue < 0.8f)
                 return ForestSubRegion.RegularForest;
             else
                 return ForestSubRegion.ForestMountains;
@@ -103,29 +104,29 @@ namespace CubeGen.World.Generation
             switch (targetRegion)
             {
                 case ForestSubRegion.ForestPlains:
-                    // ForestPlains: 0.0 - 0.3
-                    if (regionValue < 0.2f)
+                    // ForestPlains: 0.0 - 0.45
+                    if (regionValue < 0.35f)
                         blendFactor = 1.0f; // Fully ForestPlains
-                    else if (regionValue < 0.4f)
-                        blendFactor = 1.0f - ((regionValue - 0.2f) / 0.2f); // Blend to RegularForest
+                    else if (regionValue < 0.55f)
+                        blendFactor = 1.0f - ((regionValue - 0.35f) / 0.2f); // Blend to RegularForest
                     break;
 
                 case ForestSubRegion.RegularForest:
-                    // RegularForest: 0.3 - 0.7
-                    if (regionValue < 0.2f)
-                        blendFactor = regionValue / 0.2f; // Blend from ForestPlains
-                    else if (regionValue < 0.6f)
+                    // RegularForest: 0.45 - 0.8
+                    if (regionValue < 0.35f)
+                        blendFactor = regionValue / 0.35f; // Blend from ForestPlains
+                    else if (regionValue < 0.7f)
                         blendFactor = 1.0f; // Fully RegularForest
-                    else if (regionValue < 0.8f)
-                        blendFactor = 1.0f - ((regionValue - 0.6f) / 0.2f); // Blend to ForestMountains
+                    else if (regionValue < 0.9f)
+                        blendFactor = 1.0f - ((regionValue - 0.7f) / 0.2f); // Blend to ForestMountains
                     break;
 
                 case ForestSubRegion.ForestMountains:
-                    // ForestMountains: 0.7 - 1.0
-                    if (regionValue < 0.6f)
+                    // ForestMountains: 0.8 - 1.0
+                    if (regionValue < 0.7f)
                         blendFactor = 0.0f; // Not ForestMountains
-                    else if (regionValue < 0.8f)
-                        blendFactor = (regionValue - 0.6f) / 0.2f; // Blend from RegularForest
+                    else if (regionValue < 0.9f)
+                        blendFactor = (regionValue - 0.7f) / 0.2f; // Blend from RegularForest
                     else
                         blendFactor = 1.0f; // Fully ForestMountains
                     break;
@@ -137,10 +138,11 @@ namespace CubeGen.World.Generation
         // Get tree density based on sub-region with strategic clearings and dense patches
         public float GetTreeDensity(int worldX, int worldZ)
         {
+            // Get the forest sub-region for this position
             ForestSubRegion subRegion = GetForestSubRegion(worldX, worldZ);
 
             // Base densities for each sub-region
-            float plainsDensity = 0.003f;  // Very sparse trees
+            float plainsDensity = 0.0015f; // Extremely sparse trees (reduced from 0.003f)
             float regularDensity = 0.01f;  // Medium tree density
             float mountainDensity = 0.02f; // Dense trees
 
@@ -177,8 +179,26 @@ namespace CubeGen.World.Generation
 
             // Apply a threshold curve to create more distinct clearings and dense areas
             // This creates a more binary distribution with some gradient at the edges
-            float threshold = 0.4f; // Adjust this to control clearing size
-            float curve = 8.0f;     // Adjust this to control edge sharpness
+
+            // Adjust threshold based on sub-region to create more clearings in plains areas
+            float threshold;
+            float curve;
+
+            if (subRegion == ForestSubRegion.ForestPlains)
+            {
+                threshold = 0.6f; // Higher threshold for plains (more clearings) (increased from 0.4f)
+                curve = 10.0f;    // Sharper transitions for plains (increased from 8.0f)
+            }
+            else if (subRegion == ForestSubRegion.RegularForest)
+            {
+                threshold = 0.4f; // Standard threshold for regular forest
+                curve = 8.0f;     // Standard curve for regular forest
+            }
+            else // ForestMountains
+            {
+                threshold = 0.3f; // Lower threshold for mountains (fewer clearings)
+                curve = 6.0f;     // Smoother transitions for mountains
+            }
 
             // Apply sigmoid-like curve to create more distinct forest edges
             forestDistribution = 1.0f / (1.0f + Mathf.Exp(-curve * (forestDistribution - threshold)));
@@ -191,16 +211,46 @@ namespace CubeGen.World.Generation
             float pathNoise1 = _warpNoise.GetNoise2D(worldX * 0.007f + 500, worldZ * 0.007f + 500); // Reduced frequency for wider, smoother paths
             float pathNoise2 = _warpNoise.GetNoise2D(worldX * 0.007f - 500, worldZ * 0.007f - 500); // Reduced frequency for wider, smoother paths
 
+            // Additional path noise for plains areas to create more open spaces
+            float plainsPathNoise = _warpNoise.GetNoise2D(worldX * 0.005f + 1000, worldZ * 0.005f + 1000);
+
+            // Path width threshold - wider in plains areas
+            float pathThreshold;
+            if (subRegion == ForestSubRegion.ForestPlains)
+            {
+                pathThreshold = 0.25f; // Much wider paths in plains (increased from 0.15f)
+            }
+            else if (subRegion == ForestSubRegion.RegularForest)
+            {
+                pathThreshold = 0.18f; // Slightly wider paths in regular forest (increased from 0.15f)
+            }
+            else // ForestMountains
+            {
+                pathThreshold = 0.15f; // Standard path width in mountains
+            }
+
             // If we're close to a path, reduce tree density (wider paths)
-            if (Mathf.Abs(pathNoise1) < 0.15f || Mathf.Abs(pathNoise2) < 0.15f) // Increased from 0.1f for wider paths
+            if (Mathf.Abs(pathNoise1) < pathThreshold ||
+                Mathf.Abs(pathNoise2) < pathThreshold ||
+                (subRegion == ForestSubRegion.ForestPlains && Mathf.Abs(plainsPathNoise) < 0.3f)) // Extra wide clearings in plains
             {
                 // Calculate how close we are to the path center (0 = center, 1 = edge)
-                float pathDistance1 = Mathf.Abs(pathNoise1) / 0.15f; // Adjusted for wider paths
-                float pathDistance2 = Mathf.Abs(pathNoise2) / 0.15f; // Adjusted for wider paths
-                float pathDistance = Mathf.Min(pathDistance1, pathDistance2);
+                float pathDistance1 = Mathf.Abs(pathNoise1) / pathThreshold;
+                float pathDistance2 = Mathf.Abs(pathNoise2) / pathThreshold;
+                float pathDistance3 = (subRegion == ForestSubRegion.ForestPlains) ? Mathf.Abs(plainsPathNoise) / 0.3f : 1.0f;
+                // Mathf.Min only takes 2 arguments, so we need to chain them
+                float pathDistance = Mathf.Min(Mathf.Min(pathDistance1, pathDistance2), pathDistance3);
 
                 // Reduce density more at the center of the path
-                finalDensity *= pathDistance;
+                // In plains areas, create completely clear paths (no trees at center)
+                if (subRegion == ForestSubRegion.ForestPlains && pathDistance < 0.3f)
+                {
+                    finalDensity = 0.0f; // No trees at all in the center of plains paths
+                }
+                else
+                {
+                    finalDensity *= pathDistance;
+                }
             }
 
             return finalDensity;

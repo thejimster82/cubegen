@@ -90,10 +90,10 @@ namespace CubeGen.World.Generation
             // Convert from [-1, 1] to [0, 1]
             noiseValue = (noiseValue + 1f) * 0.5f;
 
-            // Divide into three equal ranges for the three sub-regions
-            if (noiseValue < 0.333f)
+            // Divide into ranges for the three sub-regions, with Plains getting a larger share
+            if (noiseValue < 0.5f)  // Increased from 0.333f to 0.5f to make Plains larger
                 return ForestLandsSubRegion.Plains;
-            else if (noiseValue < 0.667f)
+            else if (noiseValue < 0.75f)  // Adjusted from 0.667f to 0.75f
                 return ForestLandsSubRegion.Forest;
             else
                 return ForestLandsSubRegion.Mountains;
@@ -121,31 +121,31 @@ namespace CubeGen.World.Generation
             switch (targetRegion)
             {
                 case ForestLandsSubRegion.Plains:
-                    // Plains: 0.0 - 0.333
-                    if (noiseValue < 0.333f - transitionWidth)
+                    // Plains: 0.0 - 0.5 (increased range)
+                    if (noiseValue < 0.5f - transitionWidth)
                         blendFactor = 1.0f; // Fully Plains
-                    else if (noiseValue < 0.333f + transitionWidth)
-                        blendFactor = 1.0f - ((noiseValue - (0.333f - transitionWidth)) / (transitionWidth * 2)); // Blend to Forest
+                    else if (noiseValue < 0.5f + transitionWidth)
+                        blendFactor = 1.0f - ((noiseValue - (0.5f - transitionWidth)) / (transitionWidth * 2)); // Blend to Forest
                     break;
 
                 case ForestLandsSubRegion.Forest:
-                    // Forest: 0.333 - 0.667
-                    if (noiseValue < 0.333f - transitionWidth)
+                    // Forest: 0.5 - 0.75 (adjusted range)
+                    if (noiseValue < 0.5f - transitionWidth)
                         blendFactor = 0.0f; // Not Forest
-                    else if (noiseValue < 0.333f + transitionWidth)
-                        blendFactor = (noiseValue - (0.333f - transitionWidth)) / (transitionWidth * 2); // Blend from Plains
-                    else if (noiseValue < 0.667f - transitionWidth)
+                    else if (noiseValue < 0.5f + transitionWidth)
+                        blendFactor = (noiseValue - (0.5f - transitionWidth)) / (transitionWidth * 2); // Blend from Plains
+                    else if (noiseValue < 0.75f - transitionWidth)
                         blendFactor = 1.0f; // Fully Forest
-                    else if (noiseValue < 0.667f + transitionWidth)
-                        blendFactor = 1.0f - ((noiseValue - (0.667f - transitionWidth)) / (transitionWidth * 2)); // Blend to Mountains
+                    else if (noiseValue < 0.75f + transitionWidth)
+                        blendFactor = 1.0f - ((noiseValue - (0.75f - transitionWidth)) / (transitionWidth * 2)); // Blend to Mountains
                     break;
 
                 case ForestLandsSubRegion.Mountains:
-                    // Mountains: 0.667 - 1.0
-                    if (noiseValue < 0.667f - transitionWidth)
+                    // Mountains: 0.75 - 1.0 (adjusted range)
+                    if (noiseValue < 0.75f - transitionWidth)
                         blendFactor = 0.0f; // Not Mountains
-                    else if (noiseValue < 0.667f + transitionWidth)
-                        blendFactor = (noiseValue - (0.667f - transitionWidth)) / (transitionWidth * 2); // Blend from Forest
+                    else if (noiseValue < 0.75f + transitionWidth)
+                        blendFactor = (noiseValue - (0.75f - transitionWidth)) / (transitionWidth * 2); // Blend from Forest
                     else
                         blendFactor = 1.0f; // Fully Mountains
                     break;

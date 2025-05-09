@@ -1,0 +1,26 @@
+[gd_scene load_steps=5 format=3 uid="uid://c8yvnxvxvxvxv"]
+
+[ext_resource type="Script" path="res://src/Debug/BiomeDebug/ForestLandsDebug.cs" id="1_yvnqm"]
+[ext_resource type="Script" path="res://src/World/Generation/WorldGenerator.cs" id="2_yvnqm"]
+[ext_resource type="Script" path="res://src/World/Chunks/ChunkManager.cs" id="3_yvnqm"]
+[ext_resource type="PackedScene" path="res://src/World/Chunks/ChunkMesh.tscn" id="4_yvnqm"]
+
+[node name="ForestLandsDebug" type="Node3D"]
+script = ExtResource("1_yvnqm")
+
+[node name="WorldGenerator" type="Node3D" parent="."]
+script = ExtResource("2_yvnqm")
+WorldSize = Vector2i(32, 32)
+VoxelScale = 0.75
+
+[node name="ChunkManager" type="Node3D" parent="WorldGenerator"]
+script = ExtResource("3_yvnqm")
+ChunkMeshScene = ExtResource("4_yvnqm")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, -0.75, 0.433013, 0, 10, 0)
+shadow_enabled = true
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.866025, 0.5, 0, -0.5, 0.866025, 0, 15, 25)
+current = true

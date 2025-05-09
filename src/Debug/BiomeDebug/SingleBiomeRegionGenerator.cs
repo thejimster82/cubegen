@@ -45,8 +45,8 @@ namespace CubeGen.Debug.BiomeDebug
 				if (_instance == null)
 				{
 					GD.PrintErr("SingleBiomeRegionGenerator instance not set!");
-					// Create a default instance with Plains biome
-					_instance = new SingleBiomeRegionGenerator(BiomeType.Plains);
+					// Create a default instance with ForestLands biome
+					_instance = new SingleBiomeRegionGenerator(BiomeType.ForestLands);
 				}
 				return _instance;
 			}
@@ -73,7 +73,7 @@ namespace CubeGen.Debug.BiomeDebug
 			if (!_isProperlyInitialized)
 			{
 				GD.PrintErr("SingleBiomeRegionGenerator not properly initialized in GetBiomeType.");
-				return BiomeType.Plains;
+				return BiomeType.ForestLands;
 			}
 
 			return _targetBiome;
@@ -99,7 +99,7 @@ namespace CubeGen.Debug.BiomeDebug
 			if (!_isProperlyInitialized)
 			{
 				GD.PrintErr("SingleBiomeRegionGenerator not properly initialized in GetBiomeTypeForCell.");
-				return BiomeType.Plains;
+				return BiomeType.ForestLands;
 			}
 
 			return _targetBiome;

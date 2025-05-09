@@ -451,10 +451,8 @@ public partial class World : Node3D
 		// Initialize biome colors
 		Dictionary<BiomeType, Color> biomeColors = new Dictionary<BiomeType, Color>
 		{
-			{ BiomeType.Plains, new Color(0.4f, 0.83f, 0.3f) },
-			{ BiomeType.Forest, new Color(0.2f, 0.6f, 0.2f) },
+			{ BiomeType.ForestLands, new Color(0.25f, 0.65f, 0.25f) },
 			{ BiomeType.Desert, new Color(0.95f, 0.85f, 0.5f) },
-			{ BiomeType.Mountains, new Color(0.5f, 0.5f, 0.6f) },
 			{ BiomeType.Tundra, new Color(0.95f, 0.97f, 1.0f) },
 			{ BiomeType.Islands, new Color(0.8f, 0.9f, 0.6f) }    // Light green-yellow for islands
 		};
@@ -570,36 +568,6 @@ public partial class World : Node3D
 				biomeNoise.FractalGain = 0.5f;
 				break;
 
-			case BiomeType.Plains:
-				// Plains: Medium-low frequency, low octaves for gentle rolling hills
-				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				biomeNoise.Frequency = 0.01f;
-				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-				biomeNoise.FractalOctaves = 2;
-				biomeNoise.FractalLacunarity = 2.0f;
-				biomeNoise.FractalGain = 0.4f;
-				break;
-
-			case BiomeType.Forest:
-				// Forest: Medium frequency, medium octaves for varied terrain
-				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				biomeNoise.Frequency = 0.012f;
-				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-				biomeNoise.FractalOctaves = 3;
-				biomeNoise.FractalLacunarity = 2.0f;
-				biomeNoise.FractalGain = 0.5f;
-				break;
-
-			case BiomeType.Mountains:
-				// Mountains: Medium-high frequency, ridged fractal for more dramatic terrain
-				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				biomeNoise.Frequency = 0.015f;
-				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Ridged;
-				biomeNoise.FractalOctaves = 4;
-				biomeNoise.FractalLacunarity = 2.2f;
-				biomeNoise.FractalGain = 0.6f;
-				break;
-
 			case BiomeType.Tundra:
 				// Tundra: Medium frequency, low gain for flatter terrain with occasional features
 				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
@@ -610,8 +578,6 @@ public partial class World : Node3D
 				biomeNoise.FractalGain = 0.3f;
 				break;
 
-
-
 			case BiomeType.Islands:
 				// Islands: Medium frequency, higher octaves for varied island terrain
 				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
@@ -620,6 +586,17 @@ public partial class World : Node3D
 				biomeNoise.FractalOctaves = 3;
 				biomeNoise.FractalLacunarity = 2.0f;
 				biomeNoise.FractalGain = 0.5f;
+				break;
+
+			case BiomeType.ForestLands:
+			default:
+				// ForestLands: Combined biome with characteristics of Forest, Plains, and Mountains
+				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				biomeNoise.Frequency = 0.013f;
+				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
+				biomeNoise.FractalOctaves = 3;
+				biomeNoise.FractalLacunarity = 2.1f;
+				biomeNoise.FractalGain = 0.55f;
 				break;
 		}
 

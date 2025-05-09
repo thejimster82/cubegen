@@ -24,11 +24,10 @@ public partial class BiomeMapVisualizer : Node3D
     private void InitializeBiomeColors()
     {
         // Use colors that match the biome materials
-        _biomeColors[BiomeType.Plains] = new Color(0.4f, 0.83f, 0.3f);
-        _biomeColors[BiomeType.Forest] = new Color(0.2f, 0.6f, 0.2f);
+        _biomeColors[BiomeType.ForestLands] = new Color(0.25f, 0.65f, 0.25f);
         _biomeColors[BiomeType.Desert] = new Color(0.95f, 0.85f, 0.5f);
-        _biomeColors[BiomeType.Mountains] = new Color(0.5f, 0.5f, 0.6f);
         _biomeColors[BiomeType.Tundra] = new Color(0.95f, 0.97f, 1.0f);
+        _biomeColors[BiomeType.Islands] = new Color(0.3f, 0.8f, 0.3f);
     }
 
     private void CreateMapMesh()

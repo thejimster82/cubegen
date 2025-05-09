@@ -344,18 +344,16 @@ namespace CubeGen.World.Generation
         {
             switch (biomeType)
             {
-                case BiomeType.Plains:
-                    return 0.2f; // Reduced by ~2.5x from 0.5f - Low probability for grass clusters
-                case BiomeType.Forest:
-                    return 0.15f; // Reduced by ~2.7x from 0.4f - Low probability for mushroom/stick clusters
+                case BiomeType.ForestLands:
+                    return 0.15f; // Medium probability for ForestLands
                 case BiomeType.Desert:
-                    return 0.08f; // Reduced by 2.5x from 0.2f - Very low probability for rock clusters
+                    return 0.08f; // Very low probability for rock clusters
                 case BiomeType.Tundra:
-                    return 0.05f; // Reduced by 3x from 0.15f - Extremely low probability for rock clusters
-                case BiomeType.Mountains:
-                    return 0.03f; // Reduced by ~3.3x from 0.1f - Extremely low probability for any clusters
+                    return 0.05f; // Extremely low probability for rock clusters
+                case BiomeType.Islands:
+                    return 0.12f; // Medium-low probability for island decorations
                 default:
-                    return 0.1f; // Reduced by 3x from 0.3f
+                    return 0.1f; // Default probability
             }
         }
 
@@ -364,13 +362,17 @@ namespace CubeGen.World.Generation
         {
             switch (biomeType)
             {
-                case BiomeType.Plains:
-                    // Plains have tall grass and flowers
-                    return random.NextDouble() < 0.8f ? VoxelType.TallGrass : VoxelType.Flower;
-
-                case BiomeType.Forest:
-                    // Forest has mushrooms and sticks
-                    return random.NextDouble() < 0.7f ? VoxelType.Stick : VoxelType.Mushroom;
+                case BiomeType.ForestLands:
+                    // ForestLands have a mix of all decorations
+                    double value = random.NextDouble();
+                    if (value < 0.5f)
+                        return VoxelType.TallGrass; // 50% tall grass
+                    else if (value < 0.7f)
+                        return VoxelType.Flower; // 20% flowers
+                    else if (value < 0.85f)
+                        return VoxelType.Mushroom; // 15% mushrooms
+                    else
+                        return VoxelType.Stick; // 15% sticks
 
                 case BiomeType.Desert:
                     // Desert has rocks and occasional seashells
@@ -380,9 +382,9 @@ namespace CubeGen.World.Generation
                     // Tundra has mostly rocks
                     return VoxelType.Rock;
 
-                case BiomeType.Mountains:
-                    // Mountains have rocks
-                    return VoxelType.Rock;
+                case BiomeType.Islands:
+                    // Islands have seashells and occasional tall grass
+                    return random.NextDouble() < 0.7f ? VoxelType.Seashell : VoxelType.TallGrass;
 
                 default:
                     // Default to tall grass

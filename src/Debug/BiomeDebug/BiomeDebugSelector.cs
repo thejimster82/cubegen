@@ -20,10 +20,8 @@ namespace CubeGen.Debug.BiomeDebug
 
 		private void InitializeBiomeScenes()
 		{
-			_biomeScenes[BiomeType.Plains] = "res://src/Debug/BiomeDebug/PlainsDebug.tscn";
-			_biomeScenes[BiomeType.Forest] = "res://src/Debug/BiomeDebug/ForestDebug.tscn";
+			_biomeScenes[BiomeType.ForestLands] = "res://src/Debug/BiomeDebug/ForestLandsDebug.tscn";
 			_biomeScenes[BiomeType.Desert] = "res://src/Debug/BiomeDebug/DesertDebug.tscn";
-			_biomeScenes[BiomeType.Mountains] = "res://src/Debug/BiomeDebug/MountainsDebug.tscn";
 			_biomeScenes[BiomeType.Tundra] = "res://src/Debug/BiomeDebug/TundraDebug.tscn";
 			_biomeScenes[BiomeType.Islands] = "res://src/Debug/BiomeDebug/IslandsDebug.tscn";
 		}

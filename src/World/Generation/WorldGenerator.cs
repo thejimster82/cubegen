@@ -277,213 +277,225 @@ public partial class WorldGenerator : Node3D
 				// Get the sub-biome type for this position
 				BiomeSubRegions.DesertSubRegion desertSubBiome = BiomeSubRegions.GetDesertSubRegion(worldX, worldZ);
 
-				// Set noise characteristics based on sub-biome
-				switch (desertSubBiome)
+				// Default noise settings (will be blended)
+				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
+
+				// Get blend factors for each sub-region
+				float dunesBlend = BiomeSubRegions.GetDesertBlendFactor(worldX, worldZ, BiomeSubRegions.DesertSubRegion.Dunes);
+				float rockyBlend = BiomeSubRegions.GetDesertBlendFactor(worldX, worldZ, BiomeSubRegions.DesertSubRegion.Rocky);
+				float oasisBlend = BiomeSubRegions.GetDesertBlendFactor(worldX, worldZ, BiomeSubRegions.DesertSubRegion.Oasis);
+
+				// Normalize blend factors
+				float totalBlend = dunesBlend + rockyBlend + oasisBlend;
+				if (totalBlend > 0)
 				{
-					case BiomeSubRegions.DesertSubRegion.Dunes:
-						// Dunes: Low frequency, low octaves for smooth dunes
-						biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-						biomeNoise.Frequency = 0.008f;
-						biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-						biomeNoise.FractalOctaves = 1;
-						biomeNoise.FractalLacunarity = 2.0f;
-						biomeNoise.FractalGain = 0.5f;
-						break;
-
-					case BiomeSubRegions.DesertSubRegion.Rocky:
-						// Rocky: Higher frequency, more octaves for rougher terrain
-						biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-						biomeNoise.Frequency = 0.012f;
-						biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-						biomeNoise.FractalOctaves = 2;
-						biomeNoise.FractalLacunarity = 2.2f;
-						biomeNoise.FractalGain = 0.6f;
-
-						// Slightly higher base height for rocky areas
-						baseHeight += 0.05f;
-						break;
-
-					case BiomeSubRegions.DesertSubRegion.Oasis:
-						// Oasis: Medium frequency, depression in terrain
-						biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-						biomeNoise.Frequency = 0.01f;
-						biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-						biomeNoise.FractalOctaves = 2;
-						biomeNoise.FractalLacunarity = 1.8f;
-						biomeNoise.FractalGain = 0.4f;
-
-						// Lower base height for oasis (depression)
-						baseHeight -= 0.05f;
-						break;
+					dunesBlend /= totalBlend;
+					rockyBlend /= totalBlend;
+					oasisBlend /= totalBlend;
 				}
+
+				// Blend noise parameters
+				// Frequency
+				float frequency =
+					(0.008f * dunesBlend) +  // Dunes: Low frequency
+					(0.012f * rockyBlend) +  // Rocky: Higher frequency
+					(0.01f * oasisBlend);    // Oasis: Medium frequency
+				biomeNoise.Frequency = frequency;
+
+				// Octaves
+				float octaves =
+					(1.0f * dunesBlend) +    // Dunes: Low octaves
+					(2.0f * rockyBlend) +    // Rocky: More octaves
+					(2.0f * oasisBlend);     // Oasis: Medium octaves
+				biomeNoise.FractalOctaves = Mathf.RoundToInt(octaves);
+
+				// Lacunarity
+				float lacunarity =
+					(2.0f * dunesBlend) +    // Dunes
+					(2.2f * rockyBlend) +    // Rocky
+					(1.8f * oasisBlend);     // Oasis
+				biomeNoise.FractalLacunarity = lacunarity;
+
+				// Gain
+				float gain =
+					(0.5f * dunesBlend) +    // Dunes
+					(0.6f * rockyBlend) +    // Rocky
+					(0.4f * oasisBlend);     // Oasis
+				biomeNoise.FractalGain = gain;
+
+				// Blend height adjustments
+				// Rocky areas are higher, oasis areas are lower
+				baseHeight += (0.05f * rockyBlend) - (0.05f * oasisBlend);
+
 				break;
 
 			case BiomeType.Tundra:
-				// Get the sub-biome type for this position
-				BiomeSubRegions.TundraSubRegion tundraSubBiome = BiomeSubRegions.GetTundraSubRegion(worldX, worldZ);
+				// Default noise settings (will be blended)
+				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
 
-				// Set noise characteristics based on sub-biome
-				switch (tundraSubBiome)
+				// Get blend factors for each sub-region
+				float snowyBlend = BiomeSubRegions.GetTundraBlendFactor(worldX, worldZ, BiomeSubRegions.TundraSubRegion.Snowy);
+				float frozenBlend = BiomeSubRegions.GetTundraBlendFactor(worldX, worldZ, BiomeSubRegions.TundraSubRegion.Frozen);
+				float alpineBlend = BiomeSubRegions.GetTundraBlendFactor(worldX, worldZ, BiomeSubRegions.TundraSubRegion.Alpine);
+
+				// Normalize blend factors
+				float totalTundraBlend = snowyBlend + frozenBlend + alpineBlend;
+				if (totalTundraBlend > 0)
 				{
-					case BiomeSubRegions.TundraSubRegion.Snowy:
-						// Snowy: Medium frequency, low gain for flatter terrain
-						biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-						biomeNoise.Frequency = 0.011f;
-						biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-						biomeNoise.FractalOctaves = 2;
-						biomeNoise.FractalLacunarity = 1.8f;
-						biomeNoise.FractalGain = 0.3f;
-						break;
-
-					case BiomeSubRegions.TundraSubRegion.Frozen:
-						// Frozen: Lower frequency, lower gain for very flat frozen lakes
-						biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-						biomeNoise.Frequency = 0.008f;
-						biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-						biomeNoise.FractalOctaves = 1;
-						biomeNoise.FractalLacunarity = 1.5f;
-						biomeNoise.FractalGain = 0.2f;
-
-						// Lower base height for frozen lakes
-						baseHeight -= 0.03f;
-						break;
-
-					case BiomeSubRegions.TundraSubRegion.Alpine:
-						// Alpine: Higher frequency, higher gain for mountainous tundra
-						biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-						biomeNoise.Frequency = 0.014f;
-						biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-						biomeNoise.FractalOctaves = 3;
-						biomeNoise.FractalLacunarity = 2.0f;
-						biomeNoise.FractalGain = 0.5f;
-
-						// Higher base height for alpine areas
-						baseHeight += 0.08f;
-						break;
+					snowyBlend /= totalTundraBlend;
+					frozenBlend /= totalTundraBlend;
+					alpineBlend /= totalTundraBlend;
 				}
+
+				// Blend noise parameters
+				// Frequency
+				float tundraFrequency =
+					(0.011f * snowyBlend) +  // Snowy: Medium frequency
+					(0.008f * frozenBlend) + // Frozen: Lower frequency
+					(0.014f * alpineBlend);  // Alpine: Higher frequency
+				biomeNoise.Frequency = tundraFrequency;
+
+				// Octaves
+				float tundraOctaves =
+					(2.0f * snowyBlend) +    // Snowy: Medium octaves
+					(1.0f * frozenBlend) +   // Frozen: Low octaves
+					(3.0f * alpineBlend);    // Alpine: Higher octaves
+				biomeNoise.FractalOctaves = Mathf.RoundToInt(tundraOctaves);
+
+				// Lacunarity
+				float tundraLacunarity =
+					(1.8f * snowyBlend) +    // Snowy
+					(1.5f * frozenBlend) +   // Frozen
+					(2.0f * alpineBlend);    // Alpine
+				biomeNoise.FractalLacunarity = tundraLacunarity;
+
+				// Gain
+				float tundraGain =
+					(0.3f * snowyBlend) +    // Snowy: Low gain for flatter terrain
+					(0.2f * frozenBlend) +   // Frozen: Lower gain for very flat frozen lakes
+					(0.5f * alpineBlend);    // Alpine: Higher gain for mountainous terrain
+				biomeNoise.FractalGain = tundraGain;
+
+				// Blend height adjustments
+				// Frozen areas are lower, alpine areas are higher
+				baseHeight += (0.08f * alpineBlend) - (0.03f * frozenBlend);
+
 				break;
 
 			case BiomeType.Islands:
-				// Get the sub-biome type for this position
-				BiomeSubRegions.IslandsSubRegion islandsSubBiome = BiomeSubRegions.GetIslandsSubRegion(worldX, worldZ);
+				// Default noise settings (will be blended)
+				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
 
-				// Set noise characteristics based on sub-biome
-				switch (islandsSubBiome)
+				// Get blend factors for each sub-region
+				float beachBlend = BiomeSubRegions.GetIslandsBlendFactor(worldX, worldZ, BiomeSubRegions.IslandsSubRegion.Beach);
+				float jungleBlend = BiomeSubRegions.GetIslandsBlendFactor(worldX, worldZ, BiomeSubRegions.IslandsSubRegion.Jungle);
+				float lagoonBlend = BiomeSubRegions.GetIslandsBlendFactor(worldX, worldZ, BiomeSubRegions.IslandsSubRegion.Lagoon);
+
+				// Normalize blend factors
+				float totalIslandsBlend = beachBlend + jungleBlend + lagoonBlend;
+				if (totalIslandsBlend > 0)
 				{
-					case BiomeSubRegions.IslandsSubRegion.Beach:
-						// Beach: Medium frequency, lower height for sandy beaches
-						biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-						biomeNoise.Frequency = 0.018f;
-						biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-						biomeNoise.FractalOctaves = 2;
-						biomeNoise.FractalLacunarity = 1.8f;
-						biomeNoise.FractalGain = 0.4f;
-
-						// Lower base height for beaches
-						baseHeight -= 0.02f;
-						break;
-
-					case BiomeSubRegions.IslandsSubRegion.Jungle:
-						// Jungle: Higher frequency, more octaves for varied jungle terrain
-						biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-						biomeNoise.Frequency = 0.022f;
-						biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-						biomeNoise.FractalOctaves = 3;
-						biomeNoise.FractalLacunarity = 2.1f;
-						biomeNoise.FractalGain = 0.55f;
-
-						// Higher base height for jungle interior
-						baseHeight += 0.04f;
-						break;
-
-					case BiomeSubRegions.IslandsSubRegion.Lagoon:
-						// Lagoon: Lower frequency, depression in terrain for lagoons
-						biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-						biomeNoise.Frequency = 0.015f;
-						biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-						biomeNoise.FractalOctaves = 2;
-						biomeNoise.FractalLacunarity = 1.6f;
-						biomeNoise.FractalGain = 0.3f;
-
-						// Lower base height for lagoons
-						baseHeight -= 0.06f;
-						break;
+					beachBlend /= totalIslandsBlend;
+					jungleBlend /= totalIslandsBlend;
+					lagoonBlend /= totalIslandsBlend;
 				}
+
+				// Blend noise parameters
+				// Frequency
+				float islandsFrequency =
+					(0.018f * beachBlend) +  // Beach: Medium frequency
+					(0.022f * jungleBlend) + // Jungle: Higher frequency
+					(0.015f * lagoonBlend);  // Lagoon: Lower frequency
+				biomeNoise.Frequency = islandsFrequency;
+
+				// Octaves
+				float islandsOctaves =
+					(2.0f * beachBlend) +    // Beach: Medium octaves
+					(3.0f * jungleBlend) +   // Jungle: Higher octaves
+					(2.0f * lagoonBlend);    // Lagoon: Medium octaves
+				biomeNoise.FractalOctaves = Mathf.RoundToInt(islandsOctaves);
+
+				// Lacunarity
+				float islandsLacunarity =
+					(1.8f * beachBlend) +    // Beach
+					(2.1f * jungleBlend) +   // Jungle
+					(1.6f * lagoonBlend);    // Lagoon
+				biomeNoise.FractalLacunarity = islandsLacunarity;
+
+				// Gain
+				float islandsGain =
+					(0.4f * beachBlend) +    // Beach: Medium gain
+					(0.55f * jungleBlend) +  // Jungle: Higher gain for varied terrain
+					(0.3f * lagoonBlend);    // Lagoon: Lower gain for smoother terrain
+				biomeNoise.FractalGain = islandsGain;
+
+				// Blend height adjustments
+				// Beaches are slightly lower, jungle is higher, lagoons are much lower
+				baseHeight += (0.04f * jungleBlend) - (0.02f * beachBlend) - (0.06f * lagoonBlend);
+
 				break;
 
 			case BiomeType.ForestLands:
 			default:
-				// Get the sub-biome type for this position
-				BiomeSubRegions.ForestLandsSubRegion subBiome = BiomeSubRegions.GetForestLandsSubRegion(worldX, worldZ);
+				// Default noise settings (will be blended)
+				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
 
-				// Set noise characteristics based on sub-biome
-				switch (subBiome)
+				// Get blend factors for each sub-region
+				float plainsBlend = BiomeSubRegions.GetForestLandsBlendFactor(worldX, worldZ, BiomeSubRegions.ForestLandsSubRegion.Plains);
+				float forestBlend = BiomeSubRegions.GetForestLandsBlendFactor(worldX, worldZ, BiomeSubRegions.ForestLandsSubRegion.Forest);
+				float mountainsBlend = BiomeSubRegions.GetForestLandsBlendFactor(worldX, worldZ, BiomeSubRegions.ForestLandsSubRegion.Mountains);
+
+				// Normalize blend factors
+				float totalForestBlend = plainsBlend + forestBlend + mountainsBlend;
+				if (totalForestBlend > 0)
 				{
-					case BiomeSubRegions.ForestLandsSubRegion.Plains:
-						// Plains: Medium-low frequency, low octaves for gentle rolling hills
-						biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-						biomeNoise.Frequency = 0.01f;
-						biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-						biomeNoise.FractalOctaves = 2;
-						biomeNoise.FractalLacunarity = 2.0f;
-						biomeNoise.FractalGain = 0.4f;
-						break;
-
-					case BiomeSubRegions.ForestLandsSubRegion.Forest:
-						// Forest: Medium frequency, medium octaves for varied terrain
-						biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-						biomeNoise.Frequency = 0.012f;
-						biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-						biomeNoise.FractalOctaves = 3;
-						biomeNoise.FractalLacunarity = 2.0f;
-						biomeNoise.FractalGain = 0.5f;
-						break;
-
-					case BiomeSubRegions.ForestLandsSubRegion.Mountains:
-						// Mountains: Medium-high frequency, ridged fractal for more dramatic terrain
-						biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-						biomeNoise.Frequency = 0.015f;
-						biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Ridged;
-						biomeNoise.FractalOctaves = 4;
-						biomeNoise.FractalLacunarity = 2.2f;
-						biomeNoise.FractalGain = 0.6f;
-
-						// Add extra height for mountains
-						baseHeight += 0.1f;
-						break;
+					plainsBlend /= totalForestBlend;
+					forestBlend /= totalForestBlend;
+					mountainsBlend /= totalForestBlend;
 				}
 
-				// Create smooth transitions between sub-biomes
-				// Sample points around the current position to detect nearby sub-biomes
-				bool nearBoundary = false;
-				BiomeSubRegions.ForestLandsSubRegion neighborSubBiome = subBiome;
+				// Blend noise parameters
+				// Fractal type - special case since we can't blend enum values
+				// Use Ridged fractal if mountains blend is dominant, otherwise use Fbm
+				biomeNoise.FractalType = (mountainsBlend > 0.5f) ?
+					FastNoiseLite.FractalTypeEnum.Ridged :
+					FastNoiseLite.FractalTypeEnum.Fbm;
 
-				// Check in a small radius for different sub-biomes
-				for (int dx = -5; dx <= 5; dx += 5)
-				{
-					for (int dz = -5; dz <= 5; dz += 5)
-					{
-						if (dx == 0 && dz == 0) continue;
+				// Frequency
+				float forestFrequency =
+					(0.01f * plainsBlend) +   // Plains: Medium-low frequency
+					(0.012f * forestBlend) +  // Forest: Medium frequency
+					(0.015f * mountainsBlend); // Mountains: Medium-high frequency
+				biomeNoise.Frequency = forestFrequency;
 
-						BiomeSubRegions.ForestLandsSubRegion nearbySubBiome = BiomeSubRegions.GetForestLandsSubRegion(worldX + dx, worldZ + dz);
-						if (nearbySubBiome != subBiome)
-						{
-							nearBoundary = true;
-							neighborSubBiome = nearbySubBiome;
-							break;
-						}
-					}
-					if (nearBoundary) break;
-				}
+				// Octaves
+				float forestOctaves =
+					(2.0f * plainsBlend) +    // Plains: Low octaves
+					(3.0f * forestBlend) +    // Forest: Medium octaves
+					(4.0f * mountainsBlend);  // Mountains: Higher octaves
+				biomeNoise.FractalOctaves = Mathf.RoundToInt(forestOctaves);
 
-				// If we're near a boundary, blend the height
-				if (nearBoundary && subBiome == BiomeSubRegions.ForestLandsSubRegion.Mountains &&
-					neighborSubBiome != BiomeSubRegions.ForestLandsSubRegion.Mountains)
-				{
-					// Reduce the mountain height near boundaries with other sub-biomes
-					// This creates smoother transitions from mountains to other areas
-					baseHeight -= 0.05f;
-				}
+				// Lacunarity
+				float forestLacunarity =
+					(2.0f * plainsBlend) +    // Plains
+					(2.0f * forestBlend) +    // Forest
+					(2.2f * mountainsBlend);  // Mountains
+				biomeNoise.FractalLacunarity = forestLacunarity;
+
+				// Gain
+				float forestGain =
+					(0.4f * plainsBlend) +    // Plains: Lower gain
+					(0.5f * forestBlend) +    // Forest: Medium gain
+					(0.6f * mountainsBlend);  // Mountains: Higher gain
+				biomeNoise.FractalGain = forestGain;
+
+				// Blend height adjustments
+				// Mountains are higher
+				baseHeight += 0.1f * mountainsBlend;
+
 				break;
 		}
 

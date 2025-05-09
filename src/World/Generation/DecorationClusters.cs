@@ -7,14 +7,15 @@ namespace CubeGen.World.Generation
 {
     public static class DecorationClusters
     {
-        // Cluster density parameters - further increased radius for extremely sparse distribution
-        private const float CLUSTER_RADIUS_MIN = 5.0f;  // Increased from 3.0f
-        private const float CLUSTER_RADIUS_MAX = 10.0f; // Increased from 7.0f
-        private const int MIN_ITEMS_PER_CLUSTER = 2;    // Reduced from 3
-        private const int MAX_ITEMS_PER_CLUSTER = 5;    // Reduced from 8
+        // Cluster density parameters for strategic decoration placement
+        private const float CLUSTER_RADIUS_MIN = 8.0f;   // Increased for larger, more distinct clusters
+        private const float CLUSTER_RADIUS_MAX = 15.0f;  // Increased for larger, more distinct clusters
+        private const int MIN_ITEMS_PER_CLUSTER = 3;     // Minimum items per cluster
+        private const int MAX_ITEMS_PER_CLUSTER = 8;     // Maximum items per cluster
 
-        // Cluster center probability (chance to start a new cluster) - drastically reduced for extremely sparse clusters
-        private const float CLUSTER_CENTER_PROBABILITY = 0.0025f; // Reduced by 4x from 0.01f (0.25% chance instead of 1%)
+        // Cluster center probability (chance to start a new cluster)
+        // Very low probability to create distinct, separated clusters
+        private const float CLUSTER_CENTER_PROBABILITY = 0.001f; // 0.1% chance
 
         // Dictionary to track cluster centers
         private static Dictionary<Vector2I, List<ClusterInfo>> _clusterCenters = new Dictionary<Vector2I, List<ClusterInfo>>();
@@ -232,33 +233,63 @@ namespace CubeGen.World.Generation
                         // If within radius and cluster still has items to place
                         if (distanceSquared <= radiusSquared && cluster.ItemsPlaced < cluster.ItemCount)
                         {
-                            // Calculate probability based on distance from center (higher near center)
-                            float distanceFactor = 1.0f - (distanceSquared / radiusSquared);
+                            // Calculate distance from center as a percentage of radius
+                            float distanceRatio = Mathf.Sqrt(distanceSquared) / cluster.Radius;
 
-                            // Add some noise to the probability to create more natural patterns
-                            // Use a different hash for this to avoid correlation with the position jitter
-                            int probabilityHash = worldPos.X * 31 ^ worldPos.Y * 17 ^ (int)(cluster.Position.X * 13) ^ (int)(cluster.Position.Y * 7);
-                            Random probRandom = new Random(probabilityHash);
+                            // Create a more natural distribution pattern using multiple noise layers
 
-                            // Add noise to the probability (±20%)
-                            float noiseAmount = (float)(probRandom.NextDouble() * 0.4 - 0.2);
+                            // 1. Base distance factor - higher probability near center, drops off toward edges
+                            // Use a quadratic falloff for more natural-looking clusters
+                            float distanceFactor = 1.0f - (distanceRatio * distanceRatio);
 
-                            // Base probability with noise - drastically reduced base probability for extremely sparse distribution
-                            float probability = (0.3f * distanceFactor) + noiseAmount; // Reduced from 0.5f
+                            // 2. Add noise to create irregular cluster shapes
+                            int shapeHash = worldPos.X * 31 ^ worldPos.Y * 17 ^ (int)(cluster.Position.X * 13) ^ (int)(cluster.Position.Y * 7);
+                            Random shapeRandom = new Random(shapeHash);
 
-                            // Clamp probability to valid range - further reduced upper limit
-                            probability = Mathf.Clamp(probability, 0.03f, 0.4f); // Reduced from 0.05f-0.7f
+                            // Create irregular cluster shapes using noise
+                            float angle = Mathf.Atan2(worldPos.Y - cluster.Position.Y, worldPos.X - cluster.Position.X);
+                            float angleNoise = _noise.GetNoise2D(Mathf.Cos(angle) * 5.0f, Mathf.Sin(angle) * 5.0f);
+                            angleNoise = (angleNoise + 1.0f) * 0.5f; // Convert to [0,1]
 
-                            // Use noise to create natural-looking patterns within the cluster
-                            float noiseX = worldPos.X * 0.1f + cluster.Position.X * 0.05f;
-                            float noiseY = worldPos.Y * 0.1f + cluster.Position.Y * 0.05f;
-                            float noiseValue = _noise.GetNoise2D(noiseX, noiseY);
+                            // Apply the angle noise to create irregular cluster shapes
+                            // This makes clusters less circular and more natural
+                            float shapeVariation = 0.3f; // How much the shape can vary (0.0 = circle, 1.0 = very irregular)
+                            float adjustedDistance = distanceRatio * (1.0f - shapeVariation * angleNoise);
 
-                            // Convert from [-1,1] to [0,1] range
-                            float perlinValue = (noiseValue + 1.0f) * 0.5f;
+                            // Recalculate distance factor with the adjusted distance
+                            distanceFactor = 1.0f - (adjustedDistance * adjustedDistance);
 
-                            // Combine perlin noise with distance-based probability
-                            probability = probability * 0.7f + perlinValue * 0.3f;
+                            // 3. Add small-scale noise for micro-variation within clusters
+                            float microNoiseX = worldPos.X * 0.2f + cluster.Position.X * 0.05f;
+                            float microNoiseY = worldPos.Y * 0.2f + cluster.Position.Y * 0.05f;
+                            float microNoise = _noise.GetNoise2D(microNoiseX, microNoiseY);
+                            microNoise = (microNoise + 1.0f) * 0.5f; // Convert to [0,1]
+
+                            // 4. Add medium-scale noise for sub-clusters within the main cluster
+                            float mediumNoiseX = worldPos.X * 0.05f + cluster.Position.X * 0.02f;
+                            float mediumNoiseY = worldPos.Y * 0.05f + cluster.Position.Y * 0.02f;
+                            float mediumNoise = _noise.GetNoise2D(mediumNoiseX, mediumNoiseY);
+                            mediumNoise = (mediumNoise + 1.0f) * 0.5f; // Convert to [0,1]
+
+                            // Apply a threshold to medium noise to create distinct sub-clusters
+                            mediumNoise = mediumNoise > 0.5f ? mediumNoise * 2.0f - 1.0f : 0.0f;
+
+                            // Combine all factors to create the final probability
+                            // Base probability is very low (0.1) to create sparse placement
+                            // Distance factor creates higher density near center
+                            // Medium noise creates sub-clusters
+                            // Micro noise adds small-scale variation
+                            float probability = 0.1f * distanceFactor + 0.2f * mediumNoise + 0.05f * microNoise;
+
+                            // Apply a threshold to create more distinct edges
+                            if (distanceRatio > 0.8f)
+                            {
+                                // Sharp falloff at edges
+                                probability *= (1.0f - distanceRatio) * 5.0f;
+                            }
+
+                            // Clamp probability to valid range
+                            probability = Mathf.Clamp(probability, 0.01f, 0.3f);
 
                             // Random chance to place decoration based on combined factors
                             if (random.NextDouble() < probability)
@@ -339,23 +370,30 @@ namespace CubeGen.World.Generation
             }
         }
 
-        // Get cluster probability based on biome - drastically reduced all probabilities for extremely sparse distribution
+        // Get cluster probability based on biome for strategic decoration placement
         private static float GetClusterProbabilityForBiome(BiomeType biomeType)
         {
+            // For Forest biome, we'll use the ForestRegionGenerator to determine sub-region
+            if (biomeType == BiomeType.Forest)
+            {
+                // We can't directly get the world position here, so we'll use a base value
+                // The actual strategic placement is handled by ForestRegionGenerator.GetTreeDensity
+                return 0.3f; // Higher probability for forest decorations to create distinct clusters
+            }
+
+            // For other biomes, use standard probabilities
             switch (biomeType)
             {
                 case BiomeType.Plains:
-                    return 0.2f; // Reduced by ~2.5x from 0.5f - Low probability for grass clusters
-                case BiomeType.Forest:
-                    return 0.15f; // Reduced by ~2.7x from 0.4f - Low probability for mushroom/stick clusters
+                    return 0.25f; // Higher probability for grass clusters in open areas
                 case BiomeType.Desert:
-                    return 0.08f; // Reduced by 2.5x from 0.2f - Very low probability for rock clusters
+                    return 0.1f;  // Low probability for rock clusters in desert
                 case BiomeType.Tundra:
-                    return 0.05f; // Reduced by 3x from 0.15f - Extremely low probability for rock clusters
+                    return 0.08f; // Very low probability for rock clusters in tundra
                 case BiomeType.Mountains:
-                    return 0.03f; // Reduced by ~3.3x from 0.1f - Extremely low probability for any clusters
+                    return 0.05f; // Extremely low probability for any clusters in mountains
                 default:
-                    return 0.1f; // Reduced by 3x from 0.3f
+                    return 0.15f; // Default probability
             }
         }
 

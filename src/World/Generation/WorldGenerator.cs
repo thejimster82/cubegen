@@ -34,6 +34,10 @@ public partial class WorldGenerator : Node3D
 		BiomeRegionGenerator.Instance.Initialize(Seed);
 		GD.Print($"BiomeRegionGenerator initialized with seed: {Seed}");
 
+		// Initialize the ForestRegionGenerator
+		ForestRegionGenerator.Instance.Initialize(Seed);
+		GD.Print($"ForestRegionGenerator initialized with seed: {Seed}");
+
 		InitializeNoise();
 		_chunkManager = GetNode<ChunkManager>("ChunkManager");
 
@@ -234,7 +238,15 @@ public partial class WorldGenerator : Node3D
 	public static BiomeType GetBiomeType(int worldX, int worldZ)
 	{
 		// Use the BiomeRegionGenerator for biome determination
-		return BiomeRegionGenerator.Instance.GetBiomeType(worldX, worldZ);
+		BiomeType biomeType = BiomeRegionGenerator.Instance.GetBiomeType(worldX, worldZ);
+
+		// Consolidate Plains and Mountains into Forest
+		if (biomeType == BiomeType.Plains || biomeType == BiomeType.Mountains)
+		{
+			return BiomeType.Forest;
+		}
+
+		return biomeType;
 	}
 
 	// Helper method to convert noise value to biome type (kept for backward compatibility)
@@ -296,23 +308,52 @@ public partial class WorldGenerator : Node3D
 				break;
 
 			case BiomeType.Forest:
-				// Forest: Medium frequency, medium octaves for varied terrain
-				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				biomeNoise.Frequency = 0.012f;
-				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-				biomeNoise.FractalOctaves = 3;
-				biomeNoise.FractalLacunarity = 2.0f;
-				biomeNoise.FractalGain = 0.5f;
+				// Get the forest sub-region for this position
+				ForestRegionGenerator.ForestSubRegion subRegion = ForestRegionGenerator.Instance.GetForestSubRegion(worldX, worldZ);
+
+				// Set noise parameters based on sub-region
+				switch (subRegion)
+				{
+					case ForestRegionGenerator.ForestSubRegion.ForestPlains:
+						// Forest Plains: Lower frequency, fewer octaves for flatter terrain
+						biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+						biomeNoise.Frequency = 0.008f;
+						biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
+						biomeNoise.FractalOctaves = 2;
+						biomeNoise.FractalLacunarity = 2.0f;
+						biomeNoise.FractalGain = 0.4f;
+						break;
+
+					case ForestRegionGenerator.ForestSubRegion.RegularForest:
+						// Regular Forest: Medium frequency, medium octaves for varied terrain
+						biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+						biomeNoise.Frequency = 0.012f;
+						biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
+						biomeNoise.FractalOctaves = 3;
+						biomeNoise.FractalLacunarity = 2.0f;
+						biomeNoise.FractalGain = 0.5f;
+						break;
+
+					case ForestRegionGenerator.ForestSubRegion.ForestMountains:
+						// Forest Mountains: Lower frequency for smoother, more natural mountains
+						biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+						biomeNoise.Frequency = 0.008f; // Reduced from 0.015f for smoother mountains
+						biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Ridged;
+						biomeNoise.FractalOctaves = 3; // Reduced from 4 for less detail/jaggedness
+						biomeNoise.FractalLacunarity = 2.0f; // Reduced from 2.2f for smoother transitions
+						biomeNoise.FractalGain = 0.5f; // Reduced from 0.6f for less extreme height variations
+						break;
+				}
 				break;
 
 			case BiomeType.Mountains:
-				// Mountains: Medium-high frequency, ridged fractal for more dramatic terrain
+				// Mountains: Lower frequency for smoother, more natural mountains
 				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				biomeNoise.Frequency = 0.015f;
+				biomeNoise.Frequency = 0.008f; // Reduced from 0.015f for smoother mountains
 				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Ridged;
-				biomeNoise.FractalOctaves = 4;
-				biomeNoise.FractalLacunarity = 2.2f;
-				biomeNoise.FractalGain = 0.6f;
+				biomeNoise.FractalOctaves = 3; // Reduced from 4 for less detail/jaggedness
+				biomeNoise.FractalLacunarity = 2.0f; // Reduced from 2.2f for smoother transitions
+				biomeNoise.FractalGain = 0.5f; // Reduced from 0.6f for less extreme height variations
 				break;
 
 			case BiomeType.Tundra:
@@ -889,8 +930,14 @@ public partial class WorldGenerator : Node3D
 					switch (biomeType)
 					{
 						case BiomeType.Forest:
-							// Add trees in Forest biome
-							if (random.NextDouble() < 0.01) // Adjusted to a more reasonable value
+							// Get the forest sub-region for this position
+							ForestRegionGenerator.ForestSubRegion subRegion = ForestRegionGenerator.Instance.GetForestSubRegion(worldX, worldZ);
+
+							// Get tree density based on sub-region
+							float treeDensity = ForestRegionGenerator.Instance.GetTreeDensity(worldX, worldZ);
+
+							// Add trees with density based on sub-region
+							if (random.NextDouble() < treeDensity)
 							{
 								if (surfaceHeight >= 0)
 								{
@@ -898,11 +945,47 @@ public partial class WorldGenerator : Node3D
 									// Trees need a larger radius (6) to prevent overlap
 									if (CanPlaceFeature(featureMap, x, z, 6, chunkSize))
 									{
-										// More lenient check - allow trees on any solid surface in forest biome
-										GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
+										// Generate different tree types based on sub-region
+										switch (subRegion)
+										{
+											case ForestRegionGenerator.ForestSubRegion.ForestPlains:
+												// Smaller, sparser trees in plains areas
+												if (random.NextDouble() < 0.7f)
+												{
+													// 70% chance for a bush in plains areas
+													GenerateBush(chunk, x, z, surfaceHeight, random);
+													MarkFeaturePosition(featureMap, x, z, 3, chunkSize);
+												}
+												else
+												{
+													// 30% chance for a small tree
+													GenerateDetailedTree(chunk, x, z, surfaceHeight, random, smallTree: true);
+													MarkFeaturePosition(featureMap, x, z, 5, chunkSize);
+												}
+												break;
 
-										// Mark the area as occupied
-										MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
+											case ForestRegionGenerator.ForestSubRegion.RegularForest:
+												// Regular trees in forest areas
+												GenerateDetailedTree(chunk, x, z, surfaceHeight, random, smallTree: false);
+												MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
+												break;
+
+											case ForestRegionGenerator.ForestSubRegion.ForestMountains:
+												// Taller, denser trees in mountain areas
+												if (random.NextDouble() < 0.2f)
+												{
+													// 20% chance for a rock formation in mountain areas
+													GenerateRockSpire(chunk, x, z, surfaceHeight, random);
+													MarkFeaturePosition(featureMap, x, z, 5, chunkSize);
+												}
+												else
+												{
+													// 80% chance for a tall tree
+													GenerateDetailedTree(chunk, x, z, surfaceHeight, random, tallTree: true);
+													MarkFeaturePosition(featureMap, x, z, 7, chunkSize);
+												}
+												break;
+										}
 									}
 								}
 							}
@@ -1169,16 +1252,45 @@ public partial class WorldGenerator : Node3D
 		}
 	}
 
-	private static void GenerateDetailedTree(VoxelChunk chunk, int x, int z, int surfaceHeight, Random random)
+	private static void GenerateDetailedTree(VoxelChunk chunk, int x, int z, int surfaceHeight, Random random, bool smallTree = false, bool tallTree = false)
 	{
-		// Tree parameters - doubled for higher resolution
-		int trunkHeight = random.Next(12, 24); // Doubled height for higher resolution (was 6-10)
-		int trunkThickness = random.Next(1, 3); // Doubled height for higher resolution (was 6-10)
-		int trunkThicknessBase = random.Next(6, 8); // Doubled height for higher resolution (was 6-10)
-		int leafRadius = random.Next(6, 9);    // Doubled radius for higher resolution (was 2-4)
-		int leafHeight = random.Next(10, 11);   // Doubled height for higher resolution (was 4-6)
-		int trunkShiftX = random.Next(-6, 6);
-		int trunkShiftZ = random.Next(-6, 6);
+		// Tree parameters based on size
+		int trunkHeight, trunkThickness, trunkThicknessBase, leafRadius, leafHeight;
+		int trunkShiftX, trunkShiftZ;
+
+		if (smallTree)
+		{
+			// Small tree parameters
+			trunkHeight = random.Next(8, 14); // Shorter trunk
+			trunkThickness = 1; // Thinner trunk
+			trunkThicknessBase = random.Next(3, 5); // Smaller base
+			leafRadius = random.Next(4, 6); // Smaller canopy
+			leafHeight = random.Next(6, 8); // Shorter canopy
+			trunkShiftX = random.Next(-3, 3); // Less trunk bend
+			trunkShiftZ = random.Next(-3, 3);
+		}
+		else if (tallTree)
+		{
+			// Tall tree parameters
+			trunkHeight = random.Next(20, 30); // Taller trunk
+			trunkThickness = random.Next(2, 3); // Thicker trunk
+			trunkThicknessBase = random.Next(7, 10); // Larger base
+			leafRadius = random.Next(7, 11); // Larger canopy
+			leafHeight = random.Next(12, 16); // Taller canopy
+			trunkShiftX = random.Next(-8, 8); // More trunk bend
+			trunkShiftZ = random.Next(-8, 8);
+		}
+		else
+		{
+			// Regular tree parameters
+			trunkHeight = random.Next(12, 24); // Standard height
+			trunkThickness = random.Next(1, 3); // Standard thickness
+			trunkThicknessBase = random.Next(6, 8); // Standard base
+			leafRadius = random.Next(6, 9); // Standard canopy radius
+			leafHeight = random.Next(10, 11); // Standard canopy height
+			trunkShiftX = random.Next(-6, 6); // Standard trunk bend
+			trunkShiftZ = random.Next(-6, 6);
+		}
 
 		// Generate trunk with more detail
 		// Make the trunk thicker at the base (2x2 for first few blocks)

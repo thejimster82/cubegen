@@ -34,7 +34,13 @@ namespace CubeGen.Debug.BiomeDebug
             // Connect chunk requested signal
             _chunkManager.ChunkRequested += OnChunkRequested;
 
-            GD.Print("Forest biome debug initialized");
+            GD.Print("Enhanced Forest biome debug initialized");
+            GD.Print("Forest now contains three sub-regions: Forest Plains, Regular Forest, and Forest Mountains");
+            GD.Print("Each sub-region has different terrain and flora characteristics");
+            GD.Print("Trees are now strategically placed with natural clearings and dense forest patches");
+            GD.Print("Paths and open areas are automatically generated through the forest");
+            GD.Print("Mountain terrain is now smoother and more natural-looking");
+            GD.Print("Region transitions are smoother with larger, more cohesive areas");
         }
 
         private void OnChunkRequested(Vector2I chunkPosition)

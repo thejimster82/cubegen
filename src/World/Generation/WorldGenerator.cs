@@ -1,6 +1,7 @@
 using Godot;
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent; // Added for ConcurrentDictionary
 using System.Linq;
 using CubeGen.World.Common;
 
@@ -112,7 +113,7 @@ public partial class WorldGenerator : Node3D
 
 		// Check if this chunk is near any biome boundary
 		// Only calculate and store blend weights if it is
-		float blendDistance = 10f;
+		float blendDistance = 15f;
 		bool isNearBiomeBoundary = BiomeRegionGenerator.Instance.IsChunkNearBiomeBoundary(
 			chunkPos.X, chunkPos.Y, ChunkSize, blendDistance);
 
@@ -234,19 +235,56 @@ public partial class WorldGenerator : Node3D
 		return BiomeRegionGenerator.Instance.GetBiomeType(worldX, worldZ);
 	}
 
+	// THREAD SAFETY: Use ConcurrentDictionary for thread-safe biome caching
+	private static ConcurrentDictionary<(int x, int z), BiomeType> _biomeCache = new ConcurrentDictionary<(int x, int z), BiomeType>();
+	private const int BIOME_CACHE_SIZE_LIMIT = 10000; // Limit cache size to prevent memory issues
+	private static readonly object _biomeCacheLock = new object(); // Lock for cache clearing operations
+
 	// Get biome type for a world position - static method for use by other classes
 	public static BiomeType GetBiomeType(int worldX, int worldZ)
 	{
+		// OPTIMIZATION: Round coordinates to reduce unique positions and increase cache hits
+		// This is acceptable because biomes don't change at the single-block level
+		int roundedX = worldX / 4 * 4;
+		int roundedZ = worldZ / 4 * 4;
+
+		// Create cache key
+		var cacheKey = (roundedX, roundedZ);
+
+		// THREAD SAFETY: Use thread-safe TryGetValue
+		if (_biomeCache.TryGetValue(cacheKey, out BiomeType cachedBiome))
+		{
+			return cachedBiome;
+		}
+
+		// THREAD SAFETY: Use lock for cache size check and clearing
+		// This prevents multiple threads from clearing the cache simultaneously
+		if (_biomeCache.Count > BIOME_CACHE_SIZE_LIMIT)
+		{
+			lock (_biomeCacheLock)
+			{
+				// Double-check inside lock to avoid multiple clears
+				if (_biomeCache.Count > BIOME_CACHE_SIZE_LIMIT)
+				{
+					// Create a new dictionary instead of clearing
+					// This is safer for concurrent access
+					_biomeCache = new ConcurrentDictionary<(int x, int z), BiomeType>();
+				}
+			}
+		}
+
 		// Use the BiomeRegionGenerator for biome determination
 		BiomeType biomeType = BiomeRegionGenerator.Instance.GetBiomeType(worldX, worldZ);
 
 		// Consolidate Plains and Mountains into Forest
 		if (biomeType == BiomeType.Plains || biomeType == BiomeType.Mountains)
 		{
-			return BiomeType.Forest;
+			biomeType = BiomeType.Forest;
 		}
 
-		return biomeType;
+		// THREAD SAFETY: Use thread-safe GetOrAdd to avoid race conditions
+		// This ensures only one thread can add a value for a given key
+		return _biomeCache.GetOrAdd(cacheKey, _ => biomeType);
 	}
 
 	// Helper method to convert noise value to biome type (kept for backward compatibility)

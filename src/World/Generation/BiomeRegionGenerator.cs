@@ -1,6 +1,7 @@
 using Godot;
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent; // Added for ConcurrentDictionary
 using System.Linq;
 using CubeGen.World.Common;
 
@@ -647,6 +648,11 @@ namespace CubeGen.World.Generation
 			return biomesWithDistances;
 		}
 
+		// THREAD SAFETY: Use ConcurrentDictionary for thread-safe biome blend weights caching
+		private ConcurrentDictionary<(int x, int z), Dictionary<BiomeType, float>> _blendWeightsCache = new ConcurrentDictionary<(int x, int z), Dictionary<BiomeType, float>>();
+		private const int BLEND_CACHE_SIZE_LIMIT = 5000; // Limit cache size to prevent memory issues
+		private readonly object _blendCacheLock = new object(); // Lock for cache clearing operations
+
 		/// <summary>
 		/// Calculates blend weights for biomes at a world position
 		/// </summary>
@@ -656,6 +662,35 @@ namespace CubeGen.World.Generation
 		/// <returns>Dictionary mapping BiomeType to blend weight (0.0-1.0)</returns>
 		public Dictionary<BiomeType, float> CalculateBiomeBlendWeights(int worldX, int worldZ, float blendDistance = 10f)
 		{
+			// OPTIMIZATION: Round coordinates to reduce unique positions and increase cache hits
+			int roundedX = (worldX / 4) * 4;
+			int roundedZ = (worldZ / 4) * 4;
+
+			// Create cache key
+			var cacheKey = (roundedX, roundedZ);
+
+			// THREAD SAFETY: Use thread-safe TryGetValue
+			if (_blendWeightsCache.TryGetValue(cacheKey, out Dictionary<BiomeType, float> cachedWeights))
+			{
+				return cachedWeights;
+			}
+
+			// THREAD SAFETY: Use lock for cache size check and clearing
+			// This prevents multiple threads from clearing the cache simultaneously
+			if (_blendWeightsCache.Count > BLEND_CACHE_SIZE_LIMIT)
+			{
+				lock (_blendCacheLock)
+				{
+					// Double-check inside lock to avoid multiple clears
+					if (_blendWeightsCache.Count > BLEND_CACHE_SIZE_LIMIT)
+					{
+						// Create a new dictionary instead of clearing
+						// This is safer for concurrent access
+						_blendWeightsCache = new ConcurrentDictionary<(int x, int z), Dictionary<BiomeType, float>>();
+					}
+				}
+			}
+
 			Dictionary<BiomeType, float> blendWeights = new Dictionary<BiomeType, float>();
 
 			// Check if properly initialized
@@ -663,12 +698,23 @@ namespace CubeGen.World.Generation
 			{
 				// GD.PrintErr("BiomeRegionGenerator not properly initialized in CalculateBiomeBlendWeights. Returning default biome only.");
 				blendWeights[BiomeType.Plains] = 1.0f;
+				_blendWeightsCache[cacheKey] = blendWeights;
 				return blendWeights;
 			}
 
 			// OPTIMIZATION: Use cached cell ID to avoid recalculating warped position
 			int cellId = GetCellId(worldX, worldZ);
 			BiomeType currentBiome = GetBiomeTypeForCell(cellId);
+
+			// OPTIMIZATION: Fast path - just use current biome with weight 1.0
+			// This avoids the expensive boundary distance calculation in most cases
+			// We'll use a simple check to see if we're likely near a boundary
+			if (!IsLikelyNearBoundary(worldX, worldZ))
+			{
+				blendWeights[currentBiome] = 1.0f;
+				_blendWeightsCache[cacheKey] = blendWeights;
+				return blendWeights;
+			}
 
 			// Get distance to boundary - only if we need it
 			float distanceToBoundary = GetDistanceToBoundary(worldX, worldZ);
@@ -677,6 +723,7 @@ namespace CubeGen.World.Generation
 			if (distanceToBoundary > blendDistance)
 			{
 				blendWeights[currentBiome] = 1.0f;
+				_blendWeightsCache[cacheKey] = blendWeights;
 				return blendWeights;
 			}
 
@@ -696,6 +743,7 @@ namespace CubeGen.World.Generation
 				blendWeights[currentBiome] = blendFactor;
 				blendWeights[neighborBiome] = 1.0f - blendFactor;
 
+				_blendWeightsCache[cacheKey] = blendWeights;
 				return blendWeights;
 			}
 
@@ -726,10 +774,9 @@ namespace CubeGen.World.Generation
 				}
 				else
 				{
-					// Smooth falloff from 1.0 at distance 0 to 0.0 at blendDistance
-					// Using a cosine interpolation for smoother transition
-					float t = distance / blendDistance;
-					weight = Mathf.Cos(t * Mathf.Pi * 0.5f);
+					// OPTIMIZATION: Simplified falloff calculation
+					// Linear falloff is much faster than cosine
+					weight = 1.0f - (distance / blendDistance);
 				}
 
 				blendWeights[biome] = weight;
@@ -751,7 +798,36 @@ namespace CubeGen.World.Generation
 				blendWeights[currentBiome] = 1.0f;
 			}
 
-			return blendWeights;
+			// THREAD SAFETY: Use thread-safe GetOrAdd to avoid race conditions
+			// This ensures only one thread can add a value for a given key
+			return _blendWeightsCache.GetOrAdd(cacheKey, _ => blendWeights);
+		}
+
+		// OPTIMIZATION: Quick check to see if a position is likely near a boundary
+		// This avoids the expensive GetDistanceToBoundary calculation in most cases
+		private bool IsLikelyNearBoundary(int worldX, int worldZ)
+		{
+			// Check a few points around the position to see if any have a different cell ID
+			int cellId = GetCellId(worldX, worldZ);
+
+			// Check in 4 cardinal directions at a small distance
+			int[] dx = { 5, 0, -5, 0 };
+			int[] dz = { 0, 5, 0, -5 };
+
+			for (int i = 0; i < 4; i++)
+			{
+				int sampleX = worldX + dx[i];
+				int sampleZ = worldZ + dz[i];
+
+				int sampleCellId = GetCellId(sampleX, sampleZ);
+
+				if (sampleCellId != cellId)
+				{
+					return true;
+				}
+			}
+
+			return false;
 		}
 
 		/// <summary>

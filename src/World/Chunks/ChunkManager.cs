@@ -39,7 +39,7 @@ public partial class ChunkManager : Node3D
     private ChunkMeshGenerator _meshGenerator;
 
     // Maximum number of chunks to process per frame
-    private const int MaxChunksPerFrame = 10; // Increased from 5 for faster chunk loading
+    private const int MaxChunksPerFrame = 25; // OPTIMIZATION: Drastically increased for much faster chunk loading
 
     public void Initialize(int chunkSize, int chunkHeight)
     {
@@ -230,8 +230,20 @@ public partial class ChunkManager : Node3D
     private void ProcessChunkRemovals()
     {
         int chunksRemoved = 0;
-        int maxChunksToRemove = 5; // OPTIMIZATION: Process more chunks per frame for faster cleanup
+        int maxChunksToRemove = 20; // OPTIMIZATION: Process many more chunks per frame for much faster cleanup
+
+        // OPTIMIZATION: Collect all chunks to remove first, then process them in batch
+        List<Vector2I> chunksToRemoveList = new List<Vector2I>();
+
+        // Collect up to maxChunksToRemove chunks
         while (chunksRemoved < maxChunksToRemove && _chunksToRemove.TryTake(out Vector2I position))
+        {
+            chunksToRemoveList.Add(position);
+            chunksRemoved++;
+        }
+
+        // Process all collected chunks
+        foreach (Vector2I position in chunksToRemoveList)
         {
             // Remove chunk mesh if it exists
             if (_chunks.TryGetValue(position, out ChunkMesh chunkToRemove))
@@ -242,8 +254,6 @@ public partial class ChunkManager : Node3D
 
             // Also remove chunk data
             _chunkData.TryRemove(position, out _);
-
-            chunksRemoved++;
         }
     }
 

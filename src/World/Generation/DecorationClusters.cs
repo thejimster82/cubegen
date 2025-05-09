@@ -7,15 +7,15 @@ namespace CubeGen.World.Generation
 {
     public static class DecorationClusters
     {
-        // Cluster density parameters for strategic decoration placement
-        private const float CLUSTER_RADIUS_MIN = 8.0f;   // Increased for larger, more distinct clusters
-        private const float CLUSTER_RADIUS_MAX = 15.0f;  // Increased for larger, more distinct clusters
-        private const int MIN_ITEMS_PER_CLUSTER = 3;     // Minimum items per cluster
-        private const int MAX_ITEMS_PER_CLUSTER = 8;     // Maximum items per cluster
+        // OPTIMIZATION: Reduced decoration density for better performance
+        private const float CLUSTER_RADIUS_MIN = 10.0f;  // Increased for larger, more sparse clusters
+        private const float CLUSTER_RADIUS_MAX = 20.0f;  // Increased for larger, more sparse clusters
+        private const int MIN_ITEMS_PER_CLUSTER = 2;     // Reduced minimum items per cluster
+        private const int MAX_ITEMS_PER_CLUSTER = 5;     // Reduced maximum items per cluster
 
         // Cluster center probability (chance to start a new cluster)
         // Very low probability to create distinct, separated clusters
-        private const float CLUSTER_CENTER_PROBABILITY = 0.001f; // 0.1% chance
+        private const float CLUSTER_CENTER_PROBABILITY = 0.0005f; // 0.05% chance - reduced by half
 
         // Dictionary to track cluster centers
         private static Dictionary<Vector2I, List<ClusterInfo>> _clusterCenters = new Dictionary<Vector2I, List<ClusterInfo>>();
@@ -274,12 +274,12 @@ namespace CubeGen.World.Generation
                             // Apply a threshold to medium noise to create distinct sub-clusters
                             mediumNoise = mediumNoise > 0.5f ? mediumNoise * 2.0f - 1.0f : 0.0f;
 
-                            // Combine all factors to create the final probability
-                            // Base probability is very low (0.1) to create sparse placement
+                            // OPTIMIZATION: Drastically reduced decoration density
+                            // Base probability is extremely low (0.05) to create very sparse placement
                             // Distance factor creates higher density near center
                             // Medium noise creates sub-clusters
                             // Micro noise adds small-scale variation
-                            float probability = 0.1f * distanceFactor + 0.2f * mediumNoise + 0.05f * microNoise;
+                            float probability = 0.05f * distanceFactor + 0.1f * mediumNoise + 0.02f * microNoise;
 
                             // Apply a threshold to create more distinct edges
                             if (distanceRatio > 0.8f)
@@ -288,8 +288,8 @@ namespace CubeGen.World.Generation
                                 probability *= (1.0f - distanceRatio) * 5.0f;
                             }
 
-                            // Clamp probability to valid range
-                            probability = Mathf.Clamp(probability, 0.01f, 0.3f);
+                            // Clamp probability to valid range - reduced upper bound for fewer decorations
+                            probability = Mathf.Clamp(probability, 0.01f, 0.15f);
 
                             // Random chance to place decoration based on combined factors
                             if (random.NextDouble() < probability)

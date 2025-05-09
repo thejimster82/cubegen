@@ -7,7 +7,7 @@ using CubeGen.World.Generation;
 public partial class World : Node3D
 {
 	[Export] public PackedScene PlayerScene { get; set; }
-	[Export] public int ViewDistance { get; set; } = 5;
+	[Export] public int ViewDistance { get; set; } = 4; // OPTIMIZATION: Reduced for better performance
 	[Export] public int Seed { get; set; } = 0;
 	[Export] public float MapHeight { get; set; } = 500.0f;
 	[Export] public float MapMoveSpeed { get; set; } = 200.0f; // Increased from 50.0f for faster panning
@@ -79,7 +79,7 @@ public partial class World : Node3D
 
 		// Create timer for chunk updates
 		_chunkUpdateTimer = new Godot.Timer();
-		_chunkUpdateTimer.WaitTime = 0.3f; // Reduced from 1.0f for much faster chunk updates
+		_chunkUpdateTimer.WaitTime = 0.5f; // OPTIMIZATION: Increased to reduce CPU usage
 		_chunkUpdateTimer.Timeout += OnChunkUpdateTimerTimeout;
 		AddChild(_chunkUpdateTimer);
 		_chunkUpdateTimer.Start();

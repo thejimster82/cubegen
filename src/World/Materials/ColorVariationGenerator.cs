@@ -1,6 +1,7 @@
 using Godot;
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent; // Added for ConcurrentDictionary
 using CubeGen.World.Common;
 
 namespace CubeGen.World.Materials
@@ -125,6 +126,11 @@ namespace CubeGen.World.Materials
             _variationIntensity[VoxelType.SnowLeaves] = 1.0f; // 100% variation for snow-covered leaves
         }
 
+        // THREAD SAFETY: Use ConcurrentDictionary for thread-safe color caching
+        private static ConcurrentDictionary<(int x, int z, VoxelType type), Color> _colorCache = new ConcurrentDictionary<(int x, int z, VoxelType type), Color>();
+        private const int CACHE_SIZE_LIMIT = 10000; // Limit cache size to prevent memory issues
+        private static readonly object _colorCacheLock = new object(); // Lock for cache clearing operations
+
         /// <summary>
         /// Apply color variation to a base color based on world position and voxel type
         /// </summary>
@@ -138,45 +144,62 @@ namespace CubeGen.World.Materials
         {
             if (!_initialized)
             {
-                GD.Print("ColorVariationGenerator not initialized ");
                 return baseColor;
             }
 
+            // OPTIMIZATION: Round coordinates to reduce unique positions and increase cache hits
+            int roundedX = Mathf.RoundToInt(worldX / 2) * 2;
+            int roundedZ = Mathf.RoundToInt(worldZ / 2) * 2;
+
+            // Create cache key
+            var cacheKey = (roundedX, roundedZ, voxelType);
+
+            // THREAD SAFETY: Use thread-safe TryGetValue
+            if (_colorCache.TryGetValue(cacheKey, out Color cachedColor))
+            {
+                return cachedColor;
+            }
+
+            // THREAD SAFETY: Use lock for cache size check and clearing
+            // This prevents multiple threads from clearing the cache simultaneously
+            if (_colorCache.Count > CACHE_SIZE_LIMIT)
+            {
+                lock (_colorCacheLock)
+                {
+                    // Double-check inside lock to avoid multiple clears
+                    if (_colorCache.Count > CACHE_SIZE_LIMIT)
+                    {
+                        // Create a new dictionary instead of clearing
+                        // This is safer for concurrent access
+                        _colorCache = new ConcurrentDictionary<(int x, int z, VoxelType type), Color>();
+                    }
+                }
+            }
+
+            // OPTIMIZATION: Simplified color variation - just use one noise sample
             // Get variation intensity for this voxel type
             if (!_variationIntensity.TryGetValue(voxelType, out float intensity))
             {
                 intensity = 0.1f; // Use default if not found
             }
 
-            // Get noise values at this position - use a single noise value for more consistent coloring
-            float primaryNoise = _colorNoise.GetNoise2D(worldX, worldZ);
-            float detailNoise = _detailNoise.GetNoise2D(worldX, worldZ) * 0.5f;
+            // Use a single noise sample for variation
+            float noise = _colorNoise.GetNoise2D(roundedX, roundedZ);
 
-            // Calculate variation factor from noise - keep it within a smaller range
-            // Map the noise from [-1,1] to [0,1] range
-            float variationFactor = (primaryNoise + detailNoise + 2.0f) * 0.5f * intensity;
+            // Map noise from [-1,1] to [0.8,1.2] range for a subtle 20% variation
+            float variationFactor = 1.0f + (noise * 0.2f * intensity);
 
-            // Instead of varying RGB channels independently (which creates rainbow effects),
-            // use a more controlled approach that maintains the color's character
+            // Apply simple RGB scaling for variation
+            Color variedColor = new Color(
+                Mathf.Clamp(baseColor.R * variationFactor, 0.0f, 1.0f),
+                Mathf.Clamp(baseColor.G * variationFactor, 0.0f, 1.0f),
+                Mathf.Clamp(baseColor.B * variationFactor, 0.0f, 1.0f),
+                baseColor.A
+            );
 
-            // Extract HSV components from the base color
-            baseColor.ToHsv(out float h, out float s, out float v);
-
-            // Allow more significant hue variation (within ±15% of the original hue)
-            // This creates more pronounced color variations while still keeping colors in the same family
-            float hueVariation = ((_rNoise.GetNoise2D(worldX, worldZ) + 1.0f) * 0.15f) - 0.1f;
-            h = Mathf.Wrap(h + hueVariation, 0.0f, 1.0f);
-
-            // Vary saturation and value more dramatically
-            // This creates much more noticeable variations while still maintaining some character of the original color
-            s = Mathf.Clamp(s * (0.6f + variationFactor * 0.8f), 0.0f, 1.0f);
-            v = Mathf.Clamp(v * (0.5f + variationFactor * 1.0f), 0.0f, 1.0f);
-
-            // Convert back to RGB
-            Color variedColor = Color.FromHsv(h, s, v);
-            variedColor.A = baseColor.A;
-
-            return variedColor;
+            // THREAD SAFETY: Use thread-safe GetOrAdd to avoid race conditions
+            // This ensures only one thread can add a value for a given key
+            return _colorCache.GetOrAdd(cacheKey, _ => variedColor);
         }
     }
 }

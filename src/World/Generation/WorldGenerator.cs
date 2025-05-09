@@ -34,6 +34,10 @@ public partial class WorldGenerator : Node3D
 		BiomeRegionGenerator.Instance.Initialize(Seed);
 		GD.Print($"BiomeRegionGenerator initialized with seed: {Seed}");
 
+		// Initialize the POIManager with the same seed
+		POI.POIManager.Instance.Initialize(Seed);
+		GD.Print($"POIManager initialized with seed: {Seed}");
+
 		InitializeNoise();
 		_chunkManager = GetNode<ChunkManager>("ChunkManager");
 
@@ -179,6 +183,18 @@ public partial class WorldGenerator : Node3D
 				// Generate blended terrain height based on all contributing biomes
 				int terrainHeight = GenerateBlendedTerrainHeight(worldX, worldZ, biomeBlendWeights);
 
+				// Check for POIs that might affect this position
+				// Get POIs within a reasonable radius
+				int poiSearchRadius = 200; // Adjust based on your largest POI influence radius
+				Vector2I worldPos = new Vector2I(worldX, worldZ);
+				List<POI.PointOfInterest> nearbyPOIs = POI.POIManager.Instance.GetPOIsInRadius(worldPos, poiSearchRadius);
+
+				// Apply POI terrain modifications
+				foreach (var poi in nearbyPOIs)
+				{
+					terrainHeight = POI.TerrainModifier.ModifyTerrainHeight(poi, worldX, worldZ, terrainHeight, ChunkHeight);
+				}
+
 				// Calculate water level height in voxels
 				int waterLevelHeight = Mathf.FloorToInt(WaterLevel * ChunkHeight);
 
@@ -188,6 +204,13 @@ public partial class WorldGenerator : Node3D
 					// Use the primary biome for voxel type determination
 					// This keeps the biome colors distinct while still blending heights
 					VoxelType voxelType = DetermineVoxelType(y, terrainHeight, primaryBiome);
+
+					// Apply POI voxel type modifications
+					foreach (var poi in nearbyPOIs)
+					{
+						voxelType = POI.TerrainModifier.ModifyVoxelType(poi, worldX, worldZ, y, voxelType, terrainHeight);
+					}
+
 					chunk.SetVoxel(x, y, z, voxelType);
 				}
 
@@ -902,6 +925,34 @@ public partial class WorldGenerator : Node3D
 		// Create a 2D array to track where features have been placed
 		// true = feature exists at this position, false = no feature
 		bool[,] featureMap = new bool[chunkSize, chunkSize];
+
+		// Check for POIs that might affect this chunk
+		// Calculate world bounds for this chunk
+		int chunkWorldX = chunkPos.X * chunkSize;
+		int chunkWorldZ = chunkPos.Y * chunkSize;
+
+		// Get POIs within a reasonable radius of the chunk center
+		int poiSearchRadius = 300; // Larger radius to catch POIs that might affect the chunk
+		Vector2I chunkCenterPos = new Vector2I(
+			chunkWorldX + chunkSize / 2,
+			chunkWorldZ + chunkSize / 2
+		);
+
+		List<POI.PointOfInterest> nearbyPOIs = POI.POIManager.Instance.GetPOIsInRadius(chunkCenterPos, poiSearchRadius);
+
+		// Add POI-specific structures
+		foreach (var poi in nearbyPOIs)
+		{
+			// Check if the POI is close enough to affect this chunk
+			int poiX = poi.Position.X - chunkWorldX;
+			int poiZ = poi.Position.Y - chunkWorldZ;
+
+			// If the POI is within or close to the chunk, add its structures
+			if (poiX >= -20 && poiX < chunkSize + 20 && poiZ >= -20 && poiZ < chunkSize + 20)
+			{
+				AddPOIStructures(chunk, poi, chunkPos, featureMap, random);
+			}
+		}
 
 		for (int x = 0; x < chunkSize; x++)
 		{
@@ -1866,6 +1917,290 @@ public partial class WorldGenerator : Node3D
 			{
 				// Use wood voxel type for coconuts
 				chunk.SetVoxel(coconutX, coconutY, coconutZ, VoxelType.Wood);
+			}
+		}
+	}
+
+	// Method to add POI-specific structures to a chunk
+	private void AddPOIStructures(VoxelChunk chunk, POI.PointOfInterest poi, Vector2I chunkPos, bool[,] featureMap, Random random)
+	{
+		// Calculate POI position relative to chunk
+		int chunkWorldX = chunkPos.X * ChunkSize;
+		int chunkWorldZ = chunkPos.Y * ChunkSize;
+		int poiX = poi.Position.X - chunkWorldX;
+		int poiZ = poi.Position.Y - chunkWorldZ;
+
+		// Find surface height at POI position
+		int surfaceHeight = -1;
+		if (poiX >= 0 && poiX < chunk.Size && poiZ >= 0 && poiZ < chunk.Size)
+		{
+			// POI is within this chunk, find the surface height
+			for (int y = ChunkHeight - 1; y >= 0; y--)
+			{
+				if (chunk.GetVoxel(poiX, y, poiZ) != VoxelType.Air &&
+					chunk.GetVoxel(poiX, y, poiZ) != VoxelType.Water)
+				{
+					surfaceHeight = y;
+					break;
+				}
+			}
+		}
+		else
+		{
+			// POI is outside this chunk, but close enough to affect it
+			// Use an estimated surface height based on the water level
+			surfaceHeight = Mathf.FloorToInt(WaterLevel * ChunkHeight) + 2;
+		}
+
+		// Only proceed if we found a valid surface height
+		if (surfaceHeight < 0)
+			return;
+
+		// Add structures based on POI type
+		switch (poi.Type)
+		{
+			case POI.POIType.Village:
+				// For now, just place a simple house as a placeholder
+				GenerateTowerStructure(chunk, poi, poiX, poiZ, surfaceHeight, featureMap, random);
+				break;
+
+			case POI.POIType.Tower:
+				GenerateTowerStructure(chunk, poi, poiX, poiZ, surfaceHeight, featureMap, random);
+				break;
+
+			case POI.POIType.Ruin:
+				// For now, use tower structure as placeholder
+				GenerateTowerStructure(chunk, poi, poiX, poiZ, surfaceHeight, featureMap, random);
+				break;
+
+			case POI.POIType.Obelisk:
+				GenerateObeliskStructure(chunk, poi, poiX, poiZ, surfaceHeight, featureMap, random);
+				break;
+
+			// Add more POI types as needed
+		}
+	}
+
+	// Generate a tower structure for a POI
+	private void GenerateTowerStructure(VoxelChunk chunk, POI.PointOfInterest poi, int x, int z, int surfaceHeight, bool[,] featureMap, Random random)
+	{
+		// Only proceed if the POI is within the chunk
+		if (x < 0 || x >= chunk.Size || z < 0 || z >= chunk.Size)
+			return;
+
+		// Mark the area as occupied in the feature map
+		int radius = 6; // Tower radius
+		MarkFeaturePosition(featureMap, x, z, radius, chunk.Size);
+
+		// Tower parameters
+		int towerHeight = 20 + random.Next(10); // 20-30 blocks tall
+		int towerRadius = 4; // Tower radius
+
+		// Build tower base (slightly wider)
+		int baseHeight = 3;
+		for (int y = 0; y < baseHeight; y++)
+		{
+			for (int dx = -towerRadius - 1; dx <= towerRadius + 1; dx++)
+			{
+				for (int dz = -towerRadius - 1; dz <= towerRadius + 1; dz++)
+				{
+					// Create a rounded base
+					float distance = (float)Math.Sqrt(dx * dx + dz * dz);
+
+					if (distance <= towerRadius + 1.5f)
+					{
+						int nx = x + dx;
+						int nz = z + dz;
+						int ny = surfaceHeight + y + 1;
+
+						// Check chunk boundaries
+						if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size && ny < chunk.Height)
+						{
+							// Solid stone base
+							chunk.SetVoxel(nx, ny, nz, VoxelType.Stone);
+						}
+					}
+				}
+			}
+		}
+
+		// Build tower walls
+		for (int y = baseHeight; y < towerHeight; y++)
+		{
+			for (int dx = -towerRadius; dx <= towerRadius; dx++)
+			{
+				for (int dz = -towerRadius; dz <= towerRadius; dz++)
+				{
+					// Create hollow tower with walls
+					float distance = (float)Math.Sqrt(dx * dx + dz * dz);
+
+					// Wall thickness varies with height
+					float wallThickness = 1.0f;
+					if (y > towerHeight - 5) // Thicker at the top for battlements
+						wallThickness = 1.5f;
+
+					if (distance <= towerRadius && distance > towerRadius - wallThickness)
+					{
+						int nx = x + dx;
+						int nz = z + dz;
+						int ny = surfaceHeight + y + 1;
+
+						// Check chunk boundaries
+						if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size && ny < chunk.Height)
+						{
+							// Stone walls
+							chunk.SetVoxel(nx, ny, nz, VoxelType.Stone);
+						}
+					}
+				}
+			}
+
+			// Add windows every few levels
+			if (y % 5 == 3 && y < towerHeight - 5)
+			{
+				// Add windows in cardinal directions
+				int[][] windowDirections = new int[][] {
+					new int[] {towerRadius, 0},  // East
+					new int[] {-towerRadius, 0}, // West
+					new int[] {0, towerRadius},  // North
+					new int[] {0, -towerRadius}  // South
+				};
+
+				foreach (var dir in windowDirections)
+				{
+					int nx = x + dir[0];
+					int nz = z + dir[1];
+					int ny = surfaceHeight + y + 1;
+
+					// Check chunk boundaries
+					if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size && ny < chunk.Height)
+					{
+						// Create window (air block)
+						chunk.SetVoxel(nx, ny, nz, VoxelType.Air);
+					}
+				}
+			}
+		}
+
+		// Add battlements at the top
+		for (int dx = -towerRadius; dx <= towerRadius; dx++)
+		{
+			for (int dz = -towerRadius; dz <= towerRadius; dz++)
+			{
+				float distance = (float)Math.Sqrt(dx * dx + dz * dz);
+
+				if (distance <= towerRadius && distance > towerRadius - 1.5f)
+				{
+					// Only add battlements at every other position around the edge
+					if ((dx + dz) % 2 == 0)
+					{
+						int nx = x + dx;
+						int nz = z + dz;
+						int ny = surfaceHeight + towerHeight + 1;
+
+						// Check chunk boundaries
+						if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size && ny < chunk.Height)
+						{
+							// Add battlement
+							chunk.SetVoxel(nx, ny, nz, VoxelType.Stone);
+						}
+					}
+				}
+			}
+		}
+	}
+
+
+
+	// Generate an obelisk structure for a POI
+	private void GenerateObeliskStructure(VoxelChunk chunk, POI.PointOfInterest poi, int x, int z, int surfaceHeight, bool[,] featureMap, Random random)
+	{
+		// Only proceed if the POI is within the chunk
+		if (x < 0 || x >= chunk.Size || z < 0 || z >= chunk.Size)
+			return;
+
+		// Mark the area as occupied in the feature map
+		int radius = 5; // Obelisk radius
+		MarkFeaturePosition(featureMap, x, z, radius, chunk.Size);
+
+		// Obelisk parameters
+		int obeliskHeight = 25 + random.Next(10); // 25-35 blocks tall
+		int baseSize = 7; // Base size (odd number for center alignment)
+
+		// Build obelisk base platform
+		int baseHeight = 2;
+		for (int y = 0; y < baseHeight; y++)
+		{
+			int currentSize = baseSize - y; // Base gets smaller as it goes up
+			int offset = currentSize / 2;
+
+			for (int dx = -offset; dx <= offset; dx++)
+			{
+				for (int dz = -offset; dz <= offset; dz++)
+				{
+					int nx = x + dx;
+					int nz = z + dz;
+					int ny = surfaceHeight + y + 1;
+
+					// Check chunk boundaries
+					if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size && ny < chunk.Height)
+					{
+						// Stone base
+						chunk.SetVoxel(nx, ny, nz, VoxelType.Stone);
+					}
+				}
+			}
+		}
+
+		// Build obelisk shaft
+		int shaftBaseSize = 3; // Width at the bottom of the shaft
+		for (int y = baseHeight; y < obeliskHeight - 5; y++)
+		{
+			// Calculate size at this height (tapers as it goes up)
+			float heightRatio = (float)(y - baseHeight) / (obeliskHeight - baseHeight - 5);
+			int currentSize = Math.Max(1, Mathf.FloorToInt(shaftBaseSize * (1.0f - heightRatio * 0.5f)));
+			int offset = currentSize / 2;
+
+			for (int dx = -offset; dx <= offset; dx++)
+			{
+				for (int dz = -offset; dz <= offset; dz++)
+				{
+					int nx = x + dx;
+					int nz = z + dz;
+					int ny = surfaceHeight + y + 1;
+
+					// Check chunk boundaries
+					if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size && ny < chunk.Height)
+					{
+						// Stone shaft
+						chunk.SetVoxel(nx, ny, nz, VoxelType.Stone);
+					}
+				}
+			}
+		}
+
+		// Build obelisk tip
+		for (int y = obeliskHeight - 5; y < obeliskHeight; y++)
+		{
+			// Calculate size at this height (pyramid tip)
+			int currentSize = obeliskHeight - y;
+			int offset = currentSize / 2;
+
+			for (int dx = -offset; dx <= offset; dx++)
+			{
+				for (int dz = -offset; dz <= offset; dz++)
+				{
+					int nx = x + dx;
+					int nz = z + dz;
+					int ny = surfaceHeight + y + 1;
+
+					// Check chunk boundaries
+					if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size && ny < chunk.Height)
+					{
+						// Stone tip
+						chunk.SetVoxel(nx, ny, nz, VoxelType.Stone);
+					}
+				}
 			}
 		}
 	}

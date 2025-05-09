@@ -35,6 +35,9 @@ public partial class Player : CharacterBody3D
 	private ColorRect _underwaterOverlay; // Translucent overlay for underwater effect
 	private float _currentCameraDistance; // For smoothing camera movement
 
+	// POI visualization
+	private CubeGen.World.Generation.POI.POIVisualizer _poiVisualizer; // POI visualizer for debugging
+
 	public override void _Ready()
 	{
 		_head = GetNode<Node3D>("Head");
@@ -87,6 +90,9 @@ public partial class Player : CharacterBody3D
 
 		// Create water indicator UI
 		CreateWaterIndicator();
+
+		// Initialize POI visualizer
+		InitializePOIVisualizer();
 	}
 
 	// Create a UI indicator for when the player is in water
@@ -189,6 +195,19 @@ public partial class Player : CharacterBody3D
 			_underwaterOverlay.Visible = !_underwaterOverlay.Visible;
 			GD.Print($"Underwater overlay toggled: {_underwaterOverlay.Visible}");
 		}
+
+		// Toggle POI visualization with F5 (for testing)
+		if (@event is InputEventKey keyEvent3 && keyEvent3.Pressed && keyEvent3.Keycode == Key.F5 && _poiVisualizer != null)
+		{
+			_poiVisualizer.Visible = !_poiVisualizer.Visible;
+			GD.Print($"POI visualization toggled: {_poiVisualizer.Visible}");
+
+			// Update visualization if toggled on
+			if (_poiVisualizer.Visible)
+			{
+				_poiVisualizer.UpdateVisualization(GlobalPosition);
+			}
+		}
 	}
 
 	// Helper method to start the test timer (called via CallDeferred)
@@ -198,6 +217,64 @@ public partial class Player : CharacterBody3D
 		{
 			timer.Start();
 			GD.Print("Test timer started");
+		}
+	}
+
+	// Initialize the POI visualizer
+	private void InitializePOIVisualizer()
+	{
+		try
+		{
+			// Try to find an existing POI visualizer in the scene
+			_poiVisualizer = GetTree().Root.GetNodeOrNull<CubeGen.World.Generation.POI.POIVisualizer>("World/WorldGenerator/POIVisualizer");
+
+			if (_poiVisualizer == null)
+				_poiVisualizer = GetTree().Root.GetNodeOrNull<CubeGen.World.Generation.POI.POIVisualizer>("WorldGenerator/POIVisualizer");
+
+			// If no visualizer exists, create one
+			if (_poiVisualizer == null)
+			{
+				// Try to find the WorldGenerator node
+				Node worldGenerator = GetTree().Root.GetNodeOrNull("World/WorldGenerator");
+
+				if (worldGenerator == null)
+					worldGenerator = GetTree().Root.GetNodeOrNull("WorldGenerator");
+
+				if (worldGenerator != null)
+				{
+					// Load the POI visualizer scene
+					PackedScene poiVisualizerScene = GD.Load<PackedScene>("res://src/World/Generation/POI/POIVisualizer.tscn");
+
+					if (poiVisualizerScene != null)
+					{
+						// Instantiate the visualizer
+						_poiVisualizer = poiVisualizerScene.Instantiate<CubeGen.World.Generation.POI.POIVisualizer>();
+
+						if (_poiVisualizer != null)
+						{
+							// Set the visualizer's voxel scale to match the world generator
+							if (worldGenerator is WorldGenerator generator)
+							{
+								_poiVisualizer.VoxelScale = generator.VoxelScale;
+							}
+
+							// Add the visualizer to the world generator
+							worldGenerator.AddChild(_poiVisualizer);
+							GD.Print("POI visualizer added to scene");
+						}
+					}
+				}
+			}
+
+			// If we have a visualizer, update it
+			if (_poiVisualizer != null)
+			{
+				_poiVisualizer.UpdateVisualization(GlobalPosition);
+			}
+		}
+		catch (Exception ex)
+		{
+			GD.PrintErr($"Error initializing POI visualizer: {ex.Message}");
 		}
 	}
 
@@ -660,6 +737,12 @@ public partial class Player : CharacterBody3D
 		if (_waterDebugIndicator != null)
 		{
 			_waterDebugIndicator.Color = _isInWater ? new Color(0, 0.7f, 1.0f) : new Color(1, 0, 0);
+		}
+
+		// Update POI visualization every few seconds
+		if (_poiVisualizer != null && Engine.GetProcessFrames() % 120 == 0)
+		{
+			_poiVisualizer.UpdateVisualization(GlobalPosition);
 		}
 
 		// Update underwater overlay visibility

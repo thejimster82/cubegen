@@ -46,8 +46,24 @@ transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 60, 0)
 offset_left = 20.0
 offset_top = 20.0
 offset_right = 300.0
-offset_bottom = 100.0
-text = "Forest Biome Debug
+offset_bottom = 350.0
+text = "Enhanced Forest Biome Debug
 Use WASD to move
 Space to jump
-Mouse to look around"
+Mouse to look around
+Press M to view map
+Forest now contains three sub-regions:
+- Forest Plains: Flatter terrain with sparse trees
+- Regular Forest: Medium terrain with normal trees
+- Forest Mountains: Smoother hills with tall trees
+
+Strategic Tree Placement:
+- Natural clearings and meadows
+- Dense forest patches
+- Wider, smoother paths through the forest
+- Realistic tree distribution
+
+Terrain Improvements:
+- Smoother mountain terrain
+- Larger, more cohesive regions
+- Gentler transitions between areas"

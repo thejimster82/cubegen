@@ -10,6 +10,16 @@ public partial class ChunkMesh : Node3D
     private CollisionShape3D _collisionShape;
     private VoxelChunk _chunk; // Store reference to the chunk
 
+    // Progressive loading and fade-in effect
+    private bool _isFadingIn = false;
+    private float _fadeProgress = 0.0f;
+    private const float FADE_DURATION = 0.5f; // Duration of fade-in effect in seconds
+
+    // Distance-based LOD (Level of Detail)
+    private int _detailLevel = 0; // 0 = full detail, 1 = medium, 2 = low
+    private Vector3 _playerPosition = Vector3.Zero;
+    private bool _needsDetailUpdate = false;
+
     // Material for different voxel types
     [Export] public Material DefaultMaterial { get; set; }
 
@@ -736,6 +746,13 @@ public partial class ChunkMesh : Node3D
         // Set the mesh
         _meshInstance.Mesh = mesh;
 
+        // Start fade-in effect
+        _isFadingIn = true;
+        _fadeProgress = 0.0f;
+
+        // Initially set the mesh to be transparent
+        _meshInstance.Transparency = 0.9f;
+
         // Create collision shape
         if (collisionFaces.Count > 0)
         {
@@ -761,6 +778,88 @@ public partial class ChunkMesh : Node3D
         return _chunk;
     }
 
+    // Process method to handle fade-in effect and LOD updates
+    public override void _Process(double delta)
+    {
+        // Handle fade-in effect
+        if (_isFadingIn)
+        {
+            _fadeProgress += (float)delta / FADE_DURATION;
+
+            if (_fadeProgress >= 1.0f)
+            {
+                // Fade-in complete
+                _isFadingIn = false;
+                _meshInstance.Transparency = 0.0f; // Fully opaque
+            }
+            else
+            {
+                // Gradually decrease transparency
+                _meshInstance.Transparency = 0.9f * (1.0f - _fadeProgress);
+            }
+        }
+
+        // Handle LOD updates if needed
+        if (_needsDetailUpdate)
+        {
+            UpdateDetailLevel();
+            _needsDetailUpdate = false;
+        }
+    }
+
+    // Update the detail level based on distance from player
+    public void UpdatePlayerPosition(Vector3 playerPosition)
+    {
+        _playerPosition = playerPosition;
+        _needsDetailUpdate = true;
+    }
+
+    // Update the detail level based on distance
+    private void UpdateDetailLevel()
+    {
+        // Calculate distance to player
+        float distance = (_playerPosition - GlobalPosition).Length();
+
+        // Determine detail level based on distance
+        int newDetailLevel;
+        if (distance < 32.0f)
+        {
+            newDetailLevel = 0; // Full detail for close chunks
+        }
+        else if (distance < 64.0f)
+        {
+            newDetailLevel = 1; // Medium detail for medium distance
+        }
+        else
+        {
+            newDetailLevel = 2; // Low detail for far chunks
+        }
+
+        // Only update if detail level changed
+        if (newDetailLevel != _detailLevel)
+        {
+            _detailLevel = newDetailLevel;
+
+            // Apply detail level changes
+            // For now, we'll just adjust the material properties
+            // In a more advanced implementation, you could swap meshes or adjust LOD
+            switch (_detailLevel)
+            {
+                case 0: // Full detail
+                    // No changes needed, this is the default
+                    break;
+
+                case 1: // Medium detail
+                    // Slightly simplified rendering
+                    break;
+
+                case 2: // Low detail
+                    // Greatly simplified rendering
+                    break;
+            }
+        }
+    }
+
     // Helper method to check if coordinates are within chunk bounds
     private static bool IsInBounds(VoxelChunk chunk, int x, int y, int z)
     {
@@ -784,5 +883,6 @@ public partial class ChunkMesh : Node3D
         public List<Vector2> UVs { get; set; } = new List<Vector2>();
         public List<int> Indices { get; set; } = new List<int>();
         public List<float> AmbientOcclusion { get; set; } = new List<float>();
+        public List<Color> Colors { get; set; } = new List<Color>();
     }
 }

@@ -34,7 +34,10 @@ namespace CubeGen.Debug.BiomeDebug
             // Connect chunk requested signal
             _chunkManager.ChunkRequested += OnChunkRequested;
 
-            GD.Print("Plains biome debug initialized");
+            GD.Print("Plains biome debug initialized with multi-level hills feature");
+            GD.Print("Hills are generated using domain-warped ridged noise for more natural terrain");
+            GD.Print("Regular hills appear in 50% of the Plains biome");
+            GD.Print("Steep hills appear in 15% of the Plains biome for more dramatic landscapes");
         }
 
         private void OnChunkRequested(Vector2I chunkPosition)

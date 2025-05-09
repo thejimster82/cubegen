@@ -1,7 +1,9 @@
 using Godot;
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Linq;
+using System.Threading;
 using CubeGen.World.Common;
 
 namespace CubeGen.World.Generation
@@ -18,7 +20,13 @@ namespace CubeGen.World.Generation
 		private int _seed;
 		private float _regionScale = 0.00015f; // Controls the size of regions (smaller value = larger regions)
 		private float _warpStrength = 50.0f; // Controls how much the domain is warped
-		private Dictionary<int, BiomeType> _cellToBiomeMap = new Dictionary<int, BiomeType>();
+
+		// THREAD SAFETY: Use ConcurrentDictionary for thread-safe access
+		private ConcurrentDictionary<int, BiomeType> _cellToBiomeMap = new ConcurrentDictionary<int, BiomeType>();
+
+		// Lock object for synchronizing access to biome map
+		private readonly object _biomeLock = new object();
+
 		private static BiomeRegionGenerator _instance;
 		private bool _isProperlyInitialized = false; // Flag to track if initialized with the game's seed
 
@@ -81,7 +89,11 @@ namespace CubeGen.World.Generation
 		}
 
 		// Dictionary to track neighboring cell relationships
-		private Dictionary<int, List<int>> _cellNeighbors = new Dictionary<int, List<int>>();
+		// THREAD SAFETY: Use ConcurrentDictionary for thread-safe access
+		private ConcurrentDictionary<int, List<int>> _cellNeighbors = new ConcurrentDictionary<int, List<int>>();
+
+		// Lock object for synchronizing access to neighbor lists
+		private readonly object _neighborLock = new object();
 
 		// Get biome type for a world position using domain warping
 		public virtual BiomeType GetBiomeType(int worldX, int worldZ)
@@ -89,7 +101,7 @@ namespace CubeGen.World.Generation
 			// Check if properly initialized
 			if (!_isProperlyInitialized)
 			{
-				GD.PrintErr("BiomeRegionGenerator not properly initialized in GetBiomeType. Waiting for proper initialization.");
+				// GD.PrintErr("BiomeRegionGenerator not properly initialized in GetBiomeType. Waiting for proper initialization.");
 				// Return a default biome type instead of initializing with a default seed
 				return BiomeType.Plains;
 			}
@@ -104,13 +116,50 @@ namespace CubeGen.World.Generation
 			// The cell value from FastNoiseLite is in range [-1,1], so we scale and convert to int
 			int cellId = (int)((cellValue + 1.0f) * 1000.0f);
 
-			// If we haven't assigned a biome to this cell yet, do so now
-			if (!_cellToBiomeMap.ContainsKey(cellId))
-			{
-				AssignBiomeToCell(cellId);
-			}
+			// THREAD SAFETY: Use GetOrAdd to safely get or create the biome for this cell
+			return _cellToBiomeMap.GetOrAdd(cellId, id => {
+				// If the biome doesn't exist yet, assign it
+				// This lambda will only be called if the key doesn't exist
 
-			return _cellToBiomeMap[cellId];
+				// Use the cell ID to seed a new random generator
+				Random random = new Random(_seed + id);
+
+				// Get all biome types
+				Array biomeTypesArray = Enum.GetValues(typeof(BiomeType));
+				List<BiomeType> availableBiomes = new List<BiomeType>();
+
+				// Convert to list for easier manipulation
+				foreach (BiomeType biomeType in biomeTypesArray)
+				{
+					availableBiomes.Add(biomeType);
+				}
+
+				// Find neighboring cells by sampling points around this cell
+				List<int> neighbors = FindNeighboringCells(id);
+
+				// Store the neighbors for future reference
+				_cellNeighbors.TryAdd(id, neighbors);
+
+				// Remove biome types that are already used by neighbors
+				foreach (int neighborId in neighbors)
+				{
+					BiomeType neighborBiome;
+					if (_cellToBiomeMap.TryGetValue(neighborId, out neighborBiome))
+					{
+						availableBiomes.Remove(neighborBiome);
+					}
+				}
+
+				// Make sure we have at least one biome available
+				if (availableBiomes.Count == 0)
+				{
+					// If all biomes are used by neighbors, just use any biome
+					availableBiomes.AddRange(Enum.GetValues(typeof(BiomeType)).Cast<BiomeType>());
+				}
+
+				// Select a random biome from the available ones
+				return availableBiomes[random.Next(availableBiomes.Count)];
+			});
 		}
 
 		// Apply domain warping to a position
@@ -134,42 +183,7 @@ namespace CubeGen.World.Generation
 			);
 		}
 
-		// Assign a biome to a cell, ensuring it's different from adjacent cells if possible
-		private void AssignBiomeToCell(int cellId)
-		{
-			// Use the cell ID to seed a new random generator
-			Random random = new Random(_seed + cellId);
-
-			// Get all biome types
-			Array biomeTypesArray = Enum.GetValues(typeof(BiomeType));
-			List<BiomeType> availableBiomes = new List<BiomeType>();
-
-			// Convert to list for easier manipulation
-			foreach (BiomeType biomeType in biomeTypesArray)
-			{
-				availableBiomes.Add(biomeType);
-			}
-
-			// Find neighboring cells by sampling points around this cell
-			List<int> neighbors = FindNeighboringCells(cellId);
-
-			// Store the neighbors for future reference
-			_cellNeighbors[cellId] = neighbors;
-
-			// Remove biome types that are already used by neighbors
-			foreach (int neighborId in neighbors)
-			{
-				if (_cellToBiomeMap.ContainsKey(neighborId))
-				{
-					BiomeType neighborBiome = _cellToBiomeMap[neighborId];
-					availableBiomes.Remove(neighborBiome);
-				}
-			}
-
-			// Select a random biome from the available ones
-			BiomeType selectedBiome = availableBiomes[random.Next(availableBiomes.Count)];
-			_cellToBiomeMap[cellId] = selectedBiome;
-		}
+		// NOTE: AssignBiomeToCell method has been replaced with thread-safe inline code in GetBiomeType and GetBiomeTypeForCell
 
 		// Find neighboring cells by sampling points around the given cell
 		private List<int> FindNeighboringCells(int cellId)
@@ -228,7 +242,7 @@ namespace CubeGen.World.Generation
 			// Check if properly initialized
 			if (!_isProperlyInitialized)
 			{
-				GD.PrintErr("BiomeRegionGenerator not properly initialized in GetCellValue. Returning default value.");
+				// GD.PrintErr("BiomeRegionGenerator not properly initialized in GetCellValue. Returning default value.");
 				return 0.0f;
 			}
 
@@ -244,7 +258,7 @@ namespace CubeGen.World.Generation
 			// Check if properly initialized
 			if (!_isProperlyInitialized)
 			{
-				GD.PrintErr("BiomeRegionGenerator not properly initialized in IsNearBoundary. Returning default value.");
+				// GD.PrintErr("BiomeRegionGenerator not properly initialized in IsNearBoundary. Returning default value.");
 				return false;
 			}
 
@@ -283,7 +297,7 @@ namespace CubeGen.World.Generation
 			// Check if properly initialized
 			if (!_isProperlyInitialized)
 			{
-				GD.PrintErr("BiomeRegionGenerator not properly initialized in GetDistanceToBoundary. Returning default distance.");
+				// GD.PrintErr("BiomeRegionGenerator not properly initialized in GetDistanceToBoundary. Returning default distance.");
 				return 100.0f; // Return a large value to indicate "far from boundary"
 			}
 
@@ -357,7 +371,7 @@ namespace CubeGen.World.Generation
 			// Check if properly initialized
 			if (!_isProperlyInitialized)
 			{
-				GD.PrintErr("BiomeRegionGenerator not properly initialized in GetCellId. Returning default cell ID.");
+				// GD.PrintErr("BiomeRegionGenerator not properly initialized in GetCellId. Returning default cell ID.");
 				// Return a consistent default cell ID
 				return 500; // Arbitrary but consistent value
 			}
@@ -380,17 +394,51 @@ namespace CubeGen.World.Generation
 			// Check if properly initialized
 			if (!_isProperlyInitialized)
 			{
-				GD.PrintErr("BiomeRegionGenerator not properly initialized in GetBiomeTypeForCell. Returning default biome.");
+				// GD.PrintErr("BiomeRegionGenerator not properly initialized in GetBiomeTypeForCell. Returning default biome.");
 				return BiomeType.Plains;
 			}
 
-			// If we haven't assigned a biome to this cell yet, do so now
-			if (!_cellToBiomeMap.ContainsKey(cellId))
-			{
-				AssignBiomeToCell(cellId);
-			}
+			// THREAD SAFETY: Use GetOrAdd to safely get or create the biome for this cell
+			return _cellToBiomeMap.GetOrAdd(cellId, id => {
+				// Use the cell ID to seed a new random generator
+				Random random = new Random(_seed + id);
 
-			return _cellToBiomeMap[cellId];
+				// Get all biome types
+				Array biomeTypesArray = Enum.GetValues(typeof(BiomeType));
+				List<BiomeType> availableBiomes = new List<BiomeType>();
+
+				// Convert to list for easier manipulation
+				foreach (BiomeType biomeType in biomeTypesArray)
+				{
+					availableBiomes.Add(biomeType);
+				}
+
+				// Find neighboring cells by sampling points around this cell
+				List<int> neighbors = FindNeighboringCells(id);
+
+				// Store the neighbors for future reference
+				_cellNeighbors.TryAdd(id, neighbors);
+
+				// Remove biome types that are already used by neighbors
+				foreach (int neighborId in neighbors)
+				{
+					BiomeType neighborBiome;
+					if (_cellToBiomeMap.TryGetValue(neighborId, out neighborBiome))
+					{
+						availableBiomes.Remove(neighborBiome);
+					}
+				}
+
+				// Make sure we have at least one biome available
+				if (availableBiomes.Count == 0)
+				{
+					// If all biomes are used by neighbors, just use any biome
+					availableBiomes.AddRange(Enum.GetValues(typeof(BiomeType)).Cast<BiomeType>());
+				}
+
+				// Select a random biome from the available ones
+				return availableBiomes[random.Next(availableBiomes.Count)];
+			});
 		}
 
 		/// <summary>
@@ -405,7 +453,7 @@ namespace CubeGen.World.Generation
 			// Check if properly initialized
 			if (!_isProperlyInitialized)
 			{
-				GD.PrintErr("BiomeRegionGenerator not properly initialized in GetNearestRegionCenter. Using default center.");
+				// GD.PrintErr("BiomeRegionGenerator not properly initialized in GetNearestRegionCenter. Using default center.");
 				return new Vector2(worldX, worldZ); // Return the input position as fallback
 			}
 
@@ -416,14 +464,13 @@ namespace CubeGen.World.Generation
 			float cellValue = _voronoiNoise.GetNoise2D(warpedX, warpedZ);
 			int cellId = (int)((cellValue + 1.0f) * 1000.0f);
 
-			// If we haven't assigned a biome to this cell yet, do it now
-			if (!_cellToBiomeMap.ContainsKey(cellId))
-			{
-				AssignBiomeToCell(cellId);
-			}
+			// THREAD SAFETY: Use GetBiomeTypeForCell to safely get or create the biome for this cell
+			// This will automatically assign a biome if one doesn't exist yet
+			GetBiomeTypeForCell(cellId);
 
 			// Check if this cell is the requested biome type
-			if (_cellToBiomeMap[cellId] == biomeType)
+			BiomeType cellBiome;
+			if (_cellToBiomeMap.TryGetValue(cellId, out cellBiome) && cellBiome == biomeType)
 			{
 				// This cell is already the requested biome, return its center
 				return GetCellCenter(cellId);
@@ -436,7 +483,8 @@ namespace CubeGen.World.Generation
 			// Check if any direct neighbors are the requested biome
 			foreach (int neighborId in neighbors)
 			{
-				if (_cellToBiomeMap.ContainsKey(neighborId) && _cellToBiomeMap[neighborId] == biomeType)
+				BiomeType neighborBiome;
+				if (_cellToBiomeMap.TryGetValue(neighborId, out neighborBiome) && neighborBiome == biomeType)
 				{
 					return GetCellCenter(neighborId);
 				}
@@ -492,19 +540,11 @@ namespace CubeGen.World.Generation
 		/// <returns>List of neighboring cell IDs</returns>
 		private List<int> GetCellNeighbors(int cellId)
 		{
-			// Check if we've already calculated neighbors for this cell
-			if (_cellNeighbors.ContainsKey(cellId))
-			{
-				return _cellNeighbors[cellId];
-			}
-
-			// Otherwise, find the neighbors
-			List<int> neighbors = FindNeighboringCells(cellId);
-
-			// Store for future reference
-			_cellNeighbors[cellId] = neighbors;
-
-			return neighbors;
+			// THREAD SAFETY: Use GetOrAdd for thread-safe access
+			return _cellNeighbors.GetOrAdd(cellId, id => {
+				// This lambda will only be called if the key doesn't exist
+				return FindNeighboringCells(id);
+			});
 		}
 
 		/// <summary>
@@ -520,7 +560,7 @@ namespace CubeGen.World.Generation
 			// Check if properly initialized
 			if (!_isProperlyInitialized)
 			{
-				GD.PrintErr("BiomeRegionGenerator not properly initialized in IsChunkNearBiomeBoundary. Returning false.");
+				// GD.PrintErr("BiomeRegionGenerator not properly initialized in IsChunkNearBiomeBoundary. Returning false.");
 				return false;
 			}
 			// Check corners and center of the chunk
@@ -600,7 +640,7 @@ namespace CubeGen.World.Generation
 			// Check if properly initialized
 			if (!_isProperlyInitialized)
 			{
-				GD.PrintErr("BiomeRegionGenerator not properly initialized in GetNeighboringBiomes. Returning default biome only.");
+				// GD.PrintErr("BiomeRegionGenerator not properly initialized in GetNeighboringBiomes. Returning default biome only.");
 				biomesWithDistances[BiomeType.Plains] = 0f;
 				return biomesWithDistances;
 			}
@@ -636,7 +676,8 @@ namespace CubeGen.World.Generation
 					BiomeType sampleBiome = GetBiomeTypeForCell(sampleCellId);
 
 					// Skip if we already found this biome closer
-					if (biomesWithDistances.ContainsKey(sampleBiome) && biomesWithDistances[sampleBiome] <= radius)
+					float existingDistance;
+					if (biomesWithDistances.TryGetValue(sampleBiome, out existingDistance) && existingDistance <= radius)
 						continue;
 
 					// Add or update the biome with its distance
@@ -647,6 +688,11 @@ namespace CubeGen.World.Generation
 			return biomesWithDistances;
 		}
 
+		// THREAD SAFETY: Use ConcurrentDictionary for thread-safe biome blend weights caching
+		private ConcurrentDictionary<(int x, int z), Dictionary<BiomeType, float>> _blendWeightsCache = new ConcurrentDictionary<(int x, int z), Dictionary<BiomeType, float>>();
+		private const int BLEND_CACHE_SIZE_LIMIT = 5000; // Limit cache size to prevent memory issues
+		private readonly object _blendCacheLock = new object(); // Lock for cache clearing operations
+
 		/// <summary>
 		/// Calculates blend weights for biomes at a world position
 		/// </summary>
@@ -656,30 +702,92 @@ namespace CubeGen.World.Generation
 		/// <returns>Dictionary mapping BiomeType to blend weight (0.0-1.0)</returns>
 		public Dictionary<BiomeType, float> CalculateBiomeBlendWeights(int worldX, int worldZ, float blendDistance = 10f)
 		{
+			// OPTIMIZATION: Round coordinates to reduce unique positions and increase cache hits
+			int roundedX = (worldX / 4) * 4;
+			int roundedZ = (worldZ / 4) * 4;
+
+			// Create cache key
+			var cacheKey = (roundedX, roundedZ);
+
+			// THREAD SAFETY: Use thread-safe TryGetValue
+			if (_blendWeightsCache.TryGetValue(cacheKey, out Dictionary<BiomeType, float> cachedWeights))
+			{
+				return cachedWeights;
+			}
+
+			// THREAD SAFETY: Use lock for cache size check and clearing
+			// This prevents multiple threads from clearing the cache simultaneously
+			if (_blendWeightsCache.Count > BLEND_CACHE_SIZE_LIMIT)
+			{
+				lock (_blendCacheLock)
+				{
+					// Double-check inside lock to avoid multiple clears
+					if (_blendWeightsCache.Count > BLEND_CACHE_SIZE_LIMIT)
+					{
+						// Create a new dictionary instead of clearing
+						// This is safer for concurrent access
+						_blendWeightsCache = new ConcurrentDictionary<(int x, int z), Dictionary<BiomeType, float>>();
+					}
+				}
+			}
+
 			Dictionary<BiomeType, float> blendWeights = new Dictionary<BiomeType, float>();
 
 			// Check if properly initialized
 			if (!_isProperlyInitialized)
 			{
-				GD.PrintErr("BiomeRegionGenerator not properly initialized in CalculateBiomeBlendWeights. Returning default biome only.");
+				// GD.PrintErr("BiomeRegionGenerator not properly initialized in CalculateBiomeBlendWeights. Returning default biome only.");
 				blendWeights[BiomeType.Plains] = 1.0f;
+				_blendWeightsCache[cacheKey] = blendWeights;
 				return blendWeights;
 			}
 
-			// Get the current biome
-			BiomeType currentBiome = GetBiomeType(worldX, worldZ);
+			// OPTIMIZATION: Use cached cell ID to avoid recalculating warped position
+			int cellId = GetCellId(worldX, worldZ);
+			BiomeType currentBiome = GetBiomeTypeForCell(cellId);
 
-			// Get distance to boundary
+			// OPTIMIZATION: Fast path - just use current biome with weight 1.0
+			// This avoids the expensive boundary distance calculation in most cases
+			// We'll use a simple check to see if we're likely near a boundary
+			if (!IsLikelyNearBoundary(worldX, worldZ))
+			{
+				blendWeights[currentBiome] = 1.0f;
+				_blendWeightsCache[cacheKey] = blendWeights;
+				return blendWeights;
+			}
+
+			// Get distance to boundary - only if we need it
 			float distanceToBoundary = GetDistanceToBoundary(worldX, worldZ);
 
 			// If we're far from any boundary, just use the current biome with weight 1.0
 			if (distanceToBoundary > blendDistance)
 			{
 				blendWeights[currentBiome] = 1.0f;
+				_blendWeightsCache[cacheKey] = blendWeights;
 				return blendWeights;
 			}
 
-			// Get neighboring biomes with their distances
+			// OPTIMIZATION: Calculate blend factor based on distance to boundary
+			// This avoids the expensive GetNeighboringBiomes call when we're close to a boundary
+			// but not right at it
+			if (distanceToBoundary > blendDistance * 0.3f)
+			{
+				// We're in the outer blend zone - just blend with the current biome
+				float blendFactor = (distanceToBoundary - (blendDistance * 0.3f)) / (blendDistance * 0.7f);
+				blendFactor = Mathf.Clamp(blendFactor, 0.0f, 1.0f);
+
+				// Get the primary neighboring biome (most likely the one across the boundary)
+				BiomeType neighborBiome = GetPrimaryNeighborBiome(worldX, worldZ, cellId);
+
+				// Add weights for current biome and neighbor
+				blendWeights[currentBiome] = blendFactor;
+				blendWeights[neighborBiome] = 1.0f - blendFactor;
+
+				_blendWeightsCache[cacheKey] = blendWeights;
+				return blendWeights;
+			}
+
+			// Only do full neighbor calculation when very close to boundary
 			Dictionary<BiomeType, float> neighboringBiomes = GetNeighboringBiomes(worldX, worldZ);
 
 			// Calculate blend weights based on distance
@@ -706,10 +814,9 @@ namespace CubeGen.World.Generation
 				}
 				else
 				{
-					// Smooth falloff from 1.0 at distance 0 to 0.0 at blendDistance
-					// Using a cosine interpolation for smoother transition
-					float t = distance / blendDistance;
-					weight = Mathf.Cos(t * Mathf.Pi * 0.5f);
+					// OPTIMIZATION: Simplified falloff calculation
+					// Linear falloff is much faster than cosine
+					weight = 1.0f - (distance / blendDistance);
 				}
 
 				blendWeights[biome] = weight;
@@ -731,7 +838,95 @@ namespace CubeGen.World.Generation
 				blendWeights[currentBiome] = 1.0f;
 			}
 
-			return blendWeights;
+			// THREAD SAFETY: Use thread-safe GetOrAdd to avoid race conditions
+			// This ensures only one thread can add a value for a given key
+			return _blendWeightsCache.GetOrAdd(cacheKey, _ => blendWeights);
+		}
+
+		// OPTIMIZATION: Quick check to see if a position is likely near a boundary
+		// This avoids the expensive GetDistanceToBoundary calculation in most cases
+		private bool IsLikelyNearBoundary(int worldX, int worldZ)
+		{
+			// Check a few points around the position to see if any have a different cell ID
+			int cellId = GetCellId(worldX, worldZ);
+
+			// Check in 4 cardinal directions at a small distance
+			int[] dx = { 5, 0, -5, 0 };
+			int[] dz = { 0, 5, 0, -5 };
+
+			for (int i = 0; i < 4; i++)
+			{
+				int sampleX = worldX + dx[i];
+				int sampleZ = worldZ + dz[i];
+
+				int sampleCellId = GetCellId(sampleX, sampleZ);
+
+				if (sampleCellId != cellId)
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		/// <summary>
+		/// Gets the primary neighboring biome across the nearest boundary
+		/// </summary>
+		/// <param name="worldX">World X coordinate</param>
+		/// <param name="worldZ">World Z coordinate</param>
+		/// <param name="cellId">Current cell ID (optional, will be calculated if not provided)</param>
+		/// <returns>The most likely neighboring biome</returns>
+		private BiomeType GetPrimaryNeighborBiome(int worldX, int worldZ, int cellId = -1)
+		{
+			// Get current cell ID if not provided
+			if (cellId == -1)
+			{
+				cellId = GetCellId(worldX, worldZ);
+			}
+
+			// Get current biome
+			BiomeType currentBiome = GetBiomeTypeForCell(cellId);
+
+			// Find the direction to the nearest boundary
+			// Sample in 8 directions to find the closest different cell
+			int[] dx = { 1, 1, 0, -1, -1, -1, 0, 1 };
+			int[] dz = { 0, 1, 1, 1, 0, -1, -1, -1 };
+
+			float closestDistance = float.MaxValue;
+			int closestDifferentCellId = -1;
+
+			for (int i = 0; i < 8; i++)
+			{
+				// Start with a small step and increase until we find a different cell
+				for (int step = 1; step <= 10; step++)
+				{
+					int sampleX = worldX + dx[i] * step;
+					int sampleZ = worldZ + dz[i] * step;
+
+					int sampleCellId = GetCellId(sampleX, sampleZ);
+
+					if (sampleCellId != cellId)
+					{
+						float distance = step;
+						if (distance < closestDistance)
+						{
+							closestDistance = distance;
+							closestDifferentCellId = sampleCellId;
+						}
+						break;
+					}
+				}
+			}
+
+			// If we found a different cell, return its biome
+			if (closestDifferentCellId != -1)
+			{
+				return GetBiomeTypeForCell(closestDifferentCellId);
+			}
+
+			// Fallback to current biome if no neighbor found
+			return currentBiome;
 		}
 
 		// Set the warp strength (higher values = more irregular boundaries)

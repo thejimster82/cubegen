@@ -34,6 +34,7 @@ public static class BiomeMaterials
 
                 StandardMaterial3D material = new StandardMaterial3D();
                 material.VertexColorUseAsAlbedo = true;
+                material.VertexColorIsSrgb = false; // Use linear color space for more accurate blending
 
                 // Set color based on biome and voxel type
                 switch (biomeType)

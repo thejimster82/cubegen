@@ -12,8 +12,8 @@ height = 1.5
 floor_max_angle = 0.872665
 floor_snap_length = 1.0
 script = ExtResource("1_yvnqm")
-Speed = 5.0
-JumpVelocity = 3.0
+Speed = 20.0
+JumpVelocity = 10.0
 MaxStepHeight = 100.0
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]

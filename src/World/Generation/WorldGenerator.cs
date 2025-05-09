@@ -1,7 +1,10 @@
 using Godot;
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent; // Added for ConcurrentDictionary
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using CubeGen.World.Common;
 
 namespace CubeGen.World.Generation
@@ -21,8 +24,113 @@ public partial class WorldGenerator : Node3D
 
 	private ChunkManager _chunkManager;
 
+	// THREADING: Thread pool for chunk generation
+	private readonly int _maxThreads = Math.Max(2, System.Environment.ProcessorCount - 1); // Leave one core for the main thread
+	private readonly ConcurrentQueue<(Vector2I, TaskCompletionSource<VoxelChunk>)> _chunkGenerationQueue = new();
+	private readonly ConcurrentDictionary<Vector2I, Task<VoxelChunk>> _pendingChunks = new();
+	private readonly ConcurrentQueue<(Vector2I, VoxelChunk)> _completedChunks = new();
+	private bool _isRunning = true;
+	private readonly object _threadPoolLock = new object();
+	private Thread[] _workerThreads;
+
 	public override void _Ready()
 	{
+		// Initialize the thread pool for chunk generation
+		InitializeThreadPool();
+	}
+
+	private void InitializeThreadPool()
+	{
+		// Create and start worker threads
+		_workerThreads = new Thread[_maxThreads];
+		for (int i = 0; i < _maxThreads; i++)
+		{
+			_workerThreads[i] = new Thread(ChunkGenerationWorker)
+			{
+				IsBackground = true,
+				Name = $"ChunkGenerator_{i}"
+			};
+			_workerThreads[i].Start();
+		}
+
+		GD.Print($"Started {_maxThreads} chunk generation worker threads");
+	}
+
+	// Worker method that runs on each thread
+	private void ChunkGenerationWorker()
+	{
+		while (_isRunning)
+		{
+			bool didWork = false;
+
+			// Try to get a chunk from the queue
+			if (_chunkGenerationQueue.TryDequeue(out var workItem))
+			{
+				didWork = true;
+				var (chunkPos, completionSource) = workItem;
+
+				try
+				{
+					// THREAD SAFETY: Check if this chunk is already being processed
+					if (_pendingChunks.TryGetValue(chunkPos, out var existingTask) &&
+						existingTask != completionSource.Task)
+					{
+						// This chunk is already being processed by another thread
+						// Just wait for it to complete and use its result
+						completionSource.SetResult(existingTask.Result);
+						continue;
+					}
+
+					// Generate the chunk data (this is the CPU-intensive part)
+					VoxelChunk chunk = GenerateChunkData(chunkPos);
+
+					// Add the completed chunk to the queue for processing on the main thread
+					_completedChunks.Enqueue((chunkPos, chunk));
+
+					// Signal that the task is complete
+					completionSource.SetResult(chunk);
+				}
+				catch (Exception ex)
+				{
+					// Handle any errors
+					completionSource.SetException(ex);
+
+					// Log detailed error information
+					GD.PrintErr($"Error generating chunk at {chunkPos}: {ex.Message}");
+					GD.PrintErr(ex.StackTrace);
+
+					// IMPORTANT: Remove from pending chunks to allow future attempts
+					_pendingChunks.TryRemove(chunkPos, out _);
+				}
+			}
+
+			// If no work was done, sleep briefly to avoid spinning
+			if (!didWork)
+			{
+				Thread.Sleep(5);
+			}
+		}
+	}
+
+	// Called when the node is about to be removed from the scene
+	public override void _ExitTree()
+	{
+		// Signal threads to stop
+		_isRunning = false;
+
+		// Wait for all threads to finish
+		if (_workerThreads != null)
+		{
+			foreach (var thread in _workerThreads)
+			{
+				if (thread != null && thread.IsAlive)
+				{
+					thread.Join(100); // Wait up to 100ms for each thread
+				}
+			}
+		}
+
+		base._ExitTree();
 	}
 
 	public void Initialize(int seed, int viewDistance)
@@ -34,6 +142,10 @@ public partial class WorldGenerator : Node3D
 		BiomeRegionGenerator.Instance.Initialize(Seed);
 		GD.Print($"BiomeRegionGenerator initialized with seed: {Seed}");
 
+		// Initialize the ForestRegionGenerator
+		ForestRegionGenerator.Instance.Initialize(Seed);
+		GD.Print($"ForestRegionGenerator initialized with seed: {Seed}");
+
 		InitializeNoise();
 		_chunkManager = GetNode<ChunkManager>("ChunkManager");
 
@@ -41,7 +153,7 @@ public partial class WorldGenerator : Node3D
 		{
 			GD.Print("ChunkManager found, initializing...");
 			_chunkManager.Initialize(ChunkSize, ChunkHeight);
-			GenerateInitialChunks(ViewDistance);
+			GenerateInitialChunks(viewDistance: 1);
 		}
 		else
 		{
@@ -58,7 +170,7 @@ public partial class WorldGenerator : Node3D
 			InitializeStaticNoise(Seed);
 		}
 
-	private void GenerateInitialChunks(int viewDistance)
+	private void GenerateInitialChunks(int viewDistance = 1)
 	{
 		// Generate chunks around origin
 		GD.Print($"Generating initial chunks with view distance: {viewDistance}");
@@ -99,16 +211,71 @@ public partial class WorldGenerator : Node3D
 		GD.Print("Initial chunk generation complete");
 	}
 
+	// Process completed chunks on the main thread
+	public override void _Process(double delta)
+	{
+		// Process any completed chunks
+		ProcessCompletedChunks();
+	}
+
+	// Process chunks that have been generated by worker threads
+	private void ProcessCompletedChunks()
+	{
+		int processedCount = 0;
+		int maxToProcess = 5; // Limit how many chunks we process per frame to avoid lag
+
+		while (processedCount < maxToProcess && _completedChunks.TryDequeue(out var completedChunk))
+		{
+			var (chunkPos, chunk) = completedChunk;
+
+			// Add the chunk to the chunk manager (this is done on the main thread)
+			_chunkManager.AddChunk(chunk);
+
+			// IMPORTANT: Remove from pending chunks to allow future requests for this chunk
+			// This is critical for thread safety and preventing memory leaks
+			_pendingChunks.TryRemove(chunkPos, out _);
+
+			processedCount++;
+		}
+
+		// Debug output to track chunk generation progress
+		// if (processedCount > 0)
+		// {
+		 	// GD.Print($"Processed {processedCount} completed chunks. Pending: {_pendingChunks.Count}, Queue: {_chunkGenerationQueue.Count}, Completed: {_completedChunks.Count}");
+		// }
+	}
+
+	// Queue a chunk for generation in the background
 	public void GenerateChunk(Vector2I chunkPos)
 	{
 		if (_chunkManager == null) return;
 
+		// Check if this chunk is already being generated
+		if (_pendingChunks.TryGetValue(chunkPos, out _))
+		{
+			// Already in progress, no need to queue again
+			return;
+		}
+
+		// Create a TaskCompletionSource for this chunk
+		var tcs = new TaskCompletionSource<VoxelChunk>();
+
+		// Add to pending chunks
+		_pendingChunks[chunkPos] = tcs.Task;
+
+		// Queue the chunk for generation
+		_chunkGenerationQueue.Enqueue((chunkPos, tcs));
+	}
+
+	// Generate chunk data on a background thread
+	private VoxelChunk GenerateChunkData(Vector2I chunkPos)
+	{
 		// Create chunk data
 		VoxelChunk chunk = new VoxelChunk(ChunkSize, ChunkHeight, chunkPos, VoxelScale);
 
 		// Check if this chunk is near any biome boundary
 		// Only calculate and store blend weights if it is
-		float blendDistance = 10f;
+		float blendDistance = 15f;
 		bool isNearBiomeBoundary = BiomeRegionGenerator.Instance.IsChunkNearBiomeBoundary(
 			chunkPos.X, chunkPos.Y, ChunkSize, blendDistance);
 
@@ -203,9 +370,10 @@ public partial class WorldGenerator : Node3D
 		// Add objects like trees based on biome
 		AddBiomeObjects(chunk, chunkPos, ChunkSize);
 
-		// First, add the chunk data to the chunk manager
-		// This makes the data available for neighboring chunks' AO calculations
-		_chunkManager.AddChunk(chunk);
+		// Return the generated chunk
+		// Note: We don't add it to the chunk manager here anymore
+		// That will be done on the main thread in ProcessCompletedChunks
+		return chunk;
 	}
 
 	// Static biome noise for use by other classes
@@ -230,11 +398,56 @@ public partial class WorldGenerator : Node3D
 		return BiomeRegionGenerator.Instance.GetBiomeType(worldX, worldZ);
 	}
 
+	// THREAD SAFETY: Use ConcurrentDictionary for thread-safe biome caching
+	private static ConcurrentDictionary<(int x, int z), BiomeType> _biomeCache = new ConcurrentDictionary<(int x, int z), BiomeType>();
+	private const int BIOME_CACHE_SIZE_LIMIT = 10000; // Limit cache size to prevent memory issues
+	private static readonly object _biomeCacheLock = new object(); // Lock for cache clearing operations
+
 	// Get biome type for a world position - static method for use by other classes
 	public static BiomeType GetBiomeType(int worldX, int worldZ)
 	{
+		// OPTIMIZATION: Round coordinates to reduce unique positions and increase cache hits
+		// This is acceptable because biomes don't change at the single-block level
+		int roundedX = worldX / 4 * 4;
+		int roundedZ = worldZ / 4 * 4;
+
+		// Create cache key
+		var cacheKey = (roundedX, roundedZ);
+
+		// THREAD SAFETY: Use thread-safe TryGetValue
+		if (_biomeCache.TryGetValue(cacheKey, out BiomeType cachedBiome))
+		{
+			return cachedBiome;
+		}
+
+		// THREAD SAFETY: Use lock for cache size check and clearing
+		// This prevents multiple threads from clearing the cache simultaneously
+		if (_biomeCache.Count > BIOME_CACHE_SIZE_LIMIT)
+		{
+			lock (_biomeCacheLock)
+			{
+				// Double-check inside lock to avoid multiple clears
+				if (_biomeCache.Count > BIOME_CACHE_SIZE_LIMIT)
+				{
+					// Create a new dictionary instead of clearing
+					// This is safer for concurrent access
+					_biomeCache = new ConcurrentDictionary<(int x, int z), BiomeType>();
+				}
+			}
+		}
+
 		// Use the BiomeRegionGenerator for biome determination
-		return BiomeRegionGenerator.Instance.GetBiomeType(worldX, worldZ);
+		BiomeType biomeType = BiomeRegionGenerator.Instance.GetBiomeType(worldX, worldZ);
+
+		// Consolidate Plains and Mountains into Forest
+		if (biomeType == BiomeType.Plains || biomeType == BiomeType.Mountains)
+		{
+			biomeType = BiomeType.Forest;
+		}
+
+		// THREAD SAFETY: Use thread-safe GetOrAdd to avoid race conditions
+		// This ensures only one thread can add a value for a given key
+		return _biomeCache.GetOrAdd(cacheKey, _ => biomeType);
 	}
 
 	// Helper method to convert noise value to biome type (kept for backward compatibility)
@@ -253,14 +466,74 @@ public partial class WorldGenerator : Node3D
 			return BiomeType.Tundra;
 	}
 
+	// OPTIMIZATION: Cache noise instances for each biome type to avoid recreating them for every voxel
+	private Dictionary<BiomeType, FastNoiseLite> _biomeNoiseCache = new Dictionary<BiomeType, FastNoiseLite>();
+	private Dictionary<string, FastNoiseLite> _specialNoiseCache = new Dictionary<string, FastNoiseLite>();
+
+	/// <summary>
+	/// Configures noise settings for a specific biome
+	/// </summary>
+	private void ConfigureBiomeNoise(FastNoiseLite noise, BiomeType biomeType)
+	{
+		// Configure noise based on biome type
+		switch (biomeType)
+		{
+			case BiomeType.Desert:
+				noise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				noise.Frequency = 0.01f;
+				break;
+
+			case BiomeType.Forest:
+				noise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				noise.Frequency = 0.015f;
+				break;
+
+			case BiomeType.Plains:
+				noise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				noise.Frequency = 0.008f;
+				break;
+
+			case BiomeType.Mountains:
+				noise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				noise.Frequency = 0.02f;
+				break;
+
+			case BiomeType.Tundra:
+				noise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				noise.Frequency = 0.012f;
+				break;
+
+			case BiomeType.Islands:
+				noise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				noise.Frequency = 0.005f;
+				break;
+
+			default:
+				noise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				noise.Frequency = 0.01f;
+				break;
+		}
+	}
+
 	/// <summary>
 	/// Generates terrain height for a specific biome
 	/// </summary>
 	private int GenerateTerrainHeight(int worldX, int worldZ, BiomeType biomeType)
 	{
-		// Create a temporary noise instance for biome-specific noise settings
-		FastNoiseLite biomeNoise = new FastNoiseLite();
-		biomeNoise.Seed = Seed;
+		// OPTIMIZATION: Use cached noise instance for this biome type if available
+		FastNoiseLite biomeNoise;
+		if (!_biomeNoiseCache.TryGetValue(biomeType, out biomeNoise))
+		{
+			// Create a new noise instance for this biome type
+			biomeNoise = new FastNoiseLite();
+			biomeNoise.Seed = Seed;
+
+			// Configure biome-specific settings
+			ConfigureBiomeNoise(biomeNoise, biomeType);
+
+			// Cache the noise instance for future use
+			_biomeNoiseCache[biomeType] = biomeNoise;
+		}
 
 		// Apply a consistent base height for all biomes
 		float baseHeight = 0.2f;
@@ -269,7 +542,8 @@ public partial class WorldGenerator : Node3D
 		// Define water level height in voxels (used consistently throughout the code)
 		int waterLevelHeight = Mathf.FloorToInt(WaterLevel * ChunkHeight);
 
-
+		// Get noise value with biome-specific settings
+		// heightNoise will be calculated in the biome-specific code below
 
 		// Set biome-specific noise characteristics
 		switch (biomeType)
@@ -285,33 +559,63 @@ public partial class WorldGenerator : Node3D
 				break;
 
 			case BiomeType.Plains:
-				// Plains: Medium-low frequency, low octaves for gentle rolling hills
+				// Plains: Enhanced terrain with more pronounced hills
+				// Use a combination of noise types for more interesting terrain
 				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				biomeNoise.Frequency = 0.01f;
+				biomeNoise.Frequency = 0.008f; // Lower frequency for larger features
 				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-				biomeNoise.FractalOctaves = 2;
-				biomeNoise.FractalLacunarity = 2.0f;
-				biomeNoise.FractalGain = 0.4f;
+				biomeNoise.FractalOctaves = 3; // More octaves for more detail
+				biomeNoise.FractalLacunarity = 2.2f; // Higher lacunarity for more variation between scales
+				biomeNoise.FractalGain = 0.5f; // Higher gain for more pronounced hills
 				break;
 
 			case BiomeType.Forest:
-				// Forest: Medium frequency, medium octaves for varied terrain
-				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				biomeNoise.Frequency = 0.012f;
-				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
-				biomeNoise.FractalOctaves = 3;
-				biomeNoise.FractalLacunarity = 2.0f;
-				biomeNoise.FractalGain = 0.5f;
+				// Get the forest sub-region for this position
+				ForestRegionGenerator.ForestSubRegion subRegion = ForestRegionGenerator.Instance.GetForestSubRegion(worldX, worldZ);
+
+				// Set noise parameters based on sub-region
+				switch (subRegion)
+				{
+					case ForestRegionGenerator.ForestSubRegion.ForestPlains:
+						// Forest Plains: Lower frequency, fewer octaves for flatter terrain
+						biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+						biomeNoise.Frequency = 0.008f;
+						biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
+						biomeNoise.FractalOctaves = 2;
+						biomeNoise.FractalLacunarity = 2.0f;
+						biomeNoise.FractalGain = 0.4f;
+						break;
+
+					case ForestRegionGenerator.ForestSubRegion.RegularForest:
+						// Regular Forest: Medium frequency, medium octaves for varied terrain
+						biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+						biomeNoise.Frequency = 0.012f;
+						biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Fbm;
+						biomeNoise.FractalOctaves = 3;
+						biomeNoise.FractalLacunarity = 2.0f;
+						biomeNoise.FractalGain = 0.5f;
+						break;
+
+					case ForestRegionGenerator.ForestSubRegion.ForestMountains:
+						// Forest Mountains: Lower frequency for smoother, more natural mountains
+						biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+						biomeNoise.Frequency = 0.008f; // Reduced from 0.015f for smoother mountains
+						biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Ridged;
+						biomeNoise.FractalOctaves = 3; // Reduced from 4 for less detail/jaggedness
+						biomeNoise.FractalLacunarity = 2.0f; // Reduced from 2.2f for smoother transitions
+						biomeNoise.FractalGain = 0.5f; // Reduced from 0.6f for less extreme height variations
+						break;
+				}
 				break;
 
 			case BiomeType.Mountains:
-				// Mountains: Medium-high frequency, ridged fractal for more dramatic terrain
+				// Mountains: Lower frequency for smoother, more natural mountains
 				biomeNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				biomeNoise.Frequency = 0.015f;
+				biomeNoise.Frequency = 0.008f; // Reduced from 0.015f for smoother mountains
 				biomeNoise.FractalType = FastNoiseLite.FractalTypeEnum.Ridged;
-				biomeNoise.FractalOctaves = 4;
-				biomeNoise.FractalLacunarity = 2.2f;
-				biomeNoise.FractalGain = 0.6f;
+				biomeNoise.FractalOctaves = 3; // Reduced from 4 for less detail/jaggedness
+				biomeNoise.FractalLacunarity = 2.0f; // Reduced from 2.2f for smoother transitions
+				biomeNoise.FractalGain = 0.5f; // Reduced from 0.6f for less extreme height variations
 				break;
 
 			case BiomeType.Tundra:
@@ -373,6 +677,185 @@ public partial class WorldGenerator : Node3D
 			// Convert to actual height value and return
 			return Mathf.FloorToInt(heightNoise * ChunkHeight);
 		}
+		// Special handling for Plains biome to add hills in specific regions
+		else if (biomeType == BiomeType.Plains)
+		{
+			// OPTIMIZATION: Use cached noise for region determination
+			FastNoiseLite regionNoise;
+			string cacheKey = "plains_region";
+
+			if (!_specialNoiseCache.TryGetValue(cacheKey, out regionNoise))
+			{
+				// Create a region noise to determine where hills should appear
+				regionNoise = new FastNoiseLite();
+				regionNoise.Seed = Seed + 200; // Different seed for region variation
+				regionNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				regionNoise.Frequency = 0.002f; // Very low frequency for large regions
+
+				// Cache for future use
+				_specialNoiseCache[cacheKey] = regionNoise;
+			}
+
+			// Get region value to determine if this area should have hills
+			float regionValue = regionNoise.GetNoise2D(worldX, worldZ);
+
+			// Convert from [-1, 1] to [0, 1]
+			regionValue = (regionValue + 1f) * 0.5f;
+
+			// OPTIMIZATION: Use cached noise for steep hill regions
+			FastNoiseLite steepRegionNoise;
+			string steepRegionCacheKey = "plains_steep_region";
+
+			if (!_specialNoiseCache.TryGetValue(steepRegionCacheKey, out steepRegionNoise))
+			{
+				// Create a second region noise for steep hills
+				steepRegionNoise = new FastNoiseLite();
+				steepRegionNoise.Seed = Seed + 300; // Different seed for steep hill regions
+				steepRegionNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				steepRegionNoise.Frequency = 0.001f; // Even lower frequency for larger, more distinct steep regions
+
+				// Cache for future use
+				_specialNoiseCache[steepRegionCacheKey] = steepRegionNoise;
+			}
+
+			// Get steep region value
+			float steepRegionValue = steepRegionNoise.GetNoise2D(worldX, worldZ);
+
+			// Convert from [-1, 1] to [0, 1]
+			steepRegionValue = (steepRegionValue + 1f) * 0.5f;
+
+			// Define thresholds for different terrain types
+			float hillRegionThreshold = 0.5f; // 50% of the Plains biome will have hills
+			float steepHillRegionThreshold = 0.85f; // 15% of the Plains biome will have steep hills
+
+			// OPTIMIZATION: Use cached noise for domain warping
+			FastNoiseLite warpNoise;
+			string warpCacheKey = "plains_warp";
+
+			if (!_specialNoiseCache.TryGetValue(warpCacheKey, out warpNoise))
+			{
+				// Create domain warping noise for more natural hill placement (shared by both hill types)
+				warpNoise = new FastNoiseLite();
+				warpNoise.Seed = Seed + 100;
+				warpNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Simplex;
+				warpNoise.Frequency = 0.008f;
+
+				// Cache for future use
+				_specialNoiseCache[warpCacheKey] = warpNoise;
+			}
+
+			// Apply domain warping to coordinates for more natural hill shapes
+			float warpX = warpNoise.GetNoise2D(worldX, worldZ) * 20.0f;
+			float warpZ = warpNoise.GetNoise2D(worldX + 500, worldZ + 500) * 20.0f;
+
+			// Check if we're in a steep hill region
+			if (steepRegionValue > steepHillRegionThreshold)
+			{
+				// Calculate how far we are into the steep hill region for smooth transitions
+				float steepRegionBlend = Mathf.Clamp((steepRegionValue - steepHillRegionThreshold) / 0.1f, 0f, 1f);
+
+				// OPTIMIZATION: Use cached noise for steep hills
+				FastNoiseLite steepHillsNoise;
+				string steepHillsCacheKey = "plains_steep_hills";
+
+				if (!_specialNoiseCache.TryGetValue(steepHillsCacheKey, out steepHillsNoise))
+				{
+					// Create a noise instance for steep hills
+					steepHillsNoise = new FastNoiseLite();
+					steepHillsNoise.Seed = Seed + 150; // Different seed for steep hill variation
+					steepHillsNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+					steepHillsNoise.Frequency = 0.006f; // Slightly higher frequency for more varied steep hills
+
+					// Cache for future use
+					_specialNoiseCache[steepHillsCacheKey] = steepHillsNoise;
+				}
+				steepHillsNoise.FractalType = FastNoiseLite.FractalTypeEnum.Ridged; // Ridged fractal for more defined hills
+				steepHillsNoise.FractalOctaves = 3; // More octaves for more detailed steep hills
+				steepHillsNoise.FractalLacunarity = 2.5f; // Higher lacunarity for more variation
+				steepHillsNoise.FractalGain = 0.8f; // Higher gain for more dramatic steep hills
+
+				// Get steep hill noise with warped coordinates
+				float steepHillNoise = steepHillsNoise.GetNoise2D(worldX + warpX, worldZ + warpZ);
+
+				// Convert from [-1, 1] to [0, 1]
+				steepHillNoise = (steepHillNoise + 1f) * 0.5f;
+
+				// Only add steep hills where the noise is above a threshold
+				float steepHillThreshold = 0.5f; // Lower threshold to create more steep hills within the region
+				float steepHillContribution = 0.0f;
+
+				if (steepHillNoise > steepHillThreshold)
+				{
+					// Scale the steep hill contribution based on how far above the threshold
+					float steepHillFactor = (steepHillNoise - steepHillThreshold) / (1.0f - steepHillThreshold);
+
+					// Apply a curve to make steep hills more pronounced
+					steepHillFactor = steepHillFactor * steepHillFactor * 1.5f; // More dramatic curve
+
+					// Add steep hill height to the base terrain, scaled by region blend for smooth transitions
+					steepHillContribution = steepHillFactor * 0.25f * steepRegionBlend; // Higher factor for steeper hills
+				}
+
+				// Combine base terrain with steep hills
+				heightNoise = baseHeight + (heightNoise * noiseContribution) + steepHillContribution;
+			}
+			// Check if we're in a regular hill region
+			else if (regionValue > hillRegionThreshold)
+			{
+				// Calculate how far we are into the hill region for smooth transitions
+				float regionBlend = Mathf.Clamp((regionValue - hillRegionThreshold) / 0.1f, 0f, 1f);
+
+				// OPTIMIZATION: Use cached noise for regular hills
+				FastNoiseLite hillsNoise;
+				string hillsCacheKey = "plains_hills";
+
+				if (!_specialNoiseCache.TryGetValue(hillsCacheKey, out hillsNoise))
+				{
+					// Create a noise instance for regular hills
+					hillsNoise = new FastNoiseLite();
+					hillsNoise.Seed = Seed + 42; // Different seed for hill variation
+					hillsNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+					hillsNoise.Frequency = 0.005f; // Lower frequency for larger hills
+
+					// Cache for future use
+					_specialNoiseCache[hillsCacheKey] = hillsNoise;
+				}
+				hillsNoise.FractalType = FastNoiseLite.FractalTypeEnum.Ridged; // Ridged fractal for more defined hills
+				hillsNoise.FractalOctaves = 2;
+				hillsNoise.FractalLacunarity = 2.0f;
+				hillsNoise.FractalGain = 0.7f; // Higher gain for more pronounced hills
+
+				// Get hill noise with warped coordinates
+				float hillNoise = hillsNoise.GetNoise2D(worldX + warpX, worldZ + warpZ);
+
+				// Convert from [-1, 1] to [0, 1]
+				hillNoise = (hillNoise + 1f) * 0.5f;
+
+				// Only add hills where the hill noise is above a threshold
+				float hillThreshold = 0.55f;
+				float hillContribution = 0.0f;
+
+				if (hillNoise > hillThreshold)
+				{
+					// Scale the hill contribution based on how far above the threshold
+					float hillFactor = (hillNoise - hillThreshold) / (1.0f - hillThreshold);
+
+					// Apply a curve to make hills more pronounced
+					hillFactor = hillFactor * hillFactor * 1.2f;
+
+					// Add hill height to the base terrain, scaled by region blend for smooth transitions
+					hillContribution = hillFactor * 0.15f * regionBlend; // Hill height factor with region blending
+				}
+
+				// Combine base terrain with hills
+				heightNoise = baseHeight + (heightNoise * noiseContribution) + hillContribution;
+			}
+			else
+			{
+				// Standard terrain generation for flat areas of Plains biome
+				heightNoise = baseHeight + (heightNoise * noiseContribution);
+			}
+		}
 		else
 		{
 			// Standard terrain generation for other biomes
@@ -394,36 +877,79 @@ public partial class WorldGenerator : Node3D
 	/// <returns>Blended terrain height</returns>
 	private int GenerateBlendedTerrainHeight(int worldX, int worldZ, Dictionary<BiomeType, float> biomeBlendWeights)
 	{
-		// Fast path: If there's only one biome with weight 1.0, use the standard method
+		// OPTIMIZATION: Fast path: If there's only one biome with weight 1.0, use the standard method
 		if (biomeBlendWeights.Count == 1)
 		{
 			BiomeType biomeType = biomeBlendWeights.Keys.First();
 			return GenerateTerrainHeight(worldX, worldZ, biomeType);
 		}
 
-		// Fast path: If there are only two biomes and one has a weight of 1.0
+		// OPTIMIZATION: Fast path: If there are only two biomes, use a simplified approach
 		if (biomeBlendWeights.Count == 2)
 		{
-			bool hasFullWeight = false;
-			BiomeType fullWeightBiome = BiomeType.Plains; // Default, will be overwritten
+			var enumerator = biomeBlendWeights.GetEnumerator();
+			enumerator.MoveNext();
+			var firstEntry = enumerator.Current;
+			BiomeType firstBiome = firstEntry.Key;
+			float firstWeight = firstEntry.Value;
 
-			foreach (var entry in biomeBlendWeights)
+			// If first biome has full weight, just use it
+			if (Math.Abs(firstWeight - 1.0f) < 0.001f)
 			{
-				if (Math.Abs(entry.Value - 1.0f) < 0.001f) // Check if weight is very close to 1.0
-				{
-					hasFullWeight = true;
-					fullWeightBiome = entry.Key;
-					break;
-				}
+				return GenerateTerrainHeight(worldX, worldZ, firstBiome);
 			}
 
-			if (hasFullWeight)
+			// Get the second biome
+			enumerator.MoveNext();
+			var secondEntry = enumerator.Current;
+			BiomeType secondBiome = secondEntry.Key;
+			float secondWeight = secondEntry.Value;
+
+			// If second biome has full weight, just use it
+			if (Math.Abs(secondWeight - 1.0f) < 0.001f)
 			{
-				return GenerateTerrainHeight(worldX, worldZ, fullWeightBiome);
+				return GenerateTerrainHeight(worldX, worldZ, secondBiome);
+			}
+
+			// Simple linear interpolation between two biomes
+			int firstHeight = GenerateTerrainHeight(worldX, worldZ, firstBiome);
+			int secondHeight = GenerateTerrainHeight(worldX, worldZ, secondBiome);
+
+			return Mathf.RoundToInt(firstHeight * firstWeight + secondHeight * secondWeight);
+		}
+
+		// OPTIMIZATION: For 3+ biomes, only process the top 2 contributing biomes
+		// This significantly reduces the number of terrain height calculations
+		List<(BiomeType biome, float weight)> topBiomes = new List<(BiomeType, float)>();
+
+		foreach (var entry in biomeBlendWeights)
+		{
+			if (entry.Value > 0.001f) // Skip very small weights
+			{
+				topBiomes.Add((entry.Key, entry.Value));
 			}
 		}
 
-		// Calculate weighted height from all contributing biomes
+		// Sort by weight descending
+		topBiomes.Sort((a, b) => b.weight.CompareTo(a.weight));
+
+		// Take only top 2 biomes
+		if (topBiomes.Count > 2)
+		{
+			// Normalize the weights of the top 2 biomes
+			float totalTopWeight = topBiomes[0].weight + topBiomes[1].weight;
+			float normalizedWeight1 = topBiomes[0].weight / totalTopWeight;
+			float normalizedWeight2 = topBiomes[1].weight / totalTopWeight;
+
+			// Calculate heights for top 2 biomes
+			int height1 = GenerateTerrainHeight(worldX, worldZ, topBiomes[0].biome);
+			int height2 = GenerateTerrainHeight(worldX, worldZ, topBiomes[1].biome);
+
+			// Linear interpolation
+			return Mathf.RoundToInt(height1 * normalizedWeight1 + height2 * normalizedWeight2);
+		}
+
+		// If we have fewer than 2 biomes with significant weight, use the original approach
 		float totalHeight = 0f;
 		float totalWeight = 0f;
 
@@ -455,16 +981,7 @@ public partial class WorldGenerator : Node3D
 		}
 
 		// Convert to integer height
-		int blendedHeight = Mathf.RoundToInt(totalHeight);
-
-		// Debug output for the first chunk to help understand terrain height
-		if (worldX == 0 && worldZ == 0)
-		{
-			string biomeInfo = string.Join(", ", biomeBlendWeights.Select(b => $"{b.Key}:{b.Value:F2}"));
-			GD.Print($"Blended terrain height at origin: {blendedHeight}, biomes: {biomeInfo}");
-		}
-
-		return blendedHeight;
+		return Mathf.RoundToInt(totalHeight);
 	}
 
 	/// <summary>
@@ -759,8 +1276,14 @@ public partial class WorldGenerator : Node3D
 					switch (biomeType)
 					{
 						case BiomeType.Forest:
-							// Add trees in Forest biome
-							if (random.NextDouble() < 0.01) // Adjusted to a more reasonable value
+							// Get the forest sub-region for this position
+							ForestRegionGenerator.ForestSubRegion subRegion = ForestRegionGenerator.Instance.GetForestSubRegion(worldX, worldZ);
+
+							// Get tree density based on sub-region
+							float treeDensity = ForestRegionGenerator.Instance.GetTreeDensity(worldX, worldZ);
+
+							// Add trees with density based on sub-region
+							if (random.NextDouble() < treeDensity)
 							{
 								if (surfaceHeight >= 0)
 								{
@@ -768,11 +1291,47 @@ public partial class WorldGenerator : Node3D
 									// Trees need a larger radius (6) to prevent overlap
 									if (CanPlaceFeature(featureMap, x, z, 6, chunkSize))
 									{
-										// More lenient check - allow trees on any solid surface in forest biome
-										GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
+										// Generate different tree types based on sub-region
+										switch (subRegion)
+										{
+											case ForestRegionGenerator.ForestSubRegion.ForestPlains:
+												// Smaller, sparser trees in plains areas
+												if (random.NextDouble() < 0.7f)
+												{
+													// 70% chance for a bush in plains areas
+													GenerateBush(chunk, x, z, surfaceHeight, random);
+													MarkFeaturePosition(featureMap, x, z, 3, chunkSize);
+												}
+												else
+												{
+													// 30% chance for a small tree
+													GenerateDetailedTree(chunk, x, z, surfaceHeight, random, smallTree: true);
+													MarkFeaturePosition(featureMap, x, z, 5, chunkSize);
+												}
+												break;
 
-										// Mark the area as occupied
-										MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
+											case ForestRegionGenerator.ForestSubRegion.RegularForest:
+												// Regular trees in forest areas
+												GenerateDetailedTree(chunk, x, z, surfaceHeight, random, smallTree: false);
+												MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
+												break;
+
+											case ForestRegionGenerator.ForestSubRegion.ForestMountains:
+												// Taller, denser trees in mountain areas
+												if (random.NextDouble() < 0.2f)
+												{
+													// 20% chance for a rock formation in mountain areas
+													GenerateRockSpire(chunk, x, z, surfaceHeight, random);
+													MarkFeaturePosition(featureMap, x, z, 5, chunkSize);
+												}
+												else
+												{
+													// 80% chance for a tall tree
+													GenerateDetailedTree(chunk, x, z, surfaceHeight, random, tallTree: true);
+													MarkFeaturePosition(featureMap, x, z, 7, chunkSize);
+												}
+												break;
+										}
 									}
 								}
 							}
@@ -1039,16 +1598,45 @@ public partial class WorldGenerator : Node3D
 		}
 	}
 
-	private static void GenerateDetailedTree(VoxelChunk chunk, int x, int z, int surfaceHeight, Random random)
+	private static void GenerateDetailedTree(VoxelChunk chunk, int x, int z, int surfaceHeight, Random random, bool smallTree = false, bool tallTree = false)
 	{
-		// Tree parameters - doubled for higher resolution
-		int trunkHeight = random.Next(12, 24); // Doubled height for higher resolution (was 6-10)
-		int trunkThickness = random.Next(1, 3); // Doubled height for higher resolution (was 6-10)
-		int trunkThicknessBase = random.Next(6, 8); // Doubled height for higher resolution (was 6-10)
-		int leafRadius = random.Next(6, 9);    // Doubled radius for higher resolution (was 2-4)
-		int leafHeight = random.Next(10, 11);   // Doubled height for higher resolution (was 4-6)
-		int trunkShiftX = random.Next(-6, 6);
-		int trunkShiftZ = random.Next(-6, 6);
+		// Tree parameters based on size
+		int trunkHeight, trunkThickness, trunkThicknessBase, leafRadius, leafHeight;
+		int trunkShiftX, trunkShiftZ;
+
+		if (smallTree)
+		{
+			// Small tree parameters
+			trunkHeight = random.Next(8, 14); // Shorter trunk
+			trunkThickness = 1; // Thinner trunk
+			trunkThicknessBase = random.Next(3, 5); // Smaller base
+			leafRadius = random.Next(4, 6); // Smaller canopy
+			leafHeight = random.Next(6, 8); // Shorter canopy
+			trunkShiftX = random.Next(-3, 3); // Less trunk bend
+			trunkShiftZ = random.Next(-3, 3);
+		}
+		else if (tallTree)
+		{
+			// Tall tree parameters
+			trunkHeight = random.Next(20, 30); // Taller trunk
+			trunkThickness = random.Next(2, 3); // Thicker trunk
+			trunkThicknessBase = random.Next(7, 10); // Larger base
+			leafRadius = random.Next(7, 11); // Larger canopy
+			leafHeight = random.Next(12, 16); // Taller canopy
+			trunkShiftX = random.Next(-8, 8); // More trunk bend
+			trunkShiftZ = random.Next(-8, 8);
+		}
+		else
+		{
+			// Regular tree parameters
+			trunkHeight = random.Next(12, 24); // Standard height
+			trunkThickness = random.Next(1, 3); // Standard thickness
+			trunkThicknessBase = random.Next(6, 8); // Standard base
+			leafRadius = random.Next(6, 9); // Standard canopy radius
+			leafHeight = random.Next(10, 11); // Standard canopy height
+			trunkShiftX = random.Next(-6, 6); // Standard trunk bend
+			trunkShiftZ = random.Next(-6, 6);
+		}
 
 		// Generate trunk with more detail
 		// Make the trunk thicker at the base (2x2 for first few blocks)

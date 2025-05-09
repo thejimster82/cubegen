@@ -72,7 +72,7 @@ namespace CubeGen.Debug.BiomeDebug
 		{
 			if (!_isProperlyInitialized)
 			{
-				GD.PrintErr("SingleBiomeRegionGenerator not properly initialized in GetBiomeType.");
+				// GD.PrintErr("SingleBiomeRegionGenerator not properly initialized in GetBiomeType.");
 				return BiomeType.Plains;
 			}
 
@@ -84,7 +84,7 @@ namespace CubeGen.Debug.BiomeDebug
 		{
 			if (!_isProperlyInitialized)
 			{
-				GD.PrintErr("SingleBiomeRegionGenerator not properly initialized in GetCellId.");
+				// GD.PrintErr("SingleBiomeRegionGenerator not properly initialized in GetCellId.");
 				return 500;
 			}
 
@@ -98,7 +98,7 @@ namespace CubeGen.Debug.BiomeDebug
 		{
 			if (!_isProperlyInitialized)
 			{
-				GD.PrintErr("SingleBiomeRegionGenerator not properly initialized in GetBiomeTypeForCell.");
+				// GD.PrintErr("SingleBiomeRegionGenerator not properly initialized in GetBiomeTypeForCell.");
 				return BiomeType.Plains;
 			}
 

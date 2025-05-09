@@ -1,6 +1,7 @@
 using Godot;
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using CubeGen.World.Common;
 using CubeGen.World.Generation;
 
@@ -16,13 +17,21 @@ public class VoxelChunk
 
     private VoxelType[][][] _voxels;
 
+    // THREAD SAFETY: Use ConcurrentDictionary for thread-safe access
     // Dictionary to store decoration placement information
     // Key is a string in the format "x,y,z", value is the placement data
-    private Dictionary<string, DecorationClusters.DecorationPlacement> _decorationPlacements = new Dictionary<string, DecorationClusters.DecorationPlacement>();
+    private ConcurrentDictionary<string, DecorationClusters.DecorationPlacement> _decorationPlacements =
+        new ConcurrentDictionary<string, DecorationClusters.DecorationPlacement>();
 
+    // THREAD SAFETY: Use ConcurrentDictionary for thread-safe access
     // Dictionary to store biome blend weights for each voxel
     // Key is a string in the format "x,z", value is a dictionary mapping BiomeType to blend weight (0.0-1.0)
-    private Dictionary<string, Dictionary<BiomeType, float>> _biomeBlendWeights = new Dictionary<string, Dictionary<BiomeType, float>>();
+    private ConcurrentDictionary<string, ConcurrentDictionary<BiomeType, float>> _biomeBlendWeights =
+        new ConcurrentDictionary<string, ConcurrentDictionary<BiomeType, float>>();
+
+    // Lock objects for synchronizing access to dictionaries when needed
+    private readonly object _decorationLock = new object();
+    private readonly object _biomeLock = new object();
 
     public VoxelChunk(int size, int height, Vector2I position, float scale = 1.0f)
     {
@@ -146,7 +155,8 @@ public class VoxelChunk
         if (IsInBounds(x, y, z))
         {
             string key = GetDecorationKey(x, y, z);
-            _decorationPlacements[key] = placement;
+            // THREAD SAFETY: Use thread-safe AddOrUpdate method
+            _decorationPlacements.AddOrUpdate(key, placement, (k, oldValue) => placement);
         }
     }
 
@@ -158,6 +168,7 @@ public class VoxelChunk
         if (IsInBounds(x, y, z))
         {
             string key = GetDecorationKey(x, y, z);
+            // THREAD SAFETY: TryGetValue is already thread-safe in ConcurrentDictionary
             return _decorationPlacements.TryGetValue(key, out placement);
         }
 
@@ -170,6 +181,7 @@ public class VoxelChunk
         if (IsInBounds(x, y, z))
         {
             string key = GetDecorationKey(x, y, z);
+            // THREAD SAFETY: ContainsKey is already thread-safe in ConcurrentDictionary
             return _decorationPlacements.ContainsKey(key);
         }
 
@@ -195,14 +207,11 @@ public class VoxelChunk
         {
             string key = GetBiomeBlendKey(x, z);
 
-            // Initialize the dictionary for this position if it doesn't exist
-            if (!_biomeBlendWeights.ContainsKey(key))
-            {
-                _biomeBlendWeights[key] = new Dictionary<BiomeType, float>();
-            }
+            // THREAD SAFETY: Use GetOrAdd to safely initialize the inner dictionary
+            var innerDict = _biomeBlendWeights.GetOrAdd(key, new ConcurrentDictionary<BiomeType, float>());
 
-            // Set the blend weight
-            _biomeBlendWeights[key][biomeType] = weight;
+            // THREAD SAFETY: Use AddOrUpdate for thread-safe updates to the inner dictionary
+            innerDict.AddOrUpdate(biomeType, weight, (k, oldValue) => weight);
         }
     }
 
@@ -219,6 +228,7 @@ public class VoxelChunk
         {
             string key = GetBiomeBlendKey(x, z);
 
+            // THREAD SAFETY: TryGetValue is already thread-safe in ConcurrentDictionary
             if (_biomeBlendWeights.TryGetValue(key, out var weights) &&
                 weights.TryGetValue(biomeType, out var weight))
             {
@@ -241,9 +251,22 @@ public class VoxelChunk
         {
             string key = GetBiomeBlendKey(x, z);
 
+            // THREAD SAFETY: TryGetValue is already thread-safe in ConcurrentDictionary
             if (_biomeBlendWeights.TryGetValue(key, out var weights))
             {
-                return new Dictionary<BiomeType, float>(weights); // Return a copy to prevent modification
+                // Create a thread-safe copy of the weights
+                Dictionary<BiomeType, float> result = new Dictionary<BiomeType, float>();
+
+                // Lock to ensure consistent copy
+                lock (_biomeLock)
+                {
+                    foreach (var pair in weights)
+                    {
+                        result[pair.Key] = pair.Value;
+                    }
+                }
+
+                return result;
             }
         }
 
@@ -261,7 +284,12 @@ public class VoxelChunk
         if (x >= 0 && x < Size && z >= 0 && z < Size)
         {
             string key = GetBiomeBlendKey(x, z);
-            return _biomeBlendWeights.ContainsKey(key) && _biomeBlendWeights[key].Count > 0;
+
+            // THREAD SAFETY: Use thread-safe operations
+            if (_biomeBlendWeights.TryGetValue(key, out var weights))
+            {
+                return weights.Count > 0;
+            }
         }
 
         return false;

@@ -1,0 +1,4 @@
+[gd_scene format=3 uid="uid://byl63lrsd7pv0"]
+
+[node name="ViewDistanceCylinder" type="Node3D"]
+visible = false

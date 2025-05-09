@@ -124,6 +124,11 @@ public class ChunkMeshGenerator
     // Check if all neighboring chunks needed for AO calculation are available
     private bool AreNeighboringChunksAvailable(VoxelChunk chunk)
     {
+        // OPTIMIZATION: Skip neighbor check entirely to speed up mesh generation
+        // This will slightly reduce AO quality at chunk boundaries but significantly improve generation speed
+        return true;
+
+        /* Original code commented out for reference
         // Get the position of the chunk
         Vector2I pos = chunk.Position;
 
@@ -153,6 +158,7 @@ public class ChunkMeshGenerator
         // This is a compromise that allows faster loading while still
         // maintaining decent AO quality
         return availableNeighbors >= 3;
+        */
     }
 
     private (ArrayMesh, List<Vector3>) GenerateMesh(VoxelChunk chunk)

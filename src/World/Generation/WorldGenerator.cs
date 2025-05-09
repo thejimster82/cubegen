@@ -265,14 +265,74 @@ public partial class WorldGenerator : Node3D
 			return BiomeType.Tundra;
 	}
 
+	// OPTIMIZATION: Cache noise instances for each biome type to avoid recreating them for every voxel
+	private Dictionary<BiomeType, FastNoiseLite> _biomeNoiseCache = new Dictionary<BiomeType, FastNoiseLite>();
+	private Dictionary<string, FastNoiseLite> _specialNoiseCache = new Dictionary<string, FastNoiseLite>();
+
+	/// <summary>
+	/// Configures noise settings for a specific biome
+	/// </summary>
+	private void ConfigureBiomeNoise(FastNoiseLite noise, BiomeType biomeType)
+	{
+		// Configure noise based on biome type
+		switch (biomeType)
+		{
+			case BiomeType.Desert:
+				noise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				noise.Frequency = 0.01f;
+				break;
+
+			case BiomeType.Forest:
+				noise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				noise.Frequency = 0.015f;
+				break;
+
+			case BiomeType.Plains:
+				noise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				noise.Frequency = 0.008f;
+				break;
+
+			case BiomeType.Mountains:
+				noise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				noise.Frequency = 0.02f;
+				break;
+
+			case BiomeType.Tundra:
+				noise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				noise.Frequency = 0.012f;
+				break;
+
+			case BiomeType.Islands:
+				noise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				noise.Frequency = 0.005f;
+				break;
+
+			default:
+				noise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				noise.Frequency = 0.01f;
+				break;
+		}
+	}
+
 	/// <summary>
 	/// Generates terrain height for a specific biome
 	/// </summary>
 	private int GenerateTerrainHeight(int worldX, int worldZ, BiomeType biomeType)
 	{
-		// Create a temporary noise instance for biome-specific noise settings
-		FastNoiseLite biomeNoise = new FastNoiseLite();
-		biomeNoise.Seed = Seed;
+		// OPTIMIZATION: Use cached noise instance for this biome type if available
+		FastNoiseLite biomeNoise;
+		if (!_biomeNoiseCache.TryGetValue(biomeType, out biomeNoise))
+		{
+			// Create a new noise instance for this biome type
+			biomeNoise = new FastNoiseLite();
+			biomeNoise.Seed = Seed;
+
+			// Configure biome-specific settings
+			ConfigureBiomeNoise(biomeNoise, biomeType);
+
+			// Cache the noise instance for future use
+			_biomeNoiseCache[biomeType] = biomeNoise;
+		}
 
 		// Apply a consistent base height for all biomes
 		float baseHeight = 0.2f;
@@ -281,7 +341,8 @@ public partial class WorldGenerator : Node3D
 		// Define water level height in voxels (used consistently throughout the code)
 		int waterLevelHeight = Mathf.FloorToInt(WaterLevel * ChunkHeight);
 
-
+		// Get noise value with biome-specific settings
+		// heightNoise will be calculated in the biome-specific code below
 
 		// Set biome-specific noise characteristics
 		switch (biomeType)
@@ -418,11 +479,21 @@ public partial class WorldGenerator : Node3D
 		// Special handling for Plains biome to add hills in specific regions
 		else if (biomeType == BiomeType.Plains)
 		{
-			// Create a region noise to determine where hills should appear
-			FastNoiseLite regionNoise = new FastNoiseLite();
-			regionNoise.Seed = Seed + 200; // Different seed for region variation
-			regionNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-			regionNoise.Frequency = 0.002f; // Very low frequency for large regions
+			// OPTIMIZATION: Use cached noise for region determination
+			FastNoiseLite regionNoise;
+			string cacheKey = "plains_region";
+
+			if (!_specialNoiseCache.TryGetValue(cacheKey, out regionNoise))
+			{
+				// Create a region noise to determine where hills should appear
+				regionNoise = new FastNoiseLite();
+				regionNoise.Seed = Seed + 200; // Different seed for region variation
+				regionNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				regionNoise.Frequency = 0.002f; // Very low frequency for large regions
+
+				// Cache for future use
+				_specialNoiseCache[cacheKey] = regionNoise;
+			}
 
 			// Get region value to determine if this area should have hills
 			float regionValue = regionNoise.GetNoise2D(worldX, worldZ);
@@ -430,11 +501,21 @@ public partial class WorldGenerator : Node3D
 			// Convert from [-1, 1] to [0, 1]
 			regionValue = (regionValue + 1f) * 0.5f;
 
-			// Create a second region noise for steep hills
-			FastNoiseLite steepRegionNoise = new FastNoiseLite();
-			steepRegionNoise.Seed = Seed + 300; // Different seed for steep hill regions
-			steepRegionNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-			steepRegionNoise.Frequency = 0.001f; // Even lower frequency for larger, more distinct steep regions
+			// OPTIMIZATION: Use cached noise for steep hill regions
+			FastNoiseLite steepRegionNoise;
+			string steepRegionCacheKey = "plains_steep_region";
+
+			if (!_specialNoiseCache.TryGetValue(steepRegionCacheKey, out steepRegionNoise))
+			{
+				// Create a second region noise for steep hills
+				steepRegionNoise = new FastNoiseLite();
+				steepRegionNoise.Seed = Seed + 300; // Different seed for steep hill regions
+				steepRegionNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+				steepRegionNoise.Frequency = 0.001f; // Even lower frequency for larger, more distinct steep regions
+
+				// Cache for future use
+				_specialNoiseCache[steepRegionCacheKey] = steepRegionNoise;
+			}
 
 			// Get steep region value
 			float steepRegionValue = steepRegionNoise.GetNoise2D(worldX, worldZ);
@@ -446,11 +527,21 @@ public partial class WorldGenerator : Node3D
 			float hillRegionThreshold = 0.5f; // 50% of the Plains biome will have hills
 			float steepHillRegionThreshold = 0.85f; // 15% of the Plains biome will have steep hills
 
-			// Create domain warping noise for more natural hill placement (shared by both hill types)
-			FastNoiseLite warpNoise = new FastNoiseLite();
-			warpNoise.Seed = Seed + 100;
-			warpNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Simplex;
-			warpNoise.Frequency = 0.008f;
+			// OPTIMIZATION: Use cached noise for domain warping
+			FastNoiseLite warpNoise;
+			string warpCacheKey = "plains_warp";
+
+			if (!_specialNoiseCache.TryGetValue(warpCacheKey, out warpNoise))
+			{
+				// Create domain warping noise for more natural hill placement (shared by both hill types)
+				warpNoise = new FastNoiseLite();
+				warpNoise.Seed = Seed + 100;
+				warpNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Simplex;
+				warpNoise.Frequency = 0.008f;
+
+				// Cache for future use
+				_specialNoiseCache[warpCacheKey] = warpNoise;
+			}
 
 			// Apply domain warping to coordinates for more natural hill shapes
 			float warpX = warpNoise.GetNoise2D(worldX, worldZ) * 20.0f;
@@ -462,11 +553,21 @@ public partial class WorldGenerator : Node3D
 				// Calculate how far we are into the steep hill region for smooth transitions
 				float steepRegionBlend = Mathf.Clamp((steepRegionValue - steepHillRegionThreshold) / 0.1f, 0f, 1f);
 
-				// Create a noise instance for steep hills
-				FastNoiseLite steepHillsNoise = new FastNoiseLite();
-				steepHillsNoise.Seed = Seed + 150; // Different seed for steep hill variation
-				steepHillsNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				steepHillsNoise.Frequency = 0.006f; // Slightly higher frequency for more varied steep hills
+				// OPTIMIZATION: Use cached noise for steep hills
+				FastNoiseLite steepHillsNoise;
+				string steepHillsCacheKey = "plains_steep_hills";
+
+				if (!_specialNoiseCache.TryGetValue(steepHillsCacheKey, out steepHillsNoise))
+				{
+					// Create a noise instance for steep hills
+					steepHillsNoise = new FastNoiseLite();
+					steepHillsNoise.Seed = Seed + 150; // Different seed for steep hill variation
+					steepHillsNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+					steepHillsNoise.Frequency = 0.006f; // Slightly higher frequency for more varied steep hills
+
+					// Cache for future use
+					_specialNoiseCache[steepHillsCacheKey] = steepHillsNoise;
+				}
 				steepHillsNoise.FractalType = FastNoiseLite.FractalTypeEnum.Ridged; // Ridged fractal for more defined hills
 				steepHillsNoise.FractalOctaves = 3; // More octaves for more detailed steep hills
 				steepHillsNoise.FractalLacunarity = 2.5f; // Higher lacunarity for more variation
@@ -503,11 +604,21 @@ public partial class WorldGenerator : Node3D
 				// Calculate how far we are into the hill region for smooth transitions
 				float regionBlend = Mathf.Clamp((regionValue - hillRegionThreshold) / 0.1f, 0f, 1f);
 
-				// Create a noise instance for regular hills
-				FastNoiseLite hillsNoise = new FastNoiseLite();
-				hillsNoise.Seed = Seed + 42; // Different seed for hill variation
-				hillsNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
-				hillsNoise.Frequency = 0.005f; // Lower frequency for larger hills
+				// OPTIMIZATION: Use cached noise for regular hills
+				FastNoiseLite hillsNoise;
+				string hillsCacheKey = "plains_hills";
+
+				if (!_specialNoiseCache.TryGetValue(hillsCacheKey, out hillsNoise))
+				{
+					// Create a noise instance for regular hills
+					hillsNoise = new FastNoiseLite();
+					hillsNoise.Seed = Seed + 42; // Different seed for hill variation
+					hillsNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+					hillsNoise.Frequency = 0.005f; // Lower frequency for larger hills
+
+					// Cache for future use
+					_specialNoiseCache[hillsCacheKey] = hillsNoise;
+				}
 				hillsNoise.FractalType = FastNoiseLite.FractalTypeEnum.Ridged; // Ridged fractal for more defined hills
 				hillsNoise.FractalOctaves = 2;
 				hillsNoise.FractalLacunarity = 2.0f;
@@ -565,36 +676,79 @@ public partial class WorldGenerator : Node3D
 	/// <returns>Blended terrain height</returns>
 	private int GenerateBlendedTerrainHeight(int worldX, int worldZ, Dictionary<BiomeType, float> biomeBlendWeights)
 	{
-		// Fast path: If there's only one biome with weight 1.0, use the standard method
+		// OPTIMIZATION: Fast path: If there's only one biome with weight 1.0, use the standard method
 		if (biomeBlendWeights.Count == 1)
 		{
 			BiomeType biomeType = biomeBlendWeights.Keys.First();
 			return GenerateTerrainHeight(worldX, worldZ, biomeType);
 		}
 
-		// Fast path: If there are only two biomes and one has a weight of 1.0
+		// OPTIMIZATION: Fast path: If there are only two biomes, use a simplified approach
 		if (biomeBlendWeights.Count == 2)
 		{
-			bool hasFullWeight = false;
-			BiomeType fullWeightBiome = BiomeType.Plains; // Default, will be overwritten
+			var enumerator = biomeBlendWeights.GetEnumerator();
+			enumerator.MoveNext();
+			var firstEntry = enumerator.Current;
+			BiomeType firstBiome = firstEntry.Key;
+			float firstWeight = firstEntry.Value;
 
-			foreach (var entry in biomeBlendWeights)
+			// If first biome has full weight, just use it
+			if (Math.Abs(firstWeight - 1.0f) < 0.001f)
 			{
-				if (Math.Abs(entry.Value - 1.0f) < 0.001f) // Check if weight is very close to 1.0
-				{
-					hasFullWeight = true;
-					fullWeightBiome = entry.Key;
-					break;
-				}
+				return GenerateTerrainHeight(worldX, worldZ, firstBiome);
 			}
 
-			if (hasFullWeight)
+			// Get the second biome
+			enumerator.MoveNext();
+			var secondEntry = enumerator.Current;
+			BiomeType secondBiome = secondEntry.Key;
+			float secondWeight = secondEntry.Value;
+
+			// If second biome has full weight, just use it
+			if (Math.Abs(secondWeight - 1.0f) < 0.001f)
 			{
-				return GenerateTerrainHeight(worldX, worldZ, fullWeightBiome);
+				return GenerateTerrainHeight(worldX, worldZ, secondBiome);
+			}
+
+			// Simple linear interpolation between two biomes
+			int firstHeight = GenerateTerrainHeight(worldX, worldZ, firstBiome);
+			int secondHeight = GenerateTerrainHeight(worldX, worldZ, secondBiome);
+
+			return Mathf.RoundToInt(firstHeight * firstWeight + secondHeight * secondWeight);
+		}
+
+		// OPTIMIZATION: For 3+ biomes, only process the top 2 contributing biomes
+		// This significantly reduces the number of terrain height calculations
+		List<(BiomeType biome, float weight)> topBiomes = new List<(BiomeType, float)>();
+
+		foreach (var entry in biomeBlendWeights)
+		{
+			if (entry.Value > 0.001f) // Skip very small weights
+			{
+				topBiomes.Add((entry.Key, entry.Value));
 			}
 		}
 
-		// Calculate weighted height from all contributing biomes
+		// Sort by weight descending
+		topBiomes.Sort((a, b) => b.weight.CompareTo(a.weight));
+
+		// Take only top 2 biomes
+		if (topBiomes.Count > 2)
+		{
+			// Normalize the weights of the top 2 biomes
+			float totalTopWeight = topBiomes[0].weight + topBiomes[1].weight;
+			float normalizedWeight1 = topBiomes[0].weight / totalTopWeight;
+			float normalizedWeight2 = topBiomes[1].weight / totalTopWeight;
+
+			// Calculate heights for top 2 biomes
+			int height1 = GenerateTerrainHeight(worldX, worldZ, topBiomes[0].biome);
+			int height2 = GenerateTerrainHeight(worldX, worldZ, topBiomes[1].biome);
+
+			// Linear interpolation
+			return Mathf.RoundToInt(height1 * normalizedWeight1 + height2 * normalizedWeight2);
+		}
+
+		// If we have fewer than 2 biomes with significant weight, use the original approach
 		float totalHeight = 0f;
 		float totalWeight = 0f;
 
@@ -626,16 +780,7 @@ public partial class WorldGenerator : Node3D
 		}
 
 		// Convert to integer height
-		int blendedHeight = Mathf.RoundToInt(totalHeight);
-
-		// Debug output for the first chunk to help understand terrain height
-		if (worldX == 0 && worldZ == 0)
-		{
-			string biomeInfo = string.Join(", ", biomeBlendWeights.Select(b => $"{b.Key}:{b.Value:F2}"));
-			GD.Print($"Blended terrain height at origin: {blendedHeight}, biomes: {biomeInfo}");
-		}
-
-		return blendedHeight;
+		return Mathf.RoundToInt(totalHeight);
 	}
 
 	/// <summary>

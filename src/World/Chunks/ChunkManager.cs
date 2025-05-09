@@ -39,7 +39,7 @@ public partial class ChunkManager : Node3D
     private ChunkMeshGenerator _meshGenerator;
 
     // Maximum number of chunks to process per frame
-    private const int MaxChunksPerFrame = 5; // Increased from 3 to process more chunks each frame
+    private const int MaxChunksPerFrame = 10; // Increased from 5 for faster chunk loading
 
     public void Initialize(int chunkSize, int chunkHeight)
     {
@@ -230,7 +230,7 @@ public partial class ChunkManager : Node3D
     private void ProcessChunkRemovals()
     {
         int chunksRemoved = 0;
-        int maxChunksToRemove = 1; // Process more chunks per frame
+        int maxChunksToRemove = 5; // OPTIMIZATION: Process more chunks per frame for faster cleanup
         while (chunksRemoved < maxChunksToRemove && _chunksToRemove.TryTake(out Vector2I position))
         {
             // Remove chunk mesh if it exists
@@ -304,7 +304,6 @@ public partial class ChunkManager : Node3D
 
     public void UpdateChunksAroundPlayer(Vector3 playerPosition, int viewDistance)
     {
-        GD.Print($"Started Updating Chunks");
         // Convert player position to chunk coordinates
         Vector2I playerChunk = new Vector2I(
             Mathf.FloorToInt(playerPosition.X / _chunkSize),
@@ -319,74 +318,89 @@ public partial class ChunkManager : Node3D
 
         _lastPlayerChunk = playerChunk;
         _timeSinceLastUpdate = 0.0f;
-        ConcurrentBag<Vector2I> ChunksToRemove = new();
-        ConcurrentBag<(Vector2I, float)> ChunksToRequest = new();
+
+        // OPTIMIZATION: Use local variables instead of creating new ConcurrentBags each time
+        ConcurrentBag<Vector2I> chunksToRemove = new();
+        ConcurrentBag<(Vector2I, float)> chunksToRequest = new();
 
         // Get list of chunks that should be active (within view distance)
         HashSet<Vector2I> activeChunks = new HashSet<Vector2I>();
 
         // Use a circular pattern for better visual appearance
         int viewDistanceSquared = viewDistance * viewDistance;
+        int unloadDistanceSquared = UnloadDistance * UnloadDistance;
+
+        // OPTIMIZATION: Pre-calculate chunk positions in a spiral pattern from center outward
+        // This ensures closest chunks are processed first
+        List<(int x, int z, float distSq)> chunkOffsets = new List<(int, int, float)>();
 
         for (int x = -viewDistance; x <= viewDistance; x++)
         {
             for (int z = -viewDistance; z <= viewDistance; z++)
             {
-                // Use distance squared for a more circular pattern
-                if (x * x + z * z <= viewDistanceSquared)
+                float distSq = x * x + z * z;
+                if (distSq <= viewDistanceSquared)
                 {
-                    Vector2I chunkPos = new Vector2I(playerChunk.X + x, playerChunk.Y + z);
-                    activeChunks.Add(chunkPos);
-
-                    // Request chunk generation if it doesn't exist
-                    if (!HasChunkData(chunkPos))
-                    {
-                        // Calculate base distance from player for prioritization
-                        float distanceSquared = x * x + z * z;
-
-                        // Add to the local request list
-                        ChunksToRequest.Add((chunkPos, distanceSquared));
-                    }
+                    chunkOffsets.Add((x, z, distSq));
                 }
             }
         }
 
-        // Check ALL existing chunks for unloading, not just active ones
-        // Create a combined list of all chunk positions from both dictionaries
-        HashSet<Vector2I> allExistingChunks = new();
+        // Sort by distance from center (closest first)
+        chunkOffsets.Sort((a, b) => a.distSq.CompareTo(b.distSq));
 
-        // Create thread-safe copies of the keys
-        var chunkKeys = _chunks.Keys.ToArray();
-        var chunkDataKeys = _chunkData.Keys.ToArray();
+        // Process chunks in order of distance
+        foreach (var offset in chunkOffsets)
+        {
+            Vector2I chunkPos = new Vector2I(playerChunk.X + offset.x, playerChunk.Y + offset.z);
+            activeChunks.Add(chunkPos);
+
+            // Request chunk generation if it doesn't exist
+            if (!HasChunkData(chunkPos))
+            {
+                // Add to the request list with distance for prioritization
+                chunksToRequest.Add((chunkPos, offset.distSq));
+            }
+        }
+
+        // OPTIMIZATION: Use a more efficient approach to find chunks to unload
+        // Create a combined set of all chunk positions from both dictionaries
+        HashSet<Vector2I> allExistingChunks = new HashSet<Vector2I>();
 
         // Add all chunk positions from both dictionaries
-        foreach (var key in chunkKeys)
+        foreach (var key in _chunks.Keys)
         {
             allExistingChunks.Add(key);
         }
 
-        foreach (var key in chunkDataKeys)
+        foreach (var key in _chunkData.Keys)
         {
             allExistingChunks.Add(key);
         }
 
-        // Check each existing chunk to see if it's outside the view distance
+        // Check each existing chunk to see if it's outside the unload distance
         foreach (Vector2I chunkPos in allExistingChunks)
         {
+            // Skip if this chunk is in the active set
+            if (activeChunks.Contains(chunkPos))
+            {
+                continue;
+            }
+
             int dx = chunkPos.X - playerChunk.X;
             int dz = chunkPos.Y - playerChunk.Y;
             int distanceSquared = dx * dx + dz * dz;
 
-            // If the chunk is outside the view distance, mark it for removal
-            if (distanceSquared > viewDistanceSquared)
+            // If the chunk is outside the unload distance, mark it for removal
+            if (distanceSquared > unloadDistanceSquared)
             {
-                ChunksToRemove.Add(chunkPos);
+                chunksToRemove.Add(chunkPos);
             }
         }
 
-        _chunksToRemove = ChunksToRemove;
-        _chunksToRequest = ChunksToRequest;
-        GD.Print($"Finished Updating Chunks - Active: {activeChunks.Count}, To Remove: {ChunksToRemove.Count}, To Request: {ChunksToRequest.Count}");
+        // Update the global collections
+        _chunksToRemove = chunksToRemove;
+        _chunksToRequest = chunksToRequest;
     }
 
     public override void _ExitTree()

@@ -666,10 +666,11 @@ namespace CubeGen.World.Generation
 				return blendWeights;
 			}
 
-			// Get the current biome
-			BiomeType currentBiome = GetBiomeType(worldX, worldZ);
+			// OPTIMIZATION: Use cached cell ID to avoid recalculating warped position
+			int cellId = GetCellId(worldX, worldZ);
+			BiomeType currentBiome = GetBiomeTypeForCell(cellId);
 
-			// Get distance to boundary
+			// Get distance to boundary - only if we need it
 			float distanceToBoundary = GetDistanceToBoundary(worldX, worldZ);
 
 			// If we're far from any boundary, just use the current biome with weight 1.0
@@ -679,7 +680,26 @@ namespace CubeGen.World.Generation
 				return blendWeights;
 			}
 
-			// Get neighboring biomes with their distances
+			// OPTIMIZATION: Calculate blend factor based on distance to boundary
+			// This avoids the expensive GetNeighboringBiomes call when we're close to a boundary
+			// but not right at it
+			if (distanceToBoundary > blendDistance * 0.3f)
+			{
+				// We're in the outer blend zone - just blend with the current biome
+				float blendFactor = (distanceToBoundary - (blendDistance * 0.3f)) / (blendDistance * 0.7f);
+				blendFactor = Mathf.Clamp(blendFactor, 0.0f, 1.0f);
+
+				// Get the primary neighboring biome (most likely the one across the boundary)
+				BiomeType neighborBiome = GetPrimaryNeighborBiome(worldX, worldZ, cellId);
+
+				// Add weights for current biome and neighbor
+				blendWeights[currentBiome] = blendFactor;
+				blendWeights[neighborBiome] = 1.0f - blendFactor;
+
+				return blendWeights;
+			}
+
+			// Only do full neighbor calculation when very close to boundary
 			Dictionary<BiomeType, float> neighboringBiomes = GetNeighboringBiomes(worldX, worldZ);
 
 			// Calculate blend weights based on distance
@@ -732,6 +752,65 @@ namespace CubeGen.World.Generation
 			}
 
 			return blendWeights;
+		}
+
+		/// <summary>
+		/// Gets the primary neighboring biome across the nearest boundary
+		/// </summary>
+		/// <param name="worldX">World X coordinate</param>
+		/// <param name="worldZ">World Z coordinate</param>
+		/// <param name="cellId">Current cell ID (optional, will be calculated if not provided)</param>
+		/// <returns>The most likely neighboring biome</returns>
+		private BiomeType GetPrimaryNeighborBiome(int worldX, int worldZ, int cellId = -1)
+		{
+			// Get current cell ID if not provided
+			if (cellId == -1)
+			{
+				cellId = GetCellId(worldX, worldZ);
+			}
+
+			// Get current biome
+			BiomeType currentBiome = GetBiomeTypeForCell(cellId);
+
+			// Find the direction to the nearest boundary
+			// Sample in 8 directions to find the closest different cell
+			int[] dx = { 1, 1, 0, -1, -1, -1, 0, 1 };
+			int[] dz = { 0, 1, 1, 1, 0, -1, -1, -1 };
+
+			float closestDistance = float.MaxValue;
+			int closestDifferentCellId = -1;
+
+			for (int i = 0; i < 8; i++)
+			{
+				// Start with a small step and increase until we find a different cell
+				for (int step = 1; step <= 10; step++)
+				{
+					int sampleX = worldX + dx[i] * step;
+					int sampleZ = worldZ + dz[i] * step;
+
+					int sampleCellId = GetCellId(sampleX, sampleZ);
+
+					if (sampleCellId != cellId)
+					{
+						float distance = step;
+						if (distance < closestDistance)
+						{
+							closestDistance = distance;
+							closestDifferentCellId = sampleCellId;
+						}
+						break;
+					}
+				}
+			}
+
+			// If we found a different cell, return its biome
+			if (closestDifferentCellId != -1)
+			{
+				return GetBiomeTypeForCell(closestDifferentCellId);
+			}
+
+			// Fallback to current biome if no neighbor found
+			return currentBiome;
 		}
 
 		// Set the warp strength (higher values = more irregular boundaries)

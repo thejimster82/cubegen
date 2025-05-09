@@ -1,6 +1,8 @@
 using Godot;
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
+using System.Threading;
 using CubeGen.World.Common;
 
 namespace CubeGen.World.Generation
@@ -17,8 +19,11 @@ namespace CubeGen.World.Generation
         // Very low probability to create distinct, separated clusters
         private const float CLUSTER_CENTER_PROBABILITY = 0.0005f; // 0.05% chance - reduced by half
 
-        // Dictionary to track cluster centers
-        private static Dictionary<Vector2I, List<ClusterInfo>> _clusterCenters = new Dictionary<Vector2I, List<ClusterInfo>>();
+        // THREAD SAFETY: Use ConcurrentDictionary instead of Dictionary for thread safety
+        private static ConcurrentDictionary<Vector2I, List<ClusterInfo>> _clusterCenters = new ConcurrentDictionary<Vector2I, List<ClusterInfo>>();
+
+        // Lock object for synchronizing access to cluster lists
+        private static readonly object _clusterLock = new object();
 
         // Noise generator for natural patterns
         private static FastNoiseLite _noise;
@@ -75,14 +80,12 @@ namespace CubeGen.World.Generation
             // Calculate world position of chunk corner
             Vector2I worldPos = new Vector2I(chunkPos.X * chunkSize, chunkPos.Y * chunkSize);
 
-            // Create a list for this chunk if it doesn't exist
-            if (!_clusterCenters.ContainsKey(chunkPos))
-            {
-                _clusterCenters[chunkPos] = new List<ClusterInfo>();
-            }
+            // THREAD SAFETY: Use thread-safe operations for the ConcurrentDictionary
+            // Create a new list for this chunk
+            List<ClusterInfo> newClusterList = new List<ClusterInfo>();
 
-            // Clear any existing clusters for this chunk
-            _clusterCenters[chunkPos].Clear();
+            // Use GetOrAdd to safely add the new list if it doesn't exist
+            _clusterCenters.GetOrAdd(chunkPos, newClusterList);
 
             // Get biome type for this chunk (use center of chunk for biome determination)
             int centerX = worldPos.X + chunkSize / 2;
@@ -175,8 +178,15 @@ namespace CubeGen.World.Generation
                     // Ensure item count is within bounds
                     itemCount = Math.Clamp(itemCount, MIN_ITEMS_PER_CLUSTER, MAX_ITEMS_PER_CLUSTER);
 
-                    // Add to the list
-                    _clusterCenters[chunkPos].Add(new ClusterInfo(position, radius, decorationType, itemCount));
+                    // THREAD SAFETY: Use lock when modifying the list
+                    lock (_clusterLock)
+                    {
+                        // Get the current list or create a new one if it doesn't exist
+                        List<ClusterInfo> clusterList = _clusterCenters.GetOrAdd(chunkPos, new List<ClusterInfo>());
+
+                        // Add the new cluster
+                        clusterList.Add(new ClusterInfo(position, radius, decorationType, itemCount));
+                    }
                 }
             }
         }
@@ -216,12 +226,20 @@ namespace CubeGen.World.Generation
                 {
                     Vector2I neighborChunkPos = new Vector2I(chunkPos.X + xOffset, chunkPos.Y + zOffset);
 
+                    // THREAD SAFETY: Use thread-safe operations for ConcurrentDictionary
                     // Skip if this chunk has no clusters
-                    if (!_clusterCenters.ContainsKey(neighborChunkPos))
+                    if (!_clusterCenters.TryGetValue(neighborChunkPos, out List<ClusterInfo> clusterList) || clusterList == null)
                         continue;
 
+                    // Make a thread-safe copy of the cluster list to avoid modification during enumeration
+                    List<ClusterInfo> clusterListCopy;
+                    lock (_clusterLock)
+                    {
+                        clusterListCopy = new List<ClusterInfo>(clusterList);
+                    }
+
                     // Check each cluster in this chunk
-                    foreach (var cluster in _clusterCenters[neighborChunkPos])
+                    foreach (var cluster in clusterListCopy)
                     {
                         // Calculate distance to cluster center using the jittered position
                         float distanceSquared =

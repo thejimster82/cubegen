@@ -9,11 +9,68 @@ using CubeGen.World.Materials;
 
 public class ChunkMeshGenerator
 {
-    private ConcurrentQueue<VoxelChunk> _chunksToProcess = new ConcurrentQueue<VoxelChunk>();
+    // Use a priority queue for chunks based on distance from player
+    private class ChunkPriorityQueue
+    {
+        private readonly object _lock = new object();
+        private readonly List<(VoxelChunk chunk, float priority)> _queue = new List<(VoxelChunk, float)>();
+
+        public void Enqueue(VoxelChunk chunk, float priority)
+        {
+            lock (_lock)
+            {
+                _queue.Add((chunk, priority));
+                // Sort by priority (lower value = higher priority)
+                _queue.Sort((a, b) => a.priority.CompareTo(b.priority));
+            }
+        }
+
+        public bool TryDequeue(out VoxelChunk chunk)
+        {
+            chunk = null;
+            lock (_lock)
+            {
+                if (_queue.Count == 0)
+                    return false;
+
+                chunk = _queue[0].chunk;
+                _queue.RemoveAt(0);
+                return true;
+            }
+        }
+
+        public bool IsEmpty
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return _queue.Count == 0;
+                }
+            }
+        }
+
+        public int Count
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return _queue.Count;
+                }
+            }
+        }
+    }
+
+    private readonly ChunkPriorityQueue _chunksToProcess = new ChunkPriorityQueue();
     private ConcurrentQueue<(VoxelChunk, ArrayMesh, List<Vector3>)> _completedMeshes = new ConcurrentQueue<(VoxelChunk, ArrayMesh, List<Vector3>)>();
     private readonly Thread _workerThread;
     private bool _isRunning = true;
     private readonly ChunkManager _chunkManager; // Reference to the ChunkManager for cross-chunk lookups
+
+    // Player position for prioritizing chunks
+    private Vector3 _playerPosition = Vector3.Zero;
+    private readonly object _playerPositionLock = new object();
 
     public ChunkMeshGenerator(ChunkManager chunkManager)
     {
@@ -27,9 +84,39 @@ public class ChunkMeshGenerator
         _workerThread.Start();
     }
 
+    // Update player position for prioritizing chunks
+    public void UpdatePlayerPosition(Vector3 playerPosition)
+    {
+        lock (_playerPositionLock)
+        {
+            _playerPosition = playerPosition;
+        }
+    }
+
+    // Queue a chunk for processing with priority based on distance from player
     public void QueueChunk(VoxelChunk chunk)
     {
-        _chunksToProcess.Enqueue(chunk);
+        // Calculate priority based on distance from player
+        float priority = 0;
+
+        lock (_playerPositionLock)
+        {
+            // Get chunk center position
+            Vector3 chunkPosition = new Vector3(
+                chunk.Position.X * chunk.Size + chunk.Size / 2,
+                0,
+                chunk.Position.Y * chunk.Size + chunk.Size / 2
+            );
+
+            // Calculate distance from player
+            float distance = (chunkPosition - _playerPosition).Length();
+
+            // Use distance as priority (lower distance = higher priority)
+            priority = distance;
+        }
+
+        // Queue the chunk with its priority
+        _chunksToProcess.Enqueue(chunk, priority);
     }
 
     public bool HasCompletedMeshes()
@@ -107,7 +194,8 @@ public class ChunkMeshGenerator
                         waitingChunks[chunkToProcess.Position] = attempts + 1;
 
                         // Re-queue the chunk for later processing when neighbors are available
-                        _chunksToProcess.Enqueue(chunkToProcess);
+                        // Use a high priority value to delay processing
+                        _chunksToProcess.Enqueue(chunkToProcess, 1000.0f);
                     }
                 }
             }
@@ -163,9 +251,11 @@ public class ChunkMeshGenerator
 
     private (ArrayMesh, List<Vector3>) GenerateMesh(VoxelChunk chunk)
     {
-        // Create a dictionary to group vertices by biome and voxel type
-        Dictionary<BiomeType, Dictionary<VoxelType, List<MeshData>>> meshDataByBiomeAndType =
-            new Dictionary<BiomeType, Dictionary<VoxelType, List<MeshData>>>();
+        try
+        {
+            // Create a dictionary to group vertices by biome and voxel type
+            Dictionary<BiomeType, Dictionary<VoxelType, List<MeshData>>> meshDataByBiomeAndType =
+                new Dictionary<BiomeType, Dictionary<VoxelType, List<MeshData>>>();
 
         // First, find the surface height for each x,z coordinate
         int[,] terrainSurfaceHeights = new int[chunk.Size, chunk.Size];
@@ -505,20 +595,48 @@ public class ChunkMeshGenerator
 
         // Create collision faces
         List<Vector3> collisionFaces = new List<Vector3>();
-        for (int i = 0; i < allIndices.Count; i += 3)
+
+        // THREAD SAFETY: Make a local copy of the collections to avoid modification during iteration
+        List<int> indicesCopy = new List<int>(allIndices);
+        List<Vector3> verticesCopy = new List<Vector3>(allVertices);
+
+        for (int i = 0; i < indicesCopy.Count; i += 3)
         {
-            if (i + 2 < allIndices.Count &&
-                allIndices[i] < allVertices.Count &&
-                allIndices[i + 1] < allVertices.Count &&
-                allIndices[i + 2] < allVertices.Count)
+            // Ensure we have a complete triangle and all indices are valid
+            if (i + 2 < indicesCopy.Count)
             {
-                collisionFaces.Add(allVertices[allIndices[i]]);
-                collisionFaces.Add(allVertices[allIndices[i + 1]]);
-                collisionFaces.Add(allVertices[allIndices[i + 2]]);
+                int idx0 = indicesCopy[i];
+                int idx1 = indicesCopy[i + 1];
+                int idx2 = indicesCopy[i + 2];
+
+                // Check for index out of bounds
+                if (idx0 >= 0 && idx0 < verticesCopy.Count &&
+                    idx1 >= 0 && idx1 < verticesCopy.Count &&
+                    idx2 >= 0 && idx2 < verticesCopy.Count)
+                {
+                    collisionFaces.Add(verticesCopy[idx0]);
+                    collisionFaces.Add(verticesCopy[idx1]);
+                    collisionFaces.Add(verticesCopy[idx2]);
+                }
+                else
+                {
+                    // Log the error but continue processing
+                    Console.WriteLine($"Invalid triangle indices: {idx0}, {idx1}, {idx2} (max: {verticesCopy.Count - 1})");
+                }
             }
         }
 
         return (mesh, collisionFaces);
+        }
+        catch (Exception ex)
+        {
+            // Log the error
+            Console.WriteLine($"Error generating mesh: {ex.Message}");
+            Console.WriteLine(ex.StackTrace);
+
+            // Return an empty mesh to avoid crashes
+            return (new ArrayMesh(), new List<Vector3>());
+        }
     }
 
     private void AddVoxelFaces(VoxelChunk chunk, int x, int y, int z, VoxelType voxelType, MeshData meshData)

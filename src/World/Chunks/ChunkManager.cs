@@ -39,7 +39,7 @@ public partial class ChunkManager : Node3D
     private ChunkMeshGenerator _meshGenerator;
 
     // Maximum number of chunks to process per frame
-    private const int MaxChunksPerFrame = 25; // OPTIMIZATION: Drastically increased for much faster chunk loading
+    private const int MaxChunksPerFrame = 1; // OPTIMIZATION: Drastically increased for much faster chunk loading
 
     public void Initialize(int chunkSize, int chunkHeight)
     {
@@ -213,6 +213,7 @@ public partial class ChunkManager : Node3D
                     newMesh.Position = chunk.GetWorldPosition();
 
                     // Set the mesh and store the chunk reference
+                    // This will automatically start the fade-in effect
                     newMesh.SetMeshFromArrayMesh(mesh, collisionFaces, chunk);
 
                     // Add to dictionary
@@ -319,6 +320,12 @@ public partial class ChunkManager : Node3D
             Mathf.FloorToInt(playerPosition.X / _chunkSize),
             Mathf.FloorToInt(playerPosition.Z / _chunkSize)
         );
+
+        // Update player position for all existing chunks (for LOD updates)
+        foreach (var chunkMesh in _chunks.Values)
+        {
+            chunkMesh.UpdatePlayerPosition(playerPosition);
+        }
 
         // Only update chunks if player has moved to a different chunk or enough time has passed
         if (playerChunk == _lastPlayerChunk && _timeSinceLastUpdate < ChunkUpdateCooldown)

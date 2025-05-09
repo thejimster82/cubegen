@@ -1,8 +1,9 @@
 using Godot;
 using System;
 using System.Collections.Generic;
-using System.Collections.Concurrent; // Added for ConcurrentDictionary
+using System.Collections.Concurrent;
 using System.Linq;
+using System.Threading;
 using CubeGen.World.Common;
 
 namespace CubeGen.World.Generation
@@ -19,7 +20,13 @@ namespace CubeGen.World.Generation
 		private int _seed;
 		private float _regionScale = 0.00015f; // Controls the size of regions (smaller value = larger regions)
 		private float _warpStrength = 50.0f; // Controls how much the domain is warped
-		private Dictionary<int, BiomeType> _cellToBiomeMap = new Dictionary<int, BiomeType>();
+
+		// THREAD SAFETY: Use ConcurrentDictionary for thread-safe access
+		private ConcurrentDictionary<int, BiomeType> _cellToBiomeMap = new ConcurrentDictionary<int, BiomeType>();
+
+		// Lock object for synchronizing access to biome map
+		private readonly object _biomeLock = new object();
+
 		private static BiomeRegionGenerator _instance;
 		private bool _isProperlyInitialized = false; // Flag to track if initialized with the game's seed
 
@@ -82,7 +89,11 @@ namespace CubeGen.World.Generation
 		}
 
 		// Dictionary to track neighboring cell relationships
-		private Dictionary<int, List<int>> _cellNeighbors = new Dictionary<int, List<int>>();
+		// THREAD SAFETY: Use ConcurrentDictionary for thread-safe access
+		private ConcurrentDictionary<int, List<int>> _cellNeighbors = new ConcurrentDictionary<int, List<int>>();
+
+		// Lock object for synchronizing access to neighbor lists
+		private readonly object _neighborLock = new object();
 
 		// Get biome type for a world position using domain warping
 		public virtual BiomeType GetBiomeType(int worldX, int worldZ)
@@ -105,13 +116,50 @@ namespace CubeGen.World.Generation
 			// The cell value from FastNoiseLite is in range [-1,1], so we scale and convert to int
 			int cellId = (int)((cellValue + 1.0f) * 1000.0f);
 
-			// If we haven't assigned a biome to this cell yet, do so now
-			if (!_cellToBiomeMap.ContainsKey(cellId))
-			{
-				AssignBiomeToCell(cellId);
-			}
+			// THREAD SAFETY: Use GetOrAdd to safely get or create the biome for this cell
+			return _cellToBiomeMap.GetOrAdd(cellId, id => {
+				// If the biome doesn't exist yet, assign it
+				// This lambda will only be called if the key doesn't exist
 
-			return _cellToBiomeMap[cellId];
+				// Use the cell ID to seed a new random generator
+				Random random = new Random(_seed + id);
+
+				// Get all biome types
+				Array biomeTypesArray = Enum.GetValues(typeof(BiomeType));
+				List<BiomeType> availableBiomes = new List<BiomeType>();
+
+				// Convert to list for easier manipulation
+				foreach (BiomeType biomeType in biomeTypesArray)
+				{
+					availableBiomes.Add(biomeType);
+				}
+
+				// Find neighboring cells by sampling points around this cell
+				List<int> neighbors = FindNeighboringCells(id);
+
+				// Store the neighbors for future reference
+				_cellNeighbors.TryAdd(id, neighbors);
+
+				// Remove biome types that are already used by neighbors
+				foreach (int neighborId in neighbors)
+				{
+					BiomeType neighborBiome;
+					if (_cellToBiomeMap.TryGetValue(neighborId, out neighborBiome))
+					{
+						availableBiomes.Remove(neighborBiome);
+					}
+				}
+
+				// Make sure we have at least one biome available
+				if (availableBiomes.Count == 0)
+				{
+					// If all biomes are used by neighbors, just use any biome
+					availableBiomes.AddRange(Enum.GetValues(typeof(BiomeType)).Cast<BiomeType>());
+				}
+
+				// Select a random biome from the available ones
+				return availableBiomes[random.Next(availableBiomes.Count)];
+			});
 		}
 
 		// Apply domain warping to a position
@@ -135,42 +183,7 @@ namespace CubeGen.World.Generation
 			);
 		}
 
-		// Assign a biome to a cell, ensuring it's different from adjacent cells if possible
-		private void AssignBiomeToCell(int cellId)
-		{
-			// Use the cell ID to seed a new random generator
-			Random random = new Random(_seed + cellId);
-
-			// Get all biome types
-			Array biomeTypesArray = Enum.GetValues(typeof(BiomeType));
-			List<BiomeType> availableBiomes = new List<BiomeType>();
-
-			// Convert to list for easier manipulation
-			foreach (BiomeType biomeType in biomeTypesArray)
-			{
-				availableBiomes.Add(biomeType);
-			}
-
-			// Find neighboring cells by sampling points around this cell
-			List<int> neighbors = FindNeighboringCells(cellId);
-
-			// Store the neighbors for future reference
-			_cellNeighbors[cellId] = neighbors;
-
-			// Remove biome types that are already used by neighbors
-			foreach (int neighborId in neighbors)
-			{
-				if (_cellToBiomeMap.ContainsKey(neighborId))
-				{
-					BiomeType neighborBiome = _cellToBiomeMap[neighborId];
-					availableBiomes.Remove(neighborBiome);
-				}
-			}
-
-			// Select a random biome from the available ones
-			BiomeType selectedBiome = availableBiomes[random.Next(availableBiomes.Count)];
-			_cellToBiomeMap[cellId] = selectedBiome;
-		}
+		// NOTE: AssignBiomeToCell method has been replaced with thread-safe inline code in GetBiomeType and GetBiomeTypeForCell
 
 		// Find neighboring cells by sampling points around the given cell
 		private List<int> FindNeighboringCells(int cellId)
@@ -385,13 +398,47 @@ namespace CubeGen.World.Generation
 				return BiomeType.Plains;
 			}
 
-			// If we haven't assigned a biome to this cell yet, do so now
-			if (!_cellToBiomeMap.ContainsKey(cellId))
-			{
-				AssignBiomeToCell(cellId);
-			}
+			// THREAD SAFETY: Use GetOrAdd to safely get or create the biome for this cell
+			return _cellToBiomeMap.GetOrAdd(cellId, id => {
+				// Use the cell ID to seed a new random generator
+				Random random = new Random(_seed + id);
 
-			return _cellToBiomeMap[cellId];
+				// Get all biome types
+				Array biomeTypesArray = Enum.GetValues(typeof(BiomeType));
+				List<BiomeType> availableBiomes = new List<BiomeType>();
+
+				// Convert to list for easier manipulation
+				foreach (BiomeType biomeType in biomeTypesArray)
+				{
+					availableBiomes.Add(biomeType);
+				}
+
+				// Find neighboring cells by sampling points around this cell
+				List<int> neighbors = FindNeighboringCells(id);
+
+				// Store the neighbors for future reference
+				_cellNeighbors.TryAdd(id, neighbors);
+
+				// Remove biome types that are already used by neighbors
+				foreach (int neighborId in neighbors)
+				{
+					BiomeType neighborBiome;
+					if (_cellToBiomeMap.TryGetValue(neighborId, out neighborBiome))
+					{
+						availableBiomes.Remove(neighborBiome);
+					}
+				}
+
+				// Make sure we have at least one biome available
+				if (availableBiomes.Count == 0)
+				{
+					// If all biomes are used by neighbors, just use any biome
+					availableBiomes.AddRange(Enum.GetValues(typeof(BiomeType)).Cast<BiomeType>());
+				}
+
+				// Select a random biome from the available ones
+				return availableBiomes[random.Next(availableBiomes.Count)];
+			});
 		}
 
 		/// <summary>
@@ -417,14 +464,13 @@ namespace CubeGen.World.Generation
 			float cellValue = _voronoiNoise.GetNoise2D(warpedX, warpedZ);
 			int cellId = (int)((cellValue + 1.0f) * 1000.0f);
 
-			// If we haven't assigned a biome to this cell yet, do it now
-			if (!_cellToBiomeMap.ContainsKey(cellId))
-			{
-				AssignBiomeToCell(cellId);
-			}
+			// THREAD SAFETY: Use GetBiomeTypeForCell to safely get or create the biome for this cell
+			// This will automatically assign a biome if one doesn't exist yet
+			GetBiomeTypeForCell(cellId);
 
 			// Check if this cell is the requested biome type
-			if (_cellToBiomeMap[cellId] == biomeType)
+			BiomeType cellBiome;
+			if (_cellToBiomeMap.TryGetValue(cellId, out cellBiome) && cellBiome == biomeType)
 			{
 				// This cell is already the requested biome, return its center
 				return GetCellCenter(cellId);
@@ -437,7 +483,8 @@ namespace CubeGen.World.Generation
 			// Check if any direct neighbors are the requested biome
 			foreach (int neighborId in neighbors)
 			{
-				if (_cellToBiomeMap.ContainsKey(neighborId) && _cellToBiomeMap[neighborId] == biomeType)
+				BiomeType neighborBiome;
+				if (_cellToBiomeMap.TryGetValue(neighborId, out neighborBiome) && neighborBiome == biomeType)
 				{
 					return GetCellCenter(neighborId);
 				}
@@ -493,19 +540,11 @@ namespace CubeGen.World.Generation
 		/// <returns>List of neighboring cell IDs</returns>
 		private List<int> GetCellNeighbors(int cellId)
 		{
-			// Check if we've already calculated neighbors for this cell
-			if (_cellNeighbors.ContainsKey(cellId))
-			{
-				return _cellNeighbors[cellId];
-			}
-
-			// Otherwise, find the neighbors
-			List<int> neighbors = FindNeighboringCells(cellId);
-
-			// Store for future reference
-			_cellNeighbors[cellId] = neighbors;
-
-			return neighbors;
+			// THREAD SAFETY: Use GetOrAdd for thread-safe access
+			return _cellNeighbors.GetOrAdd(cellId, id => {
+				// This lambda will only be called if the key doesn't exist
+				return FindNeighboringCells(id);
+			});
 		}
 
 		/// <summary>
@@ -637,7 +676,8 @@ namespace CubeGen.World.Generation
 					BiomeType sampleBiome = GetBiomeTypeForCell(sampleCellId);
 
 					// Skip if we already found this biome closer
-					if (biomesWithDistances.ContainsKey(sampleBiome) && biomesWithDistances[sampleBiome] <= radius)
+					float existingDistance;
+					if (biomesWithDistances.TryGetValue(sampleBiome, out existingDistance) && existingDistance <= radius)
 						continue;
 
 					// Add or update the biome with its distance

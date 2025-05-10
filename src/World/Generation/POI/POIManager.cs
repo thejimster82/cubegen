@@ -116,56 +116,5 @@ namespace CubeGen.World.Generation.POI
             return result;
         }
 
-        /// <summary>
-        /// Get the nearest POI to a position
-        /// </summary>
-        public PointOfInterest GetNearestPOI(Vector2I position, int maxSearchRadius = 500)
-        {
-            PointOfInterest nearest = null;
-            float nearestDistanceSquared = float.MaxValue;
-
-            // Start with a small radius and expand until we find something
-            for (int radius = 100; radius <= maxSearchRadius; radius += 100)
-            {
-                List<PointOfInterest> pois = GetPOIsInRadius(position, radius);
-
-                foreach (PointOfInterest poi in pois)
-                {
-                    int dx = poi.Position.X - position.X;
-                    int dz = poi.Position.Y - position.Y;
-                    float distanceSquared = dx * dx + dz * dz;
-
-                    if (distanceSquared < nearestDistanceSquared)
-                    {
-                        nearest = poi;
-                        nearestDistanceSquared = distanceSquared;
-                    }
-                }
-
-                // If we found at least one POI, return the nearest
-                if (nearest != null)
-                {
-                    return nearest;
-                }
-            }
-
-            return null; // No POI found within max search radius
-        }
-
-        /// <summary>
-        /// Clear the POI cache for a specific chunk
-        /// </summary>
-        public void ClearChunkPOICache(Vector2I chunkPos)
-        {
-            _chunkPOICache.TryRemove(chunkPos, out _);
-        }
-
-        /// <summary>
-        /// Clear the entire POI cache
-        /// </summary>
-        public void ClearAllPOICache()
-        {
-            _chunkPOICache.Clear();
-        }
     }
 }

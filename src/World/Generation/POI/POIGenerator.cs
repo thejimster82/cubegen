@@ -249,37 +249,23 @@ namespace CubeGen.World.Generation.POI
             switch (biomeType)
             {
                 case BiomeType.ForestLands:
-                    possibleTypes.Add(POIType.Village);
-                    possibleTypes.Add(POIType.Camp);
-                    possibleTypes.Add(POIType.SpecialTree);
-                    possibleTypes.Add(POIType.Ruin);
                     possibleTypes.Add(POIType.Tower);
                     break;
 
                 case BiomeType.Desert:
                     possibleTypes.Add(POIType.Ruin);
-                    possibleTypes.Add(POIType.Obelisk);
-                    possibleTypes.Add(POIType.OreDeposit);
-                    possibleTypes.Add(POIType.Camp);
                     break;
 
                 case BiomeType.Tundra:
-                    possibleTypes.Add(POIType.Cave);
                     possibleTypes.Add(POIType.RockFormation);
-                    possibleTypes.Add(POIType.Tower);
-                    possibleTypes.Add(POIType.MagicSpring);
                     break;
 
                 case BiomeType.Islands:
-                    possibleTypes.Add(POIType.Pond);
                     possibleTypes.Add(POIType.Waterfall);
-                    possibleTypes.Add(POIType.Camp);
-                    possibleTypes.Add(POIType.SpecialTree);
                     break;
 
                 default:
                     possibleTypes.Add(POIType.RockFormation);
-                    possibleTypes.Add(POIType.SpecialTree);
                     break;
             }
 

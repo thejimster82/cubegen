@@ -24,6 +24,9 @@ public class VoxelChunk
     // Key is a string in the format "x,z", value is a dictionary mapping BiomeType to blend weight (0.0-1.0)
     private Dictionary<string, Dictionary<BiomeType, float>> _biomeBlendWeights = new Dictionary<string, Dictionary<BiomeType, float>>();
 
+    // Dictionary to store general metadata for the chunk
+    private Dictionary<string, object> _metadata = new Dictionary<string, object>();
+
     public VoxelChunk(int size, int height, Vector2I position, float scale = 1.0f)
     {
         Size = size;
@@ -265,5 +268,58 @@ public class VoxelChunk
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Sets a metadata value for the chunk
+    /// </summary>
+    /// <param name="key">The metadata key</param>
+    /// <param name="value">The metadata value</param>
+    public void SetMetadata(string key, object value)
+    {
+        _metadata[key] = value;
+    }
+
+    /// <summary>
+    /// Gets a metadata value from the chunk
+    /// </summary>
+    /// <param name="key">The metadata key</param>
+    /// <returns>The metadata value, or null if not found</returns>
+    public object GetMetadata(string key)
+    {
+        if (_metadata.TryGetValue(key, out object value))
+        {
+            return value;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Tries to get a metadata value from the chunk
+    /// </summary>
+    /// <param name="key">The metadata key</param>
+    /// <param name="value">The output value</param>
+    /// <returns>True if the key was found, false otherwise</returns>
+    public bool TryGetMetadata<T>(string key, out T value)
+    {
+        value = default(T);
+
+        if (_metadata.TryGetValue(key, out object objValue) && objValue is T typedValue)
+        {
+            value = typedValue;
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Checks if the chunk has a metadata value for the given key
+    /// </summary>
+    /// <param name="key">The metadata key</param>
+    /// <returns>True if the key exists, false otherwise</returns>
+    public bool HasMetadata(string key)
+    {
+        return _metadata.ContainsKey(key);
     }
 }

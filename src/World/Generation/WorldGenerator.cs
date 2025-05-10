@@ -144,6 +144,20 @@ public partial class WorldGenerator : Node3D
 			}
 		}
 
+		// Find POIs that might affect this chunk BEFORE generating terrain
+		// Calculate world bounds for this chunk
+		int chunkWorldX = chunkPos.X * ChunkSize;
+		int chunkWorldZ = chunkPos.Y * ChunkSize;
+		Vector2I chunkCenterPos = new Vector2I(
+			chunkWorldX + ChunkSize / 2,
+			chunkWorldZ + ChunkSize / 2
+		);
+		int poiSearchRadius = 200; // Adjust based on your largest POI influence radius
+		List<POI.PointOfInterest> chunkPOIs = POI.POIManager.Instance.GetPOIsInRadius(chunkCenterPos, poiSearchRadius);
+
+		// Store POIs in the chunk data for later use during biome object placement
+		chunk.SetMetadata("POIs", chunkPOIs);
+
 		// Generate terrain for the chunk
 		for (int x = 0; x < ChunkSize; x++)
 		{
@@ -183,11 +197,14 @@ public partial class WorldGenerator : Node3D
 				// Generate blended terrain height based on all contributing biomes
 				int terrainHeight = GenerateBlendedTerrainHeight(worldX, worldZ, biomeBlendWeights);
 
-				// Check for POIs that might affect this position
-				// Get POIs within a reasonable radius
-				int poiSearchRadius = 200; // Adjust based on your largest POI influence radius
+				// Get POIs that might affect this specific position
 				Vector2I worldPos = new Vector2I(worldX, worldZ);
-				List<POI.PointOfInterest> nearbyPOIs = POI.POIManager.Instance.GetPOIsInRadius(worldPos, poiSearchRadius);
+				List<POI.PointOfInterest> nearbyPOIs = chunkPOIs.Where(poi => {
+					int dx = poi.Position.X - worldPos.X;
+					int dz = poi.Position.Y - worldPos.Y;
+					float distanceSquared = dx * dx + dz * dz;
+					return distanceSquared <= poi.InfluenceRadius * poi.InfluenceRadius;
+				}).ToList();
 
 				// Apply POI terrain modifications
 				foreach (var poi in nearbyPOIs)
@@ -224,6 +241,7 @@ public partial class WorldGenerator : Node3D
 		}
 
 		// Add objects like trees based on biome
+		// The POIs are already stored in the chunk metadata and will be used to influence object placement
 		AddBiomeObjects(chunk, chunkPos, ChunkSize);
 
 		// First, add the chunk data to the chunk manager
@@ -926,21 +944,31 @@ public partial class WorldGenerator : Node3D
 		// true = feature exists at this position, false = no feature
 		bool[,] featureMap = new bool[chunkSize, chunkSize];
 
-		// Check for POIs that might affect this chunk
 		// Calculate world bounds for this chunk
 		int chunkWorldX = chunkPos.X * chunkSize;
 		int chunkWorldZ = chunkPos.Y * chunkSize;
 
-		// Get POIs within a reasonable radius of the chunk center
-		int poiSearchRadius = 300; // Larger radius to catch POIs that might affect the chunk
-		Vector2I chunkCenterPos = new Vector2I(
-			chunkWorldX + chunkSize / 2,
-			chunkWorldZ + chunkSize / 2
-		);
+		// Get POIs from chunk metadata (these were stored during terrain generation)
+		List<POI.PointOfInterest> nearbyPOIs = null;
+		if (chunk.TryGetMetadata<List<POI.PointOfInterest>>("POIs", out var storedPOIs))
+		{
+			nearbyPOIs = storedPOIs;
+		}
+		else
+		{
+			// Fallback in case POIs weren't stored in metadata
+			// Get POIs within a reasonable radius of the chunk center
+			int poiSearchRadius = 300; // Larger radius to catch POIs that might affect the chunk
+			Vector2I chunkCenterPos = new Vector2I(
+				chunkWorldX + chunkSize / 2,
+				chunkWorldZ + chunkSize / 2
+			);
+			nearbyPOIs = POI.POIManager.Instance.GetPOIsInRadius(chunkCenterPos, poiSearchRadius);
+			GD.PrintErr("POIs not found in chunk metadata, using fallback method");
+		}
 
-		List<POI.PointOfInterest> nearbyPOIs = POI.POIManager.Instance.GetPOIsInRadius(chunkCenterPos, poiSearchRadius);
-
-		// Add POI-specific structures
+		// First, add POI-specific structures
+		// This ensures POIs are placed before any biome objects
 		foreach (var poi in nearbyPOIs)
 		{
 			// Check if the POI is close enough to affect this chunk
@@ -985,11 +1013,62 @@ public partial class WorldGenerator : Node3D
 					if (chunk.GetVoxel(x, surfaceHeight + 1, z) == VoxelType.Air)
 					{
 						// Use the already calculated world position
-						Vector2I worldPos = new Vector2I(worldX, worldZ);
+						Vector2I decorationWorldPos = new Vector2I(worldX, worldZ);
+
+						// Check if this position is influenced by any POIs
+						bool isNearPOI = false;
+						POI.PointOfInterest influencingPOI = null;
+
+						// Find the closest POI that influences this position
+						foreach (var poi in nearbyPOIs)
+						{
+							int dx = poi.Position.X - decorationWorldPos.X;
+							int dz = poi.Position.Y - decorationWorldPos.Y;
+							float distanceSquared = dx * dx + dz * dz;
+
+							// Check if within influence radius
+							if (distanceSquared <= poi.InfluenceRadius * poi.InfluenceRadius)
+							{
+								isNearPOI = true;
+								influencingPOI = poi;
+								break;
+							}
+						}
+
+						// Adjust decoration placement based on POI influence
+						float decorationProbabilityMultiplier = 1.0f;
+						if (isNearPOI && influencingPOI != null)
+						{
+							// Modify decoration probability based on POI type
+							switch (influencingPOI.Type)
+							{
+								case POI.POIType.Village:
+								case POI.POIType.Town:
+									// Reduce natural decorations near settlements
+									decorationProbabilityMultiplier = 0.3f;
+									break;
+
+								case POI.POIType.SpecialTree:
+									// Increase grass and flowers near special trees
+									if (biomeType == BiomeType.ForestLands)
+									{
+										decorationProbabilityMultiplier = 2.0f;
+									}
+									break;
+
+								case POI.POIType.Obelisk:
+								case POI.POIType.Ruin:
+									// Reduce decorations near mysterious structures
+									decorationProbabilityMultiplier = 0.5f;
+									break;
+							}
+						}
 
 						// Check if this position should have a decoration based on clusters
+						// Apply the POI-based probability multiplier
 						DecorationClusters.DecorationPlacement placement;
-						if (DecorationClusters.ShouldPlaceDecoration(worldPos, out placement, random))
+						if (random.NextDouble() < decorationProbabilityMultiplier &&
+							DecorationClusters.ShouldPlaceDecoration(decorationWorldPos, out placement, random))
 						{
 							// Check if the decoration is appropriate for the surface block
 							bool canPlace = false;
@@ -1049,6 +1128,67 @@ public partial class WorldGenerator : Node3D
 				if (x >= safeDistance && x < (chunkSize - safeDistance) &&
 					z >= safeDistance && z < (chunkSize - safeDistance))
 				{
+					// Check if this position is influenced by any POIs
+					Vector2I featureWorldPos = new Vector2I(worldX, worldZ);
+					bool isNearPOI = false;
+					POI.PointOfInterest influencingPOI = null;
+
+					// Find the closest POI that influences this position
+					foreach (var poi in nearbyPOIs)
+					{
+						int dx = poi.Position.X - featureWorldPos.X;
+						int dz = poi.Position.Y - featureWorldPos.Y;
+						float distanceSquared = dx * dx + dz * dz;
+
+						// Check if within influence radius
+						if (distanceSquared <= poi.InfluenceRadius * poi.InfluenceRadius)
+						{
+							isNearPOI = true;
+							influencingPOI = poi;
+							break;
+						}
+					}
+
+					// If near a POI, adjust object placement based on POI type
+					if (isNearPOI && influencingPOI != null)
+					{
+						// Modify object placement based on POI type
+						// For example, reduce tree density near settlements, increase rocks near ruins, etc.
+						switch (influencingPOI.Type)
+						{
+							case POI.POIType.Village:
+							case POI.POIType.Town:
+								// Reduce natural features near settlements
+								// Only place objects with a lower probability
+								if (random.NextDouble() > 0.7f)
+								{
+									// Skip object placement 70% of the time near settlements
+									continue;
+								}
+								break;
+
+							case POI.POIType.RockFormation:
+								// Increase rock formations near rock POIs
+								if (random.NextDouble() < 0.1f && CanPlaceFeature(featureMap, x, z, 4, chunkSize))
+								{
+									GenerateRockFormation(chunk, x, z, surfaceHeight, random);
+									MarkFeaturePosition(featureMap, x, z, 4, chunkSize);
+									continue; // Skip regular biome object placement
+								}
+								break;
+
+							case POI.POIType.SpecialTree:
+								// Increase tree density near special tree POIs
+								if (random.NextDouble() < 0.15f && CanPlaceFeature(featureMap, x, z, 6, chunkSize))
+								{
+									GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
+									MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
+									continue; // Skip regular biome object placement
+								}
+								break;
+						}
+					}
+
 					switch (biomeType)
 					{
 						case BiomeType.Desert:
@@ -1167,7 +1307,7 @@ public partial class WorldGenerator : Node3D
 										if (chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Sand)
 										{
 											// Use the decoration system to place seashells
-											Vector2I worldPos = new Vector2I(worldX, worldZ);
+											Vector2I seashellWorldPos = new Vector2I(worldX, worldZ);
 											DecorationClusters.DecorationPlacement seashellPlacement = new DecorationClusters.DecorationPlacement(
 												VoxelType.Seashell,
 												new Vector2(random.Next(-20, 20) / 100.0f, random.Next(-20, 20) / 100.0f),

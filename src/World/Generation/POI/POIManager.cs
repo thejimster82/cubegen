@@ -143,6 +143,29 @@ namespace CubeGen.World.Generation.POI
         }
 
         /// <summary>
+        /// Get a POI at a specific position
+        /// </summary>
+        public PointOfInterest GetPOIAtPosition(Vector2I position)
+        {
+            // Check if we have this POI in our cache
+            if (_poiPositionCache.TryGetValue(position, out PointOfInterest poi))
+            {
+                return poi;
+            }
+
+            // If not in cache, try to get it from the generator
+            poi = POIGenerator.Instance.GetPOIAt(position.X, position.Y);
+
+            // Cache the result if found
+            if (poi != null)
+            {
+                _poiPositionCache[position] = poi;
+            }
+
+            return poi;
+        }
+
+        /// <summary>
         /// Get all POIs within a certain radius of a position
         /// </summary>
         public List<PointOfInterest> GetPOIsInRadius(Vector2I position, int radius)

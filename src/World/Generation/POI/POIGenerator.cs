@@ -34,10 +34,7 @@ namespace CubeGen.World.Generation.POI
         private FastNoiseLite _poiSizeNoise;
 
         // POI density factor (higher = more POIs)
-        private float _poiDensity = 0.1f; // Increased from 0.1f to generate significantly more POIs
-
-        // Minimum distance between POIs (in world units)
-        private int _minDistanceBetweenPOIs = 32; // Further reduced to allow even more POIs
+        private readonly float _poiDensity = 0.3f; // Increased to generate significantly more POIs
 
         // Private constructor for singleton
         private POIGenerator()
@@ -84,13 +81,55 @@ namespace CubeGen.World.Generation.POI
             GD.Print($"POIGenerator initialized with seed: {worldSeed}");
         }
 
+        // We don't need the cell center cache anymore since we're using a deterministic approach
+
+        /// <summary>
+        /// Find the nearest cell center for a given position
+        /// </summary>
+        private Vector2I GetCellCenter(int worldX, int worldZ)
+        {
+            // Since FastNoiseLite doesn't have a direct method to get cell centers,
+            // we'll use a grid-based approach with the cell size determined by frequency
+
+            // Calculate the cell size based on noise frequency
+            float cellSize = 1.0f / _poiPlacementNoise.Frequency;
+
+            // Calculate the cell coordinates
+            int cellX = Mathf.FloorToInt(worldX / cellSize);
+            int cellZ = Mathf.FloorToInt(worldZ / cellSize);
+
+            // Calculate the cell center
+            Vector2I cellCenter = new Vector2I(
+                Mathf.FloorToInt(cellX * cellSize + cellSize / 2),
+                Mathf.FloorToInt(cellZ * cellSize + cellSize / 2)
+            );
+
+            return cellCenter;
+        }
+
         /// <summary>
         /// Check if a POI exists at a specific world position
         /// </summary>
         public bool DoesPOIExistAt(int worldX, int worldZ)
         {
-            // Get noise value at this position
-            float noiseValue = _poiPlacementNoise.GetNoise2D(worldX, worldZ);
+            // Get the cell center for this position
+            Vector2I cellCenter = GetCellCenter(worldX, worldZ);
+
+            // Get the distance from this position to the cell center
+            int dx = worldX - cellCenter.X;
+            int dz = worldZ - cellCenter.Y;
+            float distanceSquared = dx * dx + dz * dz;
+
+            // Check if this position is close enough to the cell center
+            float maxDistanceSquared = 4 * 4; // Only consider positions within 4 units of cell center
+
+            if (distanceSquared > maxDistanceSquared)
+            {
+                return false;
+            }
+
+            // Get noise value at the cell center
+            float noiseValue = _poiPlacementNoise.GetNoise2D(cellCenter.X, cellCenter.Y);
 
             // Convert from [-1,1] to [0,1]
             noiseValue = (noiseValue + 1f) * 0.5f;
@@ -104,30 +143,48 @@ namespace CubeGen.World.Generation.POI
         /// </summary>
         public PointOfInterest GetPOIAt(int worldX, int worldZ)
         {
-            // Check if a POI exists at this position
-            if (!DoesPOIExistAt(worldX, worldZ))
+            // Get the cell center for this position
+            Vector2I cellCenter = GetCellCenter(worldX, worldZ);
+
+            // Check if a POI exists at the cell center
+            float noiseValue = _poiPlacementNoise.GetNoise2D(cellCenter.X, cellCenter.Y);
+            noiseValue = (noiseValue + 1f) * 0.5f;
+
+            if (noiseValue <= (1f - _poiDensity))
             {
                 return null;
             }
 
-            // Get biome type for this position
-            BiomeType biomeType = WorldGenerator.GetBiomeType(worldX, worldZ);
+            // Get the distance from this position to the cell center
+            int dx = worldX - cellCenter.X;
+            int dz = worldZ - cellCenter.Y;
+            float distanceSquared = dx * dx + dz * dz;
 
-            // Create a deterministic random generator for this position
-            Random random = new Random(_worldSeed + worldX * 73856093 + worldZ * 19349663);
+            // Only create POIs at or very near cell centers to avoid duplicates
+            float maxDistanceSquared = 4 * 4; // Only consider positions within 4 units of cell center
+
+            if (distanceSquared > maxDistanceSquared)
+            {
+                return null;
+            }
+
+            // Cache the cell center to avoid duplicates
+            Vector2I poiPosition = cellCenter;
+
+            // Get biome type for this position
+            BiomeType biomeType = WorldGenerator.GetBiomeType(poiPosition.X, poiPosition.Y);
 
             // Determine POI type based on biome and noise
-            float typeNoise = _poiTypeNoise.GetNoise2D(worldX, worldZ);
+            float typeNoise = _poiTypeNoise.GetNoise2D(poiPosition.X, poiPosition.Y);
             typeNoise = (typeNoise + 1f) * 0.5f; // Convert to [0,1]
-            POIType poiType = DeterminePOITypeForBiome(biomeType, random, typeNoise);
+            POIType poiType = DeterminePOITypeForBiome(biomeType, typeNoise);
 
             // Determine POI size based on noise
-            float sizeNoise = _poiSizeNoise.GetNoise2D(worldX, worldZ);
+            float sizeNoise = _poiSizeNoise.GetNoise2D(poiPosition.X, poiPosition.Y);
             sizeNoise = (sizeNoise + 1f) * 0.5f; // Convert to [0,1]
             POISize poiSize = DeterminePOISize(sizeNoise);
 
             // Create the POI
-            Vector2I poiPosition = new Vector2I(worldX, worldZ);
             PointOfInterest poi = new PointOfInterest(poiPosition, poiType, poiSize, biomeType, _worldSeed);
 
             return poi;
@@ -184,10 +241,10 @@ namespace CubeGen.World.Generation.POI
         /// <summary>
         /// Determine appropriate POI type based on biome and noise
         /// </summary>
-        private POIType DeterminePOITypeForBiome(BiomeType biomeType, Random random, float noiseValue)
+        private static POIType DeterminePOITypeForBiome(BiomeType biomeType, float noiseValue)
         {
             // List of possible POI types for each biome
-            List<POIType> possibleTypes = new List<POIType>();
+            List<POIType> possibleTypes = new();
 
             switch (biomeType)
             {
@@ -236,7 +293,7 @@ namespace CubeGen.World.Generation.POI
         /// <summary>
         /// Determine POI size with a weighted distribution based on noise
         /// </summary>
-        private POISize DeterminePOISize(float noiseValue)
+        private static POISize DeterminePOISize(float noiseValue)
         {
             if (noiseValue < 0.1f) return POISize.Tiny;      // 10% chance
             if (noiseValue < 0.3f) return POISize.Small;     // 20% chance

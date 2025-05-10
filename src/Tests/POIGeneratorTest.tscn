@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://bvnxnxnxnxnxn"]
+
+[ext_resource type="Script" uid="uid://dq4lgj8yqxfd4" path="res://src/Tests/POIGeneratorTest.cs" id="1_aaaaa"]
+
+[node name="POIGeneratorTest" type="Node3D"]
+script = ExtResource("1_aaaaa")

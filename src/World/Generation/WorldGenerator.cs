@@ -145,15 +145,10 @@ public partial class WorldGenerator : Node3D
 		}
 
 		// Find POIs that might affect this chunk BEFORE generating terrain
-		// Calculate world bounds for this chunk
+		// Get POIs directly from the POIManager using the new efficient method
 		int chunkWorldX = chunkPos.X * ChunkSize;
 		int chunkWorldZ = chunkPos.Y * ChunkSize;
-		Vector2I chunkCenterPos = new Vector2I(
-			chunkWorldX + ChunkSize / 2,
-			chunkWorldZ + ChunkSize / 2
-		);
-		int poiSearchRadius = 200; // Adjust based on your largest POI influence radius
-		List<POI.PointOfInterest> chunkPOIs = POI.POIManager.Instance.GetPOIsInRadius(chunkCenterPos, poiSearchRadius);
+		List<POI.PointOfInterest> chunkPOIs = POI.POIManager.Instance.GetPOIsAffectingChunk(chunkPos, ChunkSize);
 
 		// Store POIs in the chunk data for later use during biome object placement
 		chunk.SetMetadata("POIs", chunkPOIs);
@@ -199,12 +194,18 @@ public partial class WorldGenerator : Node3D
 
 				// Get POIs that might affect this specific position
 				Vector2I worldPos = new Vector2I(worldX, worldZ);
-				List<POI.PointOfInterest> nearbyPOIs = chunkPOIs.Where(poi => {
+				// Filter POIs that affect this position (more efficient than LINQ)
+				List<POI.PointOfInterest> nearbyPOIs = new List<POI.PointOfInterest>();
+				foreach (var poi in chunkPOIs)
+				{
 					int dx = poi.Position.X - worldPos.X;
 					int dz = poi.Position.Y - worldPos.Y;
 					float distanceSquared = dx * dx + dz * dz;
-					return distanceSquared <= poi.InfluenceRadius * poi.InfluenceRadius;
-				}).ToList();
+					if (distanceSquared <= poi.InfluenceRadius * poi.InfluenceRadius)
+					{
+						nearbyPOIs.Add(poi);
+					}
+				}
 
 				// Apply POI terrain modifications
 				foreach (var poi in nearbyPOIs)
@@ -948,24 +949,8 @@ public partial class WorldGenerator : Node3D
 		int chunkWorldX = chunkPos.X * chunkSize;
 		int chunkWorldZ = chunkPos.Y * chunkSize;
 
-		// Get POIs from chunk metadata (these were stored during terrain generation)
-		List<POI.PointOfInterest> nearbyPOIs = null;
-		if (chunk.TryGetMetadata<List<POI.PointOfInterest>>("POIs", out var storedPOIs))
-		{
-			nearbyPOIs = storedPOIs;
-		}
-		else
-		{
-			// Fallback in case POIs weren't stored in metadata
-			// Get POIs within a reasonable radius of the chunk center
-			int poiSearchRadius = 300; // Larger radius to catch POIs that might affect the chunk
-			Vector2I chunkCenterPos = new Vector2I(
-				chunkWorldX + chunkSize / 2,
-				chunkWorldZ + chunkSize / 2
-			);
-			nearbyPOIs = POI.POIManager.Instance.GetPOIsInRadius(chunkCenterPos, poiSearchRadius);
-			GD.PrintErr("POIs not found in chunk metadata, using fallback method");
-		}
+		// Get POIs directly from the POIManager using the new efficient method
+		List<POI.PointOfInterest> nearbyPOIs = POI.POIManager.Instance.GetPOIsAffectingChunk(chunkPos, chunkSize);
 
 		// First, add POI-specific structures
 		// This ensures POIs are placed before any biome objects

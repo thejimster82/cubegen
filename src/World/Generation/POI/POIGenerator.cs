@@ -212,67 +212,139 @@ namespace CubeGen.World.Generation.POI
             int maxZ = chunkWorldZ + chunkSize + searchRadius;
 
             // Use a smaller grid step for more thorough coverage
-            int gridStep = 4; // Reduced from 8 to 4 for better coverage
+            int gridStep = 2; // Reduced from 4 to 2 for much better coverage
+
+            // Get all cell centers in the search area first
+            HashSet<Vector2I> cellCenters = new HashSet<Vector2I>();
 
             for (int x = minX; x <= maxX; x += gridStep)
             {
                 for (int z = minZ; z <= maxZ; z += gridStep)
                 {
-                    // Check if there's a POI at this grid point
-                    PointOfInterest poi = GetPOIAt(x, z);
+                    Vector2I cellCenter = GetCellCenter(x, z);
+                    cellCenters.Add(cellCenter);
+                }
+            }
 
-                    if (poi != null)
+            // Now check each cell center for POIs
+            foreach (Vector2I cellCenter in cellCenters)
+            {
+                PointOfInterest poi = GetPOIAt(cellCenter.X, cellCenter.Y);
+
+                if (poi != null)
+                {
+                    // More accurate check if this POI affects the chunk
+                    bool affectsChunk = DoesPOIAffectChunk(poi, chunkPos, chunkSize);
+
+                    if (affectsChunk)
                     {
-                        // Check if this POI could affect the chunk by testing against all corners and center
-                        bool affectsChunk = false;
-
-                        // Test against chunk center
-                        int centerX = chunkWorldX + chunkSize / 2;
-                        int centerZ = chunkWorldZ + chunkSize / 2;
-                        int dxCenter = poi.Position.X - centerX;
-                        int dzCenter = poi.Position.Y - centerZ;
-                        float distanceToCenter = Mathf.Sqrt(dxCenter * dxCenter + dzCenter * dzCenter);
-
-                        if (distanceToCenter <= poi.InfluenceRadius + chunkSize / 2)
+                        // Check if we already have this POI in our results
+                        bool alreadyAdded = false;
+                        foreach (var existingPoi in result)
                         {
-                            affectsChunk = true;
-                        }
-
-                        // If not affecting center, test against all corners
-                        if (!affectsChunk)
-                        {
-                            // Test each corner of the chunk
-                            int[][] corners =
+                            if (existingPoi.Position == poi.Position)
                             {
-                                [chunkWorldX, chunkWorldZ],                    // Bottom-left
-                                [chunkWorldX + chunkSize, chunkWorldZ],        // Bottom-right
-                                [chunkWorldX, chunkWorldZ + chunkSize],        // Top-left
-                                [chunkWorldX + chunkSize, chunkWorldZ + chunkSize]  // Top-right
-                            };
-
-                            foreach (var corner in corners)
-                            {
-                                int dx = poi.Position.X - corner[0];
-                                int dz = poi.Position.Y - corner[1];
-                                float distanceToCorner = Mathf.Sqrt(dx * dx + dz * dz);
-
-                                if (distanceToCorner <= poi.InfluenceRadius)
-                                {
-                                    affectsChunk = true;
-                                    break;
-                                }
+                                alreadyAdded = true;
+                                break;
                             }
                         }
 
-                        if (affectsChunk)
+                        if (!alreadyAdded)
                         {
                             result.Add(poi);
+                            GD.Print($"POI at {poi.Position} affects chunk {chunkPos}");
                         }
                     }
                 }
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Determines if a POI affects a specific chunk
+        /// </summary>
+        private bool DoesPOIAffectChunk(PointOfInterest poi, Vector2I chunkPos, int chunkSize)
+        {
+            // Calculate world bounds for this chunk
+            int chunkWorldX = chunkPos.X * chunkSize;
+            int chunkWorldZ = chunkPos.Y * chunkSize;
+
+            // Test if the POI is inside the chunk
+            if (poi.Position.X >= chunkWorldX && poi.Position.X < chunkWorldX + chunkSize &&
+                poi.Position.Y >= chunkWorldZ && poi.Position.Y < chunkWorldZ + chunkSize)
+            {
+                return true;
+            }
+
+            // Test against chunk center
+            int centerX = chunkWorldX + chunkSize / 2;
+            int centerZ = chunkWorldZ + chunkSize / 2;
+            int dxCenter = poi.Position.X - centerX;
+            int dzCenter = poi.Position.Y - centerZ;
+            float distanceToCenter = Mathf.Sqrt(dxCenter * dxCenter + dzCenter * dzCenter);
+
+            if (distanceToCenter <= poi.InfluenceRadius + chunkSize / 2)
+            {
+                return true;
+            }
+
+            // Test against all corners and edges
+            // Test each corner of the chunk
+            int[][] corners =
+            {
+                [chunkWorldX, chunkWorldZ],                    // Bottom-left
+                [chunkWorldX + chunkSize, chunkWorldZ],        // Bottom-right
+                [chunkWorldX, chunkWorldZ + chunkSize],        // Top-left
+                [chunkWorldX + chunkSize, chunkWorldZ + chunkSize]  // Top-right
+            };
+
+            foreach (var corner in corners)
+            {
+                int dx = poi.Position.X - corner[0];
+                int dz = poi.Position.Y - corner[1];
+                float distanceToCorner = Mathf.Sqrt(dx * dx + dz * dz);
+
+                if (distanceToCorner <= poi.InfluenceRadius)
+                {
+                    return true;
+                }
+            }
+
+            // Test against edges
+            // Bottom edge
+            if (poi.Position.Y < chunkWorldZ &&
+                poi.Position.X >= chunkWorldX && poi.Position.X < chunkWorldX + chunkSize &&
+                chunkWorldZ - poi.Position.Y <= poi.InfluenceRadius)
+            {
+                return true;
+            }
+
+            // Top edge
+            if (poi.Position.Y >= chunkWorldZ + chunkSize &&
+                poi.Position.X >= chunkWorldX && poi.Position.X < chunkWorldX + chunkSize &&
+                poi.Position.Y - (chunkWorldZ + chunkSize) <= poi.InfluenceRadius)
+            {
+                return true;
+            }
+
+            // Left edge
+            if (poi.Position.X < chunkWorldX &&
+                poi.Position.Y >= chunkWorldZ && poi.Position.Y < chunkWorldZ + chunkSize &&
+                chunkWorldX - poi.Position.X <= poi.InfluenceRadius)
+            {
+                return true;
+            }
+
+            // Right edge
+            if (poi.Position.X >= chunkWorldX + chunkSize &&
+                poi.Position.Y >= chunkWorldZ && poi.Position.Y < chunkWorldZ + chunkSize &&
+                poi.Position.X - (chunkWorldX + chunkSize) <= poi.InfluenceRadius)
+            {
+                return true;
+            }
+
+            return false;
         }
 
         /// <summary>

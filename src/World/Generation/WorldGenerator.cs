@@ -978,7 +978,7 @@ public partial class WorldGenerator : Node3D
 			// If the POI is within or close to the chunk, add its structures
 			if (poiX >= -20 && poiX < chunkSize + 20 && poiZ >= -20 && poiZ < chunkSize + 20)
 			{
-				AddPOIStructures(chunk, poi, chunkPos, featureMap, random);
+				AddPOIStructures(chunk, poi, chunkPos, featureMap);
 			}
 		}
 
@@ -2062,7 +2062,7 @@ public partial class WorldGenerator : Node3D
 	}
 
 	// Method to add POI-specific structures to a chunk
-	private void AddPOIStructures(VoxelChunk chunk, POI.PointOfInterest poi, Vector2I chunkPos, bool[,] featureMap, Random random)
+	private void AddPOIStructures(VoxelChunk chunk, POI.PointOfInterest poi, Vector2I chunkPos, bool[,] featureMap)
 	{
 		// Calculate POI position relative to chunk
 		int chunkWorldX = chunkPos.X * ChunkSize;
@@ -2070,48 +2070,70 @@ public partial class WorldGenerator : Node3D
 		int poiX = poi.Position.X - chunkWorldX;
 		int poiZ = poi.Position.Y - chunkWorldZ;
 
-		// Find surface height at POI position
+		// Find surface height at POI position or at the center of the chunk if POI is outside
 		int surfaceHeight = -1;
-		if (poiX >= 0 && poiX < chunk.Size && poiZ >= 0 && poiZ < chunk.Size)
+		int sampleX = poiX;
+		int sampleZ = poiZ;
+
+		// If POI is outside this chunk, use the closest point on the chunk boundary
+		if (poiX < 0 || poiX >= chunk.Size || poiZ < 0 || poiZ >= chunk.Size)
 		{
-			// POI is within this chunk, find the surface height
-			for (int y = ChunkHeight - 1; y >= 0; y--)
+			// Find the closest point on the chunk boundary to sample height
+			sampleX = Mathf.Clamp(poiX, 0, chunk.Size - 1);
+			sampleZ = Mathf.Clamp(poiZ, 0, chunk.Size - 1);
+
+			// Debug output to help diagnose cross-chunk POI issues
+			GD.Print($"POI at ({poi.Position.X}, {poi.Position.Y}) affects chunk {chunkPos} but is outside it. " +
+				$"Using sample point ({sampleX}, {sampleZ}) for height reference.");
+		}
+
+		// Find the surface height at the sample point
+		for (int y = ChunkHeight - 1; y >= 0; y--)
+		{
+			if (chunk.GetVoxel(sampleX, y, sampleZ) != VoxelType.Air &&
+				chunk.GetVoxel(sampleX, y, sampleZ) != VoxelType.Water)
 			{
-				if (chunk.GetVoxel(poiX, y, poiZ) != VoxelType.Air &&
-					chunk.GetVoxel(poiX, y, poiZ) != VoxelType.Water)
-				{
-					surfaceHeight = y;
-					break;
-				}
+				surfaceHeight = y;
+				break;
 			}
 		}
-		else
+
+		// If we still couldn't find a valid surface height, use an estimate
+		if (surfaceHeight < 0)
 		{
-			// POI is outside this chunk, but close enough to affect it
 			// Use an estimated surface height based on the water level
 			surfaceHeight = Mathf.FloorToInt(WaterLevel * ChunkHeight) + 2;
+			GD.Print($"Could not find surface height for POI at ({poi.Position.X}, {poi.Position.Y}) in chunk {chunkPos}. " +
+				$"Using estimated height: {surfaceHeight}");
 		}
 
-		// Only proceed if we found a valid surface height
-		if (surfaceHeight < 0)
-			return;
-
-		GenerateSimpleMarker(chunk, poi, poiX, poiZ, surfaceHeight, featureMap, random);
+		// Generate the POI structure
+		GenerateSimpleMarker(chunk, poi, poiX, poiZ, surfaceHeight, featureMap);
 	}
 
 	// Generate a simple marker for unimplemented POI types
-	private void GenerateSimpleMarker(VoxelChunk chunk, POI.PointOfInterest poi, int x, int z, int surfaceHeight, bool[,] featureMap, Random random)
+	private void GenerateSimpleMarker(VoxelChunk chunk, POI.PointOfInterest poi, int x, int z, int surfaceHeight, bool[,] featureMap)
 	{
-		// Only proceed if the POI is within the chunk
-		if (x < 0 || x >= chunk.Size || z < 0 || z >= chunk.Size)
-			return;
+		// Calculate world coordinates of the POI
+		int worldX = poi.Position.X;
+		int worldZ = poi.Position.Y;
 
-		// Mark the area as occupied in the feature map
-		int radius = 5; // Increased from 3 to 5 for better visibility
-		MarkFeaturePosition(featureMap, x, z, radius, chunk.Size);
+		// Calculate chunk coordinates
+		int chunkWorldX = chunk.Position.X * ChunkSize;
+		int chunkWorldZ = chunk.Position.Y * ChunkSize;
+
+		// Define the radius of the POI structure
+		int radius = 30;
+
+		// Mark the area as occupied in the feature map if the POI center is in this chunk
+		if (x >= 0 && x < chunk.Size && z >= 0 && z < chunk.Size)
+		{
+			// Only mark the feature map for the chunk containing the POI center
+			MarkFeaturePosition(featureMap, x, z, Math.Min(radius, chunk.Size/2), chunk.Size);
+		}
 
 		// Create a more visible marker to identify the POI location
-		int markerHeight = 8; // Increased from 5 to 8 for better visibility
+		int markerHeight = 30;
 
 		// Use different materials based on POI category
 		VoxelType markerType = VoxelType.Stone;
@@ -2141,79 +2163,128 @@ public partial class WorldGenerator : Node3D
 				break;
 		}
 
-		// Create a base platform
-		for (int dx = -1; dx <= 1; dx++)
+		// Create a base platform - only modify voxels that are within this chunk
+		for (int dx = -radius; dx <= radius; dx++)
 		{
-			for (int dz = -1; dz <= 1; dz++)
+			for (int dz = -radius; dz <= radius; dz++)
 			{
-				int nx = x + dx;
-				int nz = z + dz;
+				// Calculate world coordinates for this voxel
+				int voxelWorldX = worldX + dx;
+				int voxelWorldZ = worldZ + dz;
 
-				// Check chunk boundaries
-				if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size)
+				// Calculate distance from POI center
+				float distance = Mathf.Sqrt(dx * dx + dz * dz);
+
+				// Only process voxels within the radius
+				if (distance <= radius)
 				{
-					// Create a flat platform at the surface
-					chunk.SetVoxel(nx, surfaceHeight, nz, secondaryType);
+					// Convert world coordinates to chunk-local coordinates
+					int nx = voxelWorldX - chunkWorldX;
+					int nz = voxelWorldZ - chunkWorldZ;
 
-					// Add a second layer in the center
-					if (dx == 0 && dz == 0)
+					// Only modify voxels that are within this chunk
+					if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size)
 					{
-						chunk.SetVoxel(nx, surfaceHeight + 1, nz, secondaryType);
+						// Create a flat platform at the surface
+						chunk.SetVoxel(nx, surfaceHeight, nz, secondaryType);
+
+						// Add a second layer in the center
+						if (dx == 0 && dz == 0 && x >= 0 && x < chunk.Size && z >= 0 && z < chunk.Size)
+						{
+							chunk.SetVoxel(x, surfaceHeight + 1, z, secondaryType);
+						}
 					}
 				}
 			}
 		}
 
-		// Create a central pillar
-		for (int y = 0; y < markerHeight; y++)
+		// Create a central pillar - only if the POI center is in this chunk
+		if (x >= 0 && x < chunk.Size && z >= 0 && z < chunk.Size)
 		{
+			for (int y = 0; y < markerHeight; y++)
+			{
+				int ny = surfaceHeight + y + 2; // Start 2 blocks above surface
+
+				// Check height boundary
+				if (ny < chunk.Height)
+				{
+					// Create the central pillar
+					chunk.SetVoxel(x, ny, z, markerType);
+				}
+			}
+
+			// Add a top cap
+			int topY = surfaceHeight + markerHeight + 2;
+			if (topY < chunk.Height)
+			{
+				chunk.SetVoxel(x, topY, z, secondaryType);
+			}
+		}
+
+		// Add cross pieces at intervals - these can span across chunks
+		for (int y = 0; y < markerHeight; y += 2)
+		{
+			if (y == 0) continue; // Skip the first level
+
 			int ny = surfaceHeight + y + 2; // Start 2 blocks above surface
 
 			// Check height boundary
 			if (ny < chunk.Height)
 			{
-				// Create the central pillar
-				chunk.SetVoxel(x, ny, z, markerType);
-
-				// Add decorative elements at intervals
-				if (y % 2 == 0 && y > 0)
+				// Add cross pieces at intervals
+				for (int d = -radius; d <= radius; d += 2)
 				{
-					// Add cross pieces at intervals
-					for (int d = -1; d <= 1; d += 2)
+					// Calculate world coordinates for X-axis cross piece
+					int xCrossWorldX = worldX + d;
+					int xCrossWorldZ = worldZ;
+
+					// Convert to chunk-local coordinates
+					int xCrossNx = xCrossWorldX - chunkWorldX;
+					int xCrossNz = xCrossWorldZ - chunkWorldZ;
+
+					// Only modify voxels that are within this chunk
+					if (xCrossNx >= 0 && xCrossNx < chunk.Size && xCrossNz >= 0 && xCrossNz < chunk.Size)
 					{
 						// X-axis cross piece
-						if (x + d >= 0 && x + d < chunk.Size)
-						{
-							chunk.SetVoxel(x + d, ny, z, secondaryType);
-						}
+						chunk.SetVoxel(xCrossNx, ny, xCrossNz, secondaryType);
+					}
 
+					// Calculate world coordinates for Z-axis cross piece
+					int zCrossWorldX = worldX;
+					int zCrossWorldZ = worldZ + d;
+
+					// Convert to chunk-local coordinates
+					int zCrossNx = zCrossWorldX - chunkWorldX;
+					int zCrossNz = zCrossWorldZ - chunkWorldZ;
+
+					// Only modify voxels that are within this chunk
+					if (zCrossNx >= 0 && zCrossNx < chunk.Size && zCrossNz >= 0 && zCrossNz < chunk.Size)
+					{
 						// Z-axis cross piece
-						if (z + d >= 0 && z + d < chunk.Size)
-						{
-							chunk.SetVoxel(x, ny, z + d, secondaryType);
-						}
+						chunk.SetVoxel(zCrossNx, ny, zCrossNz, secondaryType);
 					}
 				}
 			}
 		}
 
-		// Add a top cap
-		int topY = surfaceHeight + markerHeight + 2;
-		if (topY < chunk.Height)
+		// Add a cross at the top - only if the POI center is in this chunk
+		if (x >= 0 && x < chunk.Size && z >= 0 && z < chunk.Size)
 		{
-			chunk.SetVoxel(x, topY, z, secondaryType);
-
-			// Add a cross at the top if in bounds
-			for (int d = -1; d <= 1; d += 2)
+			int topY = surfaceHeight + markerHeight + 2;
+			if (topY < chunk.Height)
 			{
-				if (x + d >= 0 && x + d < chunk.Size)
+				// Add a cross at the top
+				for (int d = -1; d <= 1; d += 2)
 				{
-					chunk.SetVoxel(x + d, topY, z, secondaryType);
-				}
+					if (x + d >= 0 && x + d < chunk.Size)
+					{
+						chunk.SetVoxel(x + d, topY, z, secondaryType);
+					}
 
-				if (z + d >= 0 && z + d < chunk.Size)
-				{
-					chunk.SetVoxel(x, topY, z + d, secondaryType);
+					if (z + d >= 0 && z + d < chunk.Size)
+					{
+						chunk.SetVoxel(x, topY, z + d, secondaryType);
+					}
 				}
 			}
 		}

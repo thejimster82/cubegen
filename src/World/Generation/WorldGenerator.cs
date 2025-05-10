@@ -200,6 +200,9 @@ public partial class WorldGenerator : Node3D
 			}
 		}
 
+		// Generate POI structures
+		POI.POIStructureGenerator.Instance.GenerateStructuresForChunk(chunk, chunkPos);
+
 		// Add objects like trees based on biome
 		AddBiomeObjects(chunk, chunkPos, ChunkSize);
 
@@ -621,6 +624,9 @@ public partial class WorldGenerator : Node3D
 		// Convert to integer height
 		int blendedHeight = Mathf.RoundToInt(totalHeight);
 
+		// Apply POI terrain modifications if any
+		blendedHeight = POI.POIGenerator.Instance.ModifyTerrainHeight(worldX, worldZ, blendedHeight);
+
 		// Debug output for the first chunk to help understand terrain height
 		if (worldX == 0 && worldZ == 0)
 		{
@@ -899,6 +905,15 @@ public partial class WorldGenerator : Node3D
 		// Initialize decoration clusters for this chunk
 		DecorationClusters.InitializeChunkClusters(chunkPos, chunkSize, random);
 
+		// Initialize POI generator if needed
+		if (!POI.POIGenerator.Instance.IsInitialized)
+		{
+			POI.POIGenerator.Instance.Initialize(Seed);
+		}
+
+		// Generate POIs for this region
+		POI.POIGenerator.Instance.GeneratePOIsForRegion(chunkPos, 1);
+
 		// Create a 2D array to track where features have been placed
 		// true = feature exists at this position, false = no feature
 		bool[,] featureMap = new bool[chunkSize, chunkSize];
@@ -936,57 +951,110 @@ public partial class WorldGenerator : Node3D
 						// Use the already calculated world position
 						Vector2I worldPos = new Vector2I(worldX, worldZ);
 
-						// Check if this position should have a decoration based on clusters
-						DecorationClusters.DecorationPlacement placement;
-						if (DecorationClusters.ShouldPlaceDecoration(worldPos, out placement, random))
+						// Check if this position is within a POI clearance zone
+						if (POI.POIGenerator.Instance.IsWithinPOIClearanceZone(worldX, worldZ))
 						{
-							// Check if the decoration is appropriate for the surface block
-							bool canPlace = false;
+							// Check if there are POI-specific flora to place
+							Dictionary<VoxelType, float> poiFlora = POI.POIGenerator.Instance.GetPOISpecificFlora(worldX, worldZ);
 
-							switch (placement.Type)
+							if (poiFlora != null && poiFlora.Count > 0)
 							{
-								case VoxelType.TallGrass:
-								case VoxelType.Flower:
-									// Grass and flowers only on grass blocks
-									canPlace = chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass;
-									break;
+								// Calculate total probability
+								float totalProb = 0f;
+								foreach (var flora in poiFlora)
+								{
+									totalProb += flora.Value;
+								}
 
-								case VoxelType.Mushroom:
-									// Mushrooms on grass or dirt
-									canPlace = chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass ||
-											  chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Dirt;
-									break;
+								// Determine if we should place any flora (based on density)
+								if (random.NextDouble() < 0.3f) // 30% chance to place flora
+								{
+									// Select a flora type based on weighted probabilities
+									float randomValue = (float)random.NextDouble() * totalProb;
+									float cumulativeProb = 0f;
+									VoxelType selectedType = VoxelType.Air;
 
-								case VoxelType.Rock:
-									// Rocks can go on any surface
-									canPlace = true;
-									break;
+									foreach (var flora in poiFlora)
+									{
+										cumulativeProb += flora.Value;
+										if (randomValue <= cumulativeProb)
+										{
+											selectedType = flora.Key;
+											break;
+										}
+									}
 
-								case VoxelType.Stick:
-									// Sticks primarily in forests on grass or dirt
-									canPlace = chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass ||
-											  chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Dirt;
-									break;
+									if (selectedType != VoxelType.Air)
+									{
+										// Create a custom placement with random offset and rotation
+										DecorationClusters.DecorationPlacement poiPlacement = new DecorationClusters.DecorationPlacement(
+											selectedType,
+											new Vector2(random.Next(-20, 20) / 100.0f, random.Next(-20, 20) / 100.0f),
+											random.Next(0, 360),
+											0.8f + (float)random.NextDouble() * 0.4f // Scale between 0.8 and 1.2
+										);
 
-								case VoxelType.Seashell:
-									// Seashells only on sand
-									canPlace = chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Sand;
-									break;
-
-								default:
-									canPlace = false;
-									break;
+										// Store the decoration
+										chunk.SetVoxel(x, surfaceHeight + 1, z, selectedType);
+										chunk.SetDecorationPlacement(x, surfaceHeight + 1, z, poiPlacement);
+									}
+								}
 							}
-
-							// Place the decoration if appropriate
-							if (canPlace)
+						}
+						else
+						{
+							// Not in a POI clearance zone, use normal decoration clusters
+							DecorationClusters.DecorationPlacement placement;
+							if (DecorationClusters.ShouldPlaceDecoration(worldPos, out placement, random))
 							{
-								// Store the decoration type in the voxel data
-								chunk.SetVoxel(x, surfaceHeight + 1, z, placement.Type);
+								// Check if the decoration is appropriate for the surface block
+								bool canPlace = false;
 
-								// Store the placement information in the chunk's metadata
-								// This will be used by the mesh generator to position the decoration
-								chunk.SetDecorationPlacement(x, surfaceHeight + 1, z, placement);
+								switch (placement.Type)
+								{
+									case VoxelType.TallGrass:
+									case VoxelType.Flower:
+										// Grass and flowers only on grass blocks
+										canPlace = chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass;
+										break;
+
+									case VoxelType.Mushroom:
+										// Mushrooms on grass or dirt
+										canPlace = chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass ||
+												  chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Dirt;
+										break;
+
+									case VoxelType.Rock:
+										// Rocks can go on any surface
+										canPlace = true;
+										break;
+
+									case VoxelType.Stick:
+										// Sticks primarily in forests on grass or dirt
+										canPlace = chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Grass ||
+												  chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Dirt;
+										break;
+
+									case VoxelType.Seashell:
+										// Seashells only on sand
+										canPlace = chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Sand;
+										break;
+
+									default:
+										canPlace = false;
+										break;
+								}
+
+								// Place the decoration if appropriate
+								if (canPlace)
+								{
+									// Store the decoration type in the voxel data
+									chunk.SetVoxel(x, surfaceHeight + 1, z, placement.Type);
+
+									// Store the placement information in the chunk's metadata
+									// This will be used by the mesh generator to position the decoration
+									chunk.SetDecorationPlacement(x, surfaceHeight + 1, z, placement);
+								}
 							}
 						}
 					}
@@ -995,7 +1063,9 @@ public partial class WorldGenerator : Node3D
 				// Add biome-specific features with appropriate probability
 				// Check position is safely away from chunk boundaries
 				int safeDistance = 4; // Reduced safe distance to allow more features
-				if (x >= safeDistance && x < (chunkSize - safeDistance) &&
+				// Skip feature placement if within a POI clearance zone
+				if (!POI.POIGenerator.Instance.IsWithinPOIClearanceZone(worldX, worldZ) &&
+					x >= safeDistance && x < (chunkSize - safeDistance) &&
 					z >= safeDistance && z < (chunkSize - safeDistance))
 				{
 					switch (biomeType)

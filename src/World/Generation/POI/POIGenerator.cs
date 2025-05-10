@@ -200,7 +200,10 @@ namespace CubeGen.World.Generation.POI
             // Calculate world bounds for this chunk with padding for POI influence
             int chunkWorldX = chunkPos.X * chunkSize;
             int chunkWorldZ = chunkPos.Y * chunkSize;
-            int searchRadius = chunkSize / 2 + maxInfluenceRadius;
+
+            // Increase search radius to ensure we capture all POIs that could affect the chunk
+            // Use the full maxInfluenceRadius to ensure we don't miss any POIs at the edges
+            int searchRadius = maxInfluenceRadius;
 
             // Calculate search area
             int minX = chunkWorldX - searchRadius;
@@ -208,8 +211,8 @@ namespace CubeGen.World.Generation.POI
             int minZ = chunkWorldZ - searchRadius;
             int maxZ = chunkWorldZ + chunkSize + searchRadius;
 
-            // Use a grid-based approach to sample potential POI locations
-            int gridStep = 8; // Use a fixed small step size for thorough coverage
+            // Use a smaller grid step for more thorough coverage
+            int gridStep = 4; // Reduced from 8 to 4 for better coverage
 
             for (int x = minX; x <= maxX; x += gridStep)
             {
@@ -220,14 +223,48 @@ namespace CubeGen.World.Generation.POI
 
                     if (poi != null)
                     {
-                        // Check if this POI could affect the chunk
-                        int dx = poi.Position.X - chunkWorldX;
-                        int dz = poi.Position.Y - chunkWorldZ;
-                        int distanceToChunkX = Math.Max(0, Math.Max(dx, -dx - chunkSize));
-                        int distanceToChunkZ = Math.Max(0, Math.Max(dz, -dz - chunkSize));
-                        float distanceToChunk = Mathf.Sqrt(distanceToChunkX * distanceToChunkX + distanceToChunkZ * distanceToChunkZ);
+                        // Check if this POI could affect the chunk by testing against all corners and center
+                        bool affectsChunk = false;
 
-                        if (distanceToChunk <= poi.InfluenceRadius)
+                        // Test against chunk center
+                        int centerX = chunkWorldX + chunkSize / 2;
+                        int centerZ = chunkWorldZ + chunkSize / 2;
+                        int dxCenter = poi.Position.X - centerX;
+                        int dzCenter = poi.Position.Y - centerZ;
+                        float distanceToCenter = Mathf.Sqrt(dxCenter * dxCenter + dzCenter * dzCenter);
+
+                        if (distanceToCenter <= poi.InfluenceRadius + chunkSize / 2)
+                        {
+                            affectsChunk = true;
+                        }
+
+                        // If not affecting center, test against all corners
+                        if (!affectsChunk)
+                        {
+                            // Test each corner of the chunk
+                            int[][] corners =
+                            {
+                                [chunkWorldX, chunkWorldZ],                    // Bottom-left
+                                [chunkWorldX + chunkSize, chunkWorldZ],        // Bottom-right
+                                [chunkWorldX, chunkWorldZ + chunkSize],        // Top-left
+                                [chunkWorldX + chunkSize, chunkWorldZ + chunkSize]  // Top-right
+                            };
+
+                            foreach (var corner in corners)
+                            {
+                                int dx = poi.Position.X - corner[0];
+                                int dz = poi.Position.Y - corner[1];
+                                float distanceToCorner = Mathf.Sqrt(dx * dx + dz * dz);
+
+                                if (distanceToCorner <= poi.InfluenceRadius)
+                                {
+                                    affectsChunk = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (affectsChunk)
                         {
                             result.Add(poi);
                         }

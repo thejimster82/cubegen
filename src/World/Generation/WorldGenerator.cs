@@ -148,7 +148,22 @@ public partial class WorldGenerator : Node3D
 		// Get POIs directly from the POIManager using the new efficient method
 		int chunkWorldX = chunkPos.X * ChunkSize;
 		int chunkWorldZ = chunkPos.Y * ChunkSize;
+
+		// Use the improved POI detection to ensure we get all POIs that could affect this chunk
 		List<POI.PointOfInterest> chunkPOIs = POI.POIManager.Instance.GetPOIsAffectingChunk(chunkPos, ChunkSize);
+
+		// Debug output to help diagnose POI influence issues
+		if (chunkPOIs.Count > 0)
+		{
+			GD.Print($"Chunk at {chunkPos} is affected by {chunkPOIs.Count} POIs:");
+			foreach (var poi in chunkPOIs)
+			{
+				int dx = poi.Position.X - (chunkWorldX + ChunkSize/2);
+				int dz = poi.Position.Y - (chunkWorldZ + ChunkSize/2);
+				float distance = Mathf.Sqrt(dx * dx + dz * dz);
+				GD.Print($"  - {poi.Type} at {poi.Position}, distance: {distance:F1}, radius: {poi.InfluenceRadius}");
+			}
+		}
 
 		// Store POIs in the chunk data for later use during biome object placement
 		chunk.SetMetadata("POIs", chunkPOIs);
@@ -2080,7 +2095,7 @@ public partial class WorldGenerator : Node3D
 		// Only proceed if we found a valid surface height
 		if (surfaceHeight < 0)
 			return;
-			
+
 		GenerateSimpleMarker(chunk, poi, poiX, poiZ, surfaceHeight, featureMap, random);
 	}
 
@@ -2092,42 +2107,114 @@ public partial class WorldGenerator : Node3D
 			return;
 
 		// Mark the area as occupied in the feature map
-		int radius = 3;
+		int radius = 5; // Increased from 3 to 5 for better visibility
 		MarkFeaturePosition(featureMap, x, z, radius, chunk.Size);
 
-		// Create a simple pillar to mark the POI location
-		int markerHeight = 5;
+		// Create a more visible marker to identify the POI location
+		int markerHeight = 8; // Increased from 5 to 8 for better visibility
+
+		// Use different materials based on POI category
+		VoxelType markerType = VoxelType.Stone;
+		VoxelType secondaryType = VoxelType.Stone;
+
+		switch (poi.Category)
+		{
+			case POI.POICategory.Settlement:
+				markerType = VoxelType.Wood;
+				secondaryType = VoxelType.Stone;
+				break;
+			case POI.POICategory.Dungeon:
+				markerType = VoxelType.Stone;
+				secondaryType = VoxelType.Bedrock; // Using Bedrock instead of Obsidian
+				break;
+			case POI.POICategory.NaturalFeature:
+				markerType = VoxelType.Wood;
+				secondaryType = VoxelType.Leaves;
+				break;
+			case POI.POICategory.Landmark:
+				markerType = VoxelType.Stone;
+				secondaryType = VoxelType.Snow; // Using Snow instead of Gold
+				break;
+			case POI.POICategory.Resource:
+				markerType = VoxelType.Stone;
+				secondaryType = VoxelType.Cactus; // Using Cactus instead of Iron
+				break;
+		}
+
+		// Create a base platform
+		for (int dx = -1; dx <= 1; dx++)
+		{
+			for (int dz = -1; dz <= 1; dz++)
+			{
+				int nx = x + dx;
+				int nz = z + dz;
+
+				// Check chunk boundaries
+				if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size)
+				{
+					// Create a flat platform at the surface
+					chunk.SetVoxel(nx, surfaceHeight, nz, secondaryType);
+
+					// Add a second layer in the center
+					if (dx == 0 && dz == 0)
+					{
+						chunk.SetVoxel(nx, surfaceHeight + 1, nz, secondaryType);
+					}
+				}
+			}
+		}
+
+		// Create a central pillar
 		for (int y = 0; y < markerHeight; y++)
 		{
-			int nx = x;
-			int nz = z;
-			int ny = surfaceHeight + y + 1;
+			int ny = surfaceHeight + y + 2; // Start 2 blocks above surface
 
-			// Check chunk boundaries
-			if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size && ny < chunk.Height)
+			// Check height boundary
+			if (ny < chunk.Height)
 			{
-				// Use different materials based on POI category
-				VoxelType markerType = VoxelType.Stone;
-				switch (poi.Category)
+				// Create the central pillar
+				chunk.SetVoxel(x, ny, z, markerType);
+
+				// Add decorative elements at intervals
+				if (y % 2 == 0 && y > 0)
 				{
-					case POI.POICategory.Settlement:
-						markerType = VoxelType.Wood;
-						break;
-					case POI.POICategory.Dungeon:
-						markerType = VoxelType.Stone;
-						break;
-					case POI.POICategory.NaturalFeature:
-						markerType = VoxelType.Leaves;
-						break;
-					case POI.POICategory.Landmark:
-						markerType = VoxelType.Stone;
-						break;
-					case POI.POICategory.Resource:
-						markerType = VoxelType.Stone;
-						break;
+					// Add cross pieces at intervals
+					for (int d = -1; d <= 1; d += 2)
+					{
+						// X-axis cross piece
+						if (x + d >= 0 && x + d < chunk.Size)
+						{
+							chunk.SetVoxel(x + d, ny, z, secondaryType);
+						}
+
+						// Z-axis cross piece
+						if (z + d >= 0 && z + d < chunk.Size)
+						{
+							chunk.SetVoxel(x, ny, z + d, secondaryType);
+						}
+					}
+				}
+			}
+		}
+
+		// Add a top cap
+		int topY = surfaceHeight + markerHeight + 2;
+		if (topY < chunk.Height)
+		{
+			chunk.SetVoxel(x, topY, z, secondaryType);
+
+			// Add a cross at the top if in bounds
+			for (int d = -1; d <= 1; d += 2)
+			{
+				if (x + d >= 0 && x + d < chunk.Size)
+				{
+					chunk.SetVoxel(x + d, topY, z, secondaryType);
 				}
 
-				chunk.SetVoxel(nx, ny, nz, markerType);
+				if (z + d >= 0 && z + d < chunk.Size)
+				{
+					chunk.SetVoxel(x, topY, z + d, secondaryType);
+				}
 			}
 		}
 	}

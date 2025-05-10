@@ -162,6 +162,10 @@ public partial class WorldGenerator : Node3D
 				int dz = poi.Position.Y - (chunkWorldZ + ChunkSize/2);
 				float distance = Mathf.Sqrt(dx * dx + dz * dz);
 				GD.Print($"  - {poi.Type} at {poi.Position}, distance: {distance:F1}, radius: {poi.InfluenceRadius}");
+
+				// Generate voxel modifications for this POI if it hasn't been processed yet
+				// This ensures all chunks see the same POI structure
+				POI.POIVoxelModifier.GeneratePOIVoxels(poi, ChunkHeight, WaterLevel);
 			}
 		}
 
@@ -207,26 +211,9 @@ public partial class WorldGenerator : Node3D
 				// Generate blended terrain height based on all contributing biomes
 				int terrainHeight = GenerateBlendedTerrainHeight(worldX, worldZ, biomeBlendWeights);
 
-				// Get POIs that might affect this specific position
-				Vector2I worldPos = new Vector2I(worldX, worldZ);
-				// Filter POIs that affect this position (more efficient than LINQ)
-				List<POI.PointOfInterest> nearbyPOIs = new List<POI.PointOfInterest>();
-				foreach (var poi in chunkPOIs)
-				{
-					int dx = poi.Position.X - worldPos.X;
-					int dz = poi.Position.Y - worldPos.Y;
-					float distanceSquared = dx * dx + dz * dz;
-					if (distanceSquared <= poi.InfluenceRadius * poi.InfluenceRadius)
-					{
-						nearbyPOIs.Add(poi);
-					}
-				}
-
-				// Apply POI terrain modifications
-				foreach (var poi in nearbyPOIs)
-				{
-					terrainHeight = POI.TerrainModifier.ModifyTerrainHeight(poi, worldX, worldZ, terrainHeight, ChunkHeight);
-				}
+				// Check if this position has a modified terrain height from a POI
+				// This uses our new direct voxel modification approach
+				terrainHeight = POI.POIVoxelModifier.GetModifiedTerrainHeight(worldX, worldZ, terrainHeight);
 
 				// Calculate water level height in voxels
 				int waterLevelHeight = Mathf.FloorToInt(WaterLevel * ChunkHeight);
@@ -238,11 +225,8 @@ public partial class WorldGenerator : Node3D
 					// This keeps the biome colors distinct while still blending heights
 					VoxelType voxelType = DetermineVoxelType(y, terrainHeight, primaryBiome);
 
-					// Apply POI voxel type modifications
-					foreach (var poi in nearbyPOIs)
-					{
-						voxelType = POI.TerrainModifier.ModifyVoxelType(poi, worldX, worldZ, y, voxelType, terrainHeight);
-					}
+					// Apply POI voxel type modifications using our new direct approach
+					voxelType = POI.POIVoxelModifier.GetModifiedVoxelType(worldX, y, worldZ, voxelType);
 
 					chunk.SetVoxel(x, y, z, voxelType);
 				}

@@ -1,0 +1,40 @@
+[gd_scene load_steps=6 format=3 uid="uid://c8qxj6yvnxgvs"]
+
+[ext_resource type="Script" uid="uid://bl8nciky4d6e5" path="res://src/Tests/POITest.cs" id="1_yvnqe"]
+[ext_resource type="PackedScene" uid="uid://bqnvlj8jx8g7y" path="res://src/Player/Player.tscn" id="2_kdyye"]
+[ext_resource type="Script" uid="uid://cjlr7mfi4phey" path="res://src/World/Generation/WorldGenerator.cs" id="3_xgu8c"]
+[ext_resource type="Script" uid="uid://f86vp5v3wafj" path="res://src/World/Chunks/ChunkManager.cs" id="4_xgu8c"]
+
+[sub_resource type="Environment" id="Environment_yvnqe"]
+background_mode = 1
+background_color = Color(0.529412, 0.807843, 0.921569, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.529412, 0.807843, 0.921569, 1)
+ambient_light_energy = 0.5
+fog_enabled = true
+fog_light_color = Color(0.529412, 0.807843, 0.921569, 1)
+fog_density = 0.001
+fog_aerial_perspective = 0.5
+fog_sky_affect = 0.5
+
+[node name="POITest" type="Node3D"]
+script = ExtResource("1_yvnqe")
+Seed = 12345
+ViewDistance = 8
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_yvnqe")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, -0.75, 0.433013, 0, 10, 0)
+light_color = Color(1, 0.956863, 0.839216, 1)
+light_energy = 1.5
+shadow_enabled = true
+
+[node name="Player" parent="." instance=ExtResource("2_kdyye")]
+
+[node name="WorldGenerator" type="Node3D" parent="."]
+script = ExtResource("3_xgu8c")
+
+[node name="ChunkManager" type="Node3D" parent="WorldGenerator"]
+script = ExtResource("4_xgu8c")

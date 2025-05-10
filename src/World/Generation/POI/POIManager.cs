@@ -103,42 +103,39 @@ namespace CubeGen.World.Generation.POI
             // Base chance on noise to create a more natural distribution
             float regionNoise = _poiPlacementNoise.GetNoise2D(regionCoords.X, regionCoords.Y);
             regionNoise = (regionNoise + 1f) * 0.5f; // Convert from [-1,1] to [0,1]
+        
+            // Determine number of POIs (1-3 based on noise value)
+            int poiCount = 1;
+            if (regionNoise > 0.8f) poiCount = 2;
+            if (regionNoise > 0.9f) poiCount = 3;
             
-            // Use noise to determine if this region should have POIs
-            if (regionNoise > 0.6f) // 40% of regions will have POIs
+            // Generate each POI
+            for (int i = 0; i < poiCount; i++)
             {
-                // Determine number of POIs (1-3 based on noise value)
-                int poiCount = 1;
-                if (regionNoise > 0.8f) poiCount = 2;
-                if (regionNoise > 0.9f) poiCount = 3;
+                // Generate a position within the region
+                int posX = regionStartX + random.Next(REGION_SIZE);
+                int posZ = regionStartZ + random.Next(REGION_SIZE);
+                Vector2I poiPosition = new Vector2I(posX, posZ);
                 
-                // Generate each POI
-                for (int i = 0; i < poiCount; i++)
+                // Get biome type for this position
+                BiomeType biomeType = WorldGenerator.GetBiomeType(posX, posZ);
+                
+                // Determine POI type based on biome
+                POIType poiType = DeterminePOITypeForBiome(biomeType, random);
+                
+                // Determine POI size (weighted toward medium)
+                POISize poiSize = DeterminePOISize(random);
+                
+                // Create the POI
+                PointOfInterest poi = new PointOfInterest(poiPosition, poiType, poiSize, biomeType, _worldSeed);
+                
+                // Add to collections
+                if (_pointsOfInterest.TryAdd(poiPosition, poi))
                 {
-                    // Generate a position within the region
-                    int posX = regionStartX + random.Next(REGION_SIZE);
-                    int posZ = regionStartZ + random.Next(REGION_SIZE);
-                    Vector2I poiPosition = new Vector2I(posX, posZ);
-                    
-                    // Get biome type for this position
-                    BiomeType biomeType = WorldGenerator.GetBiomeType(posX, posZ);
-                    
-                    // Determine POI type based on biome
-                    POIType poiType = DeterminePOITypeForBiome(biomeType, random);
-                    
-                    // Determine POI size (weighted toward medium)
-                    POISize poiSize = DeterminePOISize(random);
-                    
-                    // Create the POI
-                    PointOfInterest poi = new PointOfInterest(poiPosition, poiType, poiSize, biomeType, _worldSeed);
-                    
-                    // Add to collections
-                    if (_pointsOfInterest.TryAdd(poiPosition, poi))
-                    {
-                        regionPOIs.Add(poi);
-                    }
+                    regionPOIs.Add(poi);
                 }
             }
+            
             
             // Add the list to the regions dictionary
             _poiRegions[regionCoords] = regionPOIs;

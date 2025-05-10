@@ -44,25 +44,29 @@ namespace CubeGen.World.Generation.POI
             int chunkSize = WorldGenerator.CHUNK_SIZE;
             int minX = chunkPos.X * chunkSize;
             int minZ = chunkPos.Y * chunkSize;
+
             
             // Process each POI
             foreach (POIInstance poi in poiInstances)
             {
+                //FOR TESTING - REMOVE AFTER
+                GenerateGenericStructure(chunk, poi, minX, minZ, chunkSize);
+                continue;
                 // Generate the structure based on POI type
                 switch (poi.Definition.Id)
                 {
                     case "village":
                         GenerateVillage(chunk, poi, minX, minZ, chunkSize);
                         break;
-                        
+
                     case "ruins":
                         GenerateRuins(chunk, poi, minX, minZ, chunkSize);
                         break;
-                        
+
                     case "oasis":
                         GenerateOasis(chunk, poi, minX, minZ, chunkSize);
                         break;
-                        
+
                     default:
                         // Unknown POI type, generate a generic structure
                         GenerateGenericStructure(chunk, poi, minX, minZ, chunkSize);
@@ -270,42 +274,35 @@ namespace CubeGen.World.Generation.POI
             // Create a random generator for this POI
             Random random = new Random(poi.Seed);
             
-            // Calculate structure bounds
-            int halfWidth = poi.Definition.Dimensions.X / 2;
-            int halfDepth = poi.Definition.Dimensions.Z / 2;
+            // Calculate sphere center in world coordinates
+            int centerX = poi.Position.X;
+            int centerY = poi.TerrainHeight + poi.Definition.Dimensions.Y / 2;
+            int centerZ = poi.Position.Z;
             
-            // Calculate structure area in world coordinates
-            int structureMinX = poi.Position.X - halfWidth;
-            int structureMaxX = poi.Position.X + halfWidth;
-            int structureMinZ = poi.Position.Z - halfDepth;
-            int structureMaxZ = poi.Position.Z + halfDepth;
+            // Calculate sphere radius
+            int radius = Math.Min(poi.Definition.Dimensions.X, poi.Definition.Dimensions.Z) / 2;
             
-            // Calculate intersection with chunk
-            int intersectMinX = Math.Max(structureMinX, minX);
-            int intersectMaxX = Math.Min(structureMaxX, minX + chunkSize);
-            int intersectMinZ = Math.Max(structureMinZ, minZ);
-            int intersectMaxZ = Math.Min(structureMaxZ, minZ + chunkSize);
-            
-            // Check if there's an intersection
-            if (intersectMinX >= intersectMaxX || intersectMinZ >= intersectMaxZ)
+            // Generate a sphere
+            for (int x = centerX - radius; x <= centerX + radius; x++)
             {
-                return; // No intersection
-            }
-            
-            // Generate a simple marker structure
-            for (int x = intersectMinX; x < intersectMaxX; x++)
-            {
-                for (int z = intersectMinZ; z < intersectMaxZ; z++)
+                for (int y = centerY - radius; y <= centerY + radius; y++)
                 {
-                    // Convert to chunk coordinates
-                    int localX = x - minX;
-                    int localZ = z - minZ;
-                    
-                    // Place a marker block at the surface
-                    int ny = poi.TerrainHeight + 1;
-                    if (ny >= 0 && ny < chunk.Height)
+                    for (int z = centerZ - radius; z <= centerZ + radius; z++)
                     {
-                        chunk.SetVoxel(localX, ny, localZ, VoxelType.Stone);
+                        // Check if the point is inside the sphere
+                        if (Math.Pow(x - centerX, 2) + Math.Pow(y - centerY, 2) + Math.Pow(z - centerZ, 2) <= Math.Pow(radius, 2))
+                        {
+                            // Convert to chunk coordinates
+                            int localX = x - minX;
+                            int localZ = z - minZ;
+                            
+                            // Check if the point is within the chunk
+                            if (localX >= 0 && localX < chunkSize && localZ >= 0 && localZ < chunkSize && y >= 0 && y < chunk.Height)
+                            {
+                                // Place a sphere block
+                                chunk.SetVoxel(localX, y, localZ, VoxelType.Stone);
+                            }
+                        }
                     }
                 }
             }

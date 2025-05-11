@@ -1,5 +1,9 @@
 points of interest are a major component of this game
 they will be procedurally generated and placed in the world in the first pass, not as a second pass over the terrain
+which point of interest is spawned is affected by which biome and subregion it is in
+we don't want a massive density of them throughout the map but we also don't want them perfectly evenly distributed,
+in theory we can use noise to place them logically keeping in mind the size of the point of interest and the density of points of interest in the area
+without expending large amounts of compute resources to track them 
 they can be a major source of quests and story
 they can have unique structures and decorations
 they can have unique flora and fauna
@@ -9,6 +13,7 @@ they can have unique resources and loot
 they can have unique challenges and obstacles
 they can have unique rewards and benefits
 they can have unique names and backstories
+they will often span across many chunks
 
 the generation of points of interest needs to be efficient such that the world can be generated in real-time as the player explores
 some points of interest consist of a single structure, some with multiple structures near one another
@@ -20,3 +25,6 @@ some are just a structure, others affect the area around them.
 in this way they are not unlike sub-biomes, affecting their surroundings in a blended way but instead of just being a distinct set of environmental
 characteristics, they can have structures etc. and all of what has been described above.
 
+for debugging purposes it should be easy to see where the points of interest have been spawned in the map using a UI marker that can be toggled on or off.
+we should start by just generating a simple large sphere of 30x30 voxels as our first point of interest type so we can easily test that they are working, but
+the system that we develop should be able to easily support all of what has been described above

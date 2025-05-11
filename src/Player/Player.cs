@@ -14,7 +14,7 @@ public partial class Player : CharacterBody3D
 	[Export] public float CameraHeight { get; set; } = 0.75f; // Increased from 0.375f for better view with larger character
 	[Export] public float Friction { get; set; } = 0.1f; // Ground friction
 	[Export] public float Acceleration { get; set; } = 0.25f; // Movement acceleration
-	[Export] public float MaxStepHeight { get; set; } = 0.5f; // Increased from 0.3125f for better stepping with larger character
+	[Export] public float MaxStepHeight { get; set; } = 1.2f; // Set higher than voxel height to allow climbing walls
 
 	// Water physics properties
 	[Export] public float WaterDragFactor { get; set; } = 0.7f; // Slows movement in water
@@ -71,19 +71,24 @@ public partial class Player : CharacterBody3D
 		// Capture mouse
 		Input.MouseMode = Input.MouseModeEnum.Captured;
 
-		// Set up physics properties for better movement
+		// Set up physics properties for better movement and wall climbing
 		FloorStopOnSlope = true;
-		FloorMaxAngle = 1.0f; // About 60 degrees - even steeper angle for better climbing
-		FloorSnapLength = 1.0f; // Increased for larger character (was 0.5f)
+		FloorMaxAngle = 1.4f; // About 80 degrees - much steeper angle for wall climbing
+		FloorSnapLength = 1.2f; // Increased for better snapping to steep surfaces
 
-		// Set up step climbing properties
+		// Set up step climbing and wall climbing properties
 		UpDirection = Vector3.Up;
 		FloorConstantSpeed = true; // Maintain constant speed on slopes
-		FloorBlockOnWall = false; // Allow sliding along walls
+		FloorBlockOnWall = false; // Allow sliding along walls for better wall climbing
 
-		// Additional physics properties
-		WallMinSlideAngle = 0.1f; // Allow sliding on very slight walls
-		MaxSlides = 10; // Increase maximum slides for better movement around obstacles
+		// Configure built-in stair-stepping and wall climbing (Godot 4.4 feature)
+		// Set max_step_height higher to allow climbing walls
+		MaxStepHeight = 1.2f; // Higher than voxel height to allow climbing walls
+
+		// Additional physics properties for wall climbing
+		WallMinSlideAngle = 0.05f; // Reduced to allow climbing on even slighter walls
+		MaxSlides = 15; // Increased for better wall climbing and movement around obstacles
+		SlideOnCeiling = true; // Allow sliding on ceilings for more advanced climbing
 
 		// Create water indicator UI
 		CreateWaterIndicator();

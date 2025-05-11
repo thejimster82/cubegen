@@ -9,15 +9,15 @@ namespace CubeGen.World.Generation
 public partial class WorldGenerator : Node3D
 {
 	public int Seed { get; set; } = 0;
-	[Export] public Vector2I WorldSize { get; set; } = new Vector2I(16, 16); // Size in chunks
-	[Export] public int ChunkSize { get; set; } = 16; // Size of each chunk in voxels
+	[Export] public Vector2I WorldSize { get; set; } = new Vector2I(32, 32); // Size in chunks
+	[Export] public int ChunkSize { get; set; } = 32; // Size of each chunk in voxels
 	[Export] public int ChunkHeight { get; set; } = 128; // Maximum height of the world
 	[Export] public float VoxelScale { get; set; } = 0.5f; // Scale of each voxel (0.5 = double resolution)
 	[Export] public float WaterLevel { get; set; } = 0.18f; // Water level as a fraction of chunk height
 	public int ViewDistance { get; set; } = 5;
 
 	// Public constant for chunk size to be used by other classes
-	public const int CHUNK_SIZE = 16;
+	public const int CHUNK_SIZE = 32;
 
 	private ChunkManager _chunkManager;
 
@@ -1044,7 +1044,8 @@ public partial class WorldGenerator : Node3D
 
 				// Add biome-specific features with appropriate probability
 				// Check position is safely away from chunk boundaries
-				int safeDistance = 4; // Reduced safe distance to allow more features
+				// Calculate safe distance as a proportion of chunk size (about 25% of chunk size)
+				int safeDistance = Math.Max(1, chunkSize / 4); // Ensure at least 1 block of safety margin
 				if (x >= safeDistance && x < (chunkSize - safeDistance) &&
 					z >= safeDistance && z < (chunkSize - safeDistance))
 				{
@@ -1057,14 +1058,15 @@ public partial class WorldGenerator : Node3D
 								if (surfaceHeight >= 0)
 								{
 									// Check if we can place a cactus here (no overlap with other features)
-									// Cacti need a medium radius (4) to prevent overlap
-									if (CanPlaceFeature(featureMap, x, z, 4, chunkSize))
+									// Calculate radius based on chunk size (about 25% of chunk size)
+									int cactusRadius = Math.Max(2, chunkSize / 4);
+									if (CanPlaceFeature(featureMap, x, z, cactusRadius, chunkSize))
 									{
 										// More lenient check - allow cacti on any solid surface in desert biome
 										GenerateCactus(chunk, x, z, surfaceHeight, random);
 
 										// Mark the area as occupied
-										MarkFeaturePosition(featureMap, x, z, 4, chunkSize);
+										MarkFeaturePosition(featureMap, x, z, cactusRadius, chunkSize);
 									}
 								}
 							}
@@ -1074,14 +1076,15 @@ public partial class WorldGenerator : Node3D
 								if (surfaceHeight >= 0)
 								{
 									// Check if we can place a rock formation here (no overlap with other features)
-									// Rock formations need a medium radius (5) to prevent overlap
-									if (CanPlaceFeature(featureMap, x, z, 5, chunkSize))
+									// Calculate radius based on chunk size (about 30% of chunk size)
+									int rockRadius = Math.Max(2, chunkSize * 3 / 10);
+									if (CanPlaceFeature(featureMap, x, z, rockRadius, chunkSize))
 									{
 										// More lenient check - allow rock formations on any solid surface in desert biome
 										GenerateRockFormation(chunk, x, z, surfaceHeight, random);
 
 										// Mark the area as occupied
-										MarkFeaturePosition(featureMap, x, z, 5, chunkSize);
+										MarkFeaturePosition(featureMap, x, z, rockRadius, chunkSize);
 									}
 								}
 							}
@@ -1094,14 +1097,15 @@ public partial class WorldGenerator : Node3D
 								if (surfaceHeight >= 0)
 								{
 									// Check if we can place an ice formation here (no overlap with other features)
-									// Ice formations need a medium radius (4) to prevent overlap
-									if (CanPlaceFeature(featureMap, x, z, 4, chunkSize))
+									// Calculate radius based on chunk size (about 25% of chunk size)
+									int iceRadius = Math.Max(2, chunkSize / 4);
+									if (CanPlaceFeature(featureMap, x, z, iceRadius, chunkSize))
 									{
 										// More lenient check - allow ice formations on any solid surface in tundra biome
 										GenerateIceFormation(chunk, x, z, surfaceHeight, random);
 
 										// Mark the area as occupied
-										MarkFeaturePosition(featureMap, x, z, 4, chunkSize);
+										MarkFeaturePosition(featureMap, x, z, iceRadius, chunkSize);
 									}
 								}
 							}
@@ -1111,14 +1115,15 @@ public partial class WorldGenerator : Node3D
 								if (surfaceHeight >= 0)
 								{
 									// Check if we can place a snow tree here (no overlap with other features)
-									// Snow trees need a larger radius (6) to prevent overlap
-									if (CanPlaceFeature(featureMap, x, z, 6, chunkSize))
+									// Calculate radius based on chunk size (about 35% of chunk size)
+									int snowTreeRadius = Math.Max(2, chunkSize * 35 / 100);
+									if (CanPlaceFeature(featureMap, x, z, snowTreeRadius, chunkSize))
 									{
 										// More lenient check - allow snow trees on any solid surface in tundra biome
 										GenerateSnowTree(chunk, x, z, surfaceHeight, random);
 
 										// Mark the area as occupied
-										MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
+										MarkFeaturePosition(featureMap, x, z, snowTreeRadius, chunkSize);
 									}
 								}
 							}
@@ -1133,8 +1138,9 @@ public partial class WorldGenerator : Node3D
 								if (surfaceHeight >= 0)
 								{
 									// Check if we can place a palm tree here (no overlap with other features)
-									// Palm trees need a larger radius (5) to prevent overlap
-									if (CanPlaceFeature(featureMap, x, z, 5, chunkSize))
+									// Calculate radius based on chunk size (about 30% of chunk size)
+									int palmTreeRadius = Math.Max(2, chunkSize * 3 / 10);
+									if (CanPlaceFeature(featureMap, x, z, palmTreeRadius, chunkSize))
 									{
 										// Calculate water level height in voxels
 										int waterLevelHeight = Mathf.FloorToInt(WaterLevel * ChunkHeight);
@@ -1148,7 +1154,7 @@ public partial class WorldGenerator : Node3D
 											GeneratePalmTree(chunk, x, z, surfaceHeight, random);
 
 											// Mark the area as occupied
-											MarkFeaturePosition(featureMap, x, z, 5, chunkSize);
+											MarkFeaturePosition(featureMap, x, z, palmTreeRadius, chunkSize);
 										}
 									}
 								}
@@ -1159,8 +1165,9 @@ public partial class WorldGenerator : Node3D
 								if (surfaceHeight >= 0)
 								{
 									// Check if we can place a seashell here (no overlap with other features)
-									// Seashells need a small radius (2) to prevent overlap
-									if (CanPlaceFeature(featureMap, x, z, 2, chunkSize))
+									// Calculate radius based on chunk size (about 12.5% of chunk size)
+									int seashellRadius = Math.Max(1, chunkSize / 8);
+									if (CanPlaceFeature(featureMap, x, z, seashellRadius, chunkSize))
 									{
 										// Only place seashells on sand
 										if (chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Sand)
@@ -1179,7 +1186,7 @@ public partial class WorldGenerator : Node3D
 											chunk.SetDecorationPlacement(x, surfaceHeight + 1, z, seashellPlacement);
 
 											// Mark the area as occupied
-											MarkFeaturePosition(featureMap, x, z, 2, chunkSize);
+											MarkFeaturePosition(featureMap, x, z, seashellRadius, chunkSize);
 										}
 									}
 								}
@@ -1198,19 +1205,23 @@ public partial class WorldGenerator : Node3D
 									// Add small bushes
 									if (random.NextDouble() < 0.015)
 									{
-										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 3, chunkSize))
+										// Calculate radius based on chunk size (about 20% of chunk size)
+										int bushRadius = Math.Max(2, chunkSize / 5);
+										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, bushRadius, chunkSize))
 										{
 											GenerateBush(chunk, x, z, surfaceHeight, random);
-											MarkFeaturePosition(featureMap, x, z, 3, chunkSize);
+											MarkFeaturePosition(featureMap, x, z, bushRadius, chunkSize);
 										}
 									}
 									// Add occasional lone trees
 									else if (random.NextDouble() < 0.006)
 									{
-										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 6, chunkSize))
+										// Calculate radius based on chunk size (about 35% of chunk size)
+										int treeRadius = Math.Max(3, chunkSize * 35 / 100);
+										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, treeRadius, chunkSize))
 										{
 											GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
-											MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
+											MarkFeaturePosition(featureMap, x, z, treeRadius, chunkSize);
 										}
 									}
 									break;
@@ -1220,19 +1231,23 @@ public partial class WorldGenerator : Node3D
 									// Add trees with higher density
 									if (random.NextDouble() < 0.02)
 									{
-										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 6, chunkSize))
+										// Calculate radius based on chunk size (about 35% of chunk size)
+										int treeRadius = Math.Max(3, chunkSize * 35 / 100);
+										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, treeRadius, chunkSize))
 										{
 											GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
-											MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
+											MarkFeaturePosition(featureMap, x, z, treeRadius, chunkSize);
 										}
 									}
 									// Add bushes between trees
 									else if (random.NextDouble() < 0.012)
 									{
-										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 3, chunkSize))
+										// Calculate radius based on chunk size (about 20% of chunk size)
+										int bushRadius = Math.Max(2, chunkSize / 5);
+										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, bushRadius, chunkSize))
 										{
 											GenerateBush(chunk, x, z, surfaceHeight, random);
-											MarkFeaturePosition(featureMap, x, z, 3, chunkSize);
+											MarkFeaturePosition(featureMap, x, z, bushRadius, chunkSize);
 										}
 									}
 									break;
@@ -1242,28 +1257,34 @@ public partial class WorldGenerator : Node3D
 									// Add rock spires
 									if (random.NextDouble() < 0.01)
 									{
-										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 5, chunkSize))
+										// Calculate radius based on chunk size (about 30% of chunk size)
+										int rockSpireRadius = Math.Max(2, chunkSize * 3 / 10);
+										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, rockSpireRadius, chunkSize))
 										{
 											GenerateRockSpire(chunk, x, z, surfaceHeight, random);
-											MarkFeaturePosition(featureMap, x, z, 5, chunkSize);
+											MarkFeaturePosition(featureMap, x, z, rockSpireRadius, chunkSize);
 										}
 									}
 									// Add boulders
 									else if (random.NextDouble() < 0.015)
 									{
-										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 4, chunkSize))
+										// Calculate radius based on chunk size (about 25% of chunk size)
+										int boulderRadius = Math.Max(2, chunkSize / 4);
+										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, boulderRadius, chunkSize))
 										{
 											GenerateBoulder(chunk, x, z, surfaceHeight, random);
-											MarkFeaturePosition(featureMap, x, z, 4, chunkSize);
+											MarkFeaturePosition(featureMap, x, z, boulderRadius, chunkSize);
 										}
 									}
 									// Add occasional trees even in mountainous areas
 									else if (random.NextDouble() < 0.005)
 									{
-										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 6, chunkSize))
+										// Calculate radius based on chunk size (about 35% of chunk size)
+										int treeRadius = Math.Max(3, chunkSize * 35 / 100);
+										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, treeRadius, chunkSize))
 										{
 											GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
-											MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
+											MarkFeaturePosition(featureMap, x, z, treeRadius, chunkSize);
 										}
 									}
 									break;
@@ -1276,7 +1297,7 @@ public partial class WorldGenerator : Node3D
 	}
 
 	// Helper method to check if a feature can be placed at a position
-	private bool CanPlaceFeature(bool[,] featureMap, int x, int z, int radius, int chunkSize)
+	private static bool CanPlaceFeature(bool[,] featureMap, int x, int z, int radius, int chunkSize)
 	{
 		// Check if the position is already occupied
 		if (featureMap[x, z])
@@ -1301,7 +1322,7 @@ public partial class WorldGenerator : Node3D
 	}
 
 	// Helper method to mark a feature position and its surrounding area
-	private void MarkFeaturePosition(bool[,] featureMap, int x, int z, int radius, int chunkSize)
+	private static void MarkFeaturePosition(bool[,] featureMap, int x, int z, int radius, int chunkSize)
 	{
 		// Mark the center position
 		featureMap[x, z] = true;

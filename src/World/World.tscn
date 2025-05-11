@@ -13,11 +13,10 @@
 [node name="World" type="Node3D"]
 script = ExtResource("1_yvnqm")
 PlayerScene = ExtResource("5_yvnqm")
-ViewDistance = 30
+ViewDistance = 15
 
 [node name="WorldGenerator" type="Node3D" parent="."]
 script = ExtResource("2_yvnqm")
-WorldSize = Vector2i(32, 32)
 VoxelScale = 0.75
 
 [node name="ChunkManager" type="Node3D" parent="WorldGenerator"]

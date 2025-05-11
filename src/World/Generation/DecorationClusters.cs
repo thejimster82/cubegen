@@ -7,11 +7,11 @@ namespace CubeGen.World.Generation
 {
     public static class DecorationClusters
     {
-        // Cluster density parameters - further increased radius for extremely sparse distribution
-        private const float CLUSTER_RADIUS_MIN = 5.0f;  // Increased from 3.0f
-        private const float CLUSTER_RADIUS_MAX = 10.0f; // Increased from 7.0f
-        private const int MIN_ITEMS_PER_CLUSTER = 2;    // Reduced from 3
-        private const int MAX_ITEMS_PER_CLUSTER = 5;    // Reduced from 8
+        // Cluster density parameters - adjusted for smaller chunk size (8x8 instead of 16x16)
+        private const float CLUSTER_RADIUS_MIN = 3.0f;  // Reduced for smaller chunks
+        private const float CLUSTER_RADIUS_MAX = 6.0f;  // Reduced for smaller chunks
+        private const int MIN_ITEMS_PER_CLUSTER = 2;    // Kept the same
+        private const int MAX_ITEMS_PER_CLUSTER = 5;    // Kept the same
 
         // Cluster center probability (chance to start a new cluster) - drastically reduced for extremely sparse clusters
         private const float CLUSTER_CENTER_PROBABILITY = 0.0025f; // Reduced by 4x from 0.01f (0.25% chance instead of 1%)

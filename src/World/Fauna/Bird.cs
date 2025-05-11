@@ -73,33 +73,36 @@ namespace CubeGen.World.Fauna
 
         private void CreateBirdParts()
         {
-            // Create body
+            // Create body - make it face the -Z direction (forward)
             _body = CreateVoxelCube(new Vector3(0, 0, 0), new Vector3(0.5f, 0.3f, 0.7f), PrimaryColor);
             _model.AddChild(_body);
 
-            // Create head
-            _head = CreateVoxelCube(new Vector3(0, 0.2f, 0.4f), new Vector3(0.3f, 0.3f, 0.3f), PrimaryColor);
+            // Create head - positioned at the front (-Z) of the body
+            _head = CreateVoxelCube(new Vector3(0, 0.2f, -0.4f), new Vector3(0.3f, 0.3f, 0.3f), PrimaryColor);
             _model.AddChild(_head);
 
-            // Create beak
-            Node3D beak = CreateVoxelCube(new Vector3(0, 0.15f, 0.6f), new Vector3(0.1f, 0.1f, 0.2f), new Color(1.0f, 0.7f, 0.0f));
+            // Create beak - positioned at the front of the head
+            Node3D beak = CreateVoxelCube(new Vector3(0, 0.15f, -0.6f), new Vector3(0.1f, 0.1f, 0.2f), new Color(1.0f, 0.7f, 0.0f));
             _model.AddChild(beak);
 
-            // Create wings
-            _leftWing = CreateVoxelCube(new Vector3(0.4f, 0.1f, 0), new Vector3(0.4f, 0.1f, 0.5f), SecondaryColor);
-            _rightWing = CreateVoxelCube(new Vector3(-0.4f, 0.1f, 0), new Vector3(0.4f, 0.1f, 0.5f), SecondaryColor);
+            // Create wings - make them much larger for better visibility and more realistic flight
+            _leftWing = CreateVoxelCube(new Vector3(0.6f, 0.1f, 0), new Vector3(0.8f, 0.1f, 0.6f), SecondaryColor);
+            _rightWing = CreateVoxelCube(new Vector3(-0.6f, 0.1f, 0), new Vector3(0.8f, 0.1f, 0.6f), SecondaryColor);
             _model.AddChild(_leftWing);
             _model.AddChild(_rightWing);
 
-            // Create tail
-            _tail = CreateVoxelCube(new Vector3(0, 0.1f, -0.4f), new Vector3(0.3f, 0.1f, 0.3f), SecondaryColor);
+            // Create tail - positioned at the back (+Z) of the body
+            _tail = CreateVoxelCube(new Vector3(0, 0.1f, 0.4f), new Vector3(0.3f, 0.1f, 0.3f), SecondaryColor);
             _model.AddChild(_tail);
 
-            // Add eyes
-            Node3D leftEye = CreateVoxelCube(new Vector3(0.1f, 0.25f, 0.5f), new Vector3(0.05f, 0.05f, 0.05f), Colors.Black);
-            Node3D rightEye = CreateVoxelCube(new Vector3(-0.1f, 0.25f, 0.5f), new Vector3(0.05f, 0.05f, 0.05f), Colors.Black);
+            // Add eyes - positioned at the front of the head
+            Node3D leftEye = CreateVoxelCube(new Vector3(0.1f, 0.25f, -0.5f), new Vector3(0.05f, 0.05f, 0.05f), Colors.Black);
+            Node3D rightEye = CreateVoxelCube(new Vector3(-0.1f, 0.25f, -0.5f), new Vector3(0.05f, 0.05f, 0.05f), Colors.Black);
             _model.AddChild(leftEye);
             _model.AddChild(rightEye);
+
+            // Rotate the entire model to face the correct direction
+            _model.RotationDegrees = new Vector3(0, 180, 0);
         }
 
         private Node3D CreateVoxelCube(Vector3 position, Vector3 size, Color color)
@@ -209,6 +212,9 @@ namespace CubeGen.World.Fauna
 
         private void FlyInCircularPattern(double delta)
         {
+            // Store current position to calculate direction
+            Vector3 oldPosition = GlobalPosition;
+
             // Update circle angle
             _circleAngle += FlyingSpeed * (float)delta * 0.2f;
 
@@ -216,14 +222,43 @@ namespace CubeGen.World.Fauna
             float x = _circleCenter.X + Mathf.Cos(_circleAngle) * _circleRadius;
             float z = _circleCenter.Z + Mathf.Sin(_circleAngle) * _circleRadius;
 
-            // Add some vertical movement
+            // Add some vertical movement - more natural wave pattern
             float y = _circleHeight + Mathf.Sin(_circleAngle * 0.5f) * 2.0f;
 
             // Set new position
             Vector3 newPosition = new Vector3(x, y, z);
 
-            // Look in the direction of movement
-            LookAt(newPosition, Vector3.Up);
+            // Calculate movement direction
+            Vector3 direction = newPosition - oldPosition;
+
+            // Only update rotation if we're actually moving
+            if (direction.Length() > 0.01f)
+            {
+                // Look in the direction of movement
+                // We need to look in the direction we're moving, not at the position itself
+                Vector3 lookTarget = GlobalPosition + direction;
+                LookAt(lookTarget, Vector3.Up);
+
+                // Add a slight bank angle when turning (tilt towards the center of the circle)
+                Vector3 toCenter = _circleCenter - GlobalPosition;
+                toCenter.Y = 0; // Keep it horizontal
+
+                if (toCenter.Length() > 0.01f)
+                {
+                    // Calculate the cross product of forward direction and up vector
+                    // This gives us the right vector
+                    Vector3 forward = -GlobalTransform.Basis.Z;
+                    Vector3 right = forward.Cross(Vector3.Up);
+
+                    // Calculate the dot product to determine if we're turning left or right
+                    float dot = right.Dot(toCenter.Normalized());
+
+                    // Apply a bank angle (roll) based on the turn direction
+                    // This makes the bird tilt into the turn
+                    float bankAngle = dot * 0.3f; // Adjust the multiplier for more or less banking
+                    Rotation = new Vector3(Rotation.X, Rotation.Y, bankAngle);
+                }
+            }
 
             // Move to new position
             GlobalPosition = newPosition;
@@ -231,36 +266,85 @@ namespace CubeGen.World.Fauna
             // Occasionally change circle parameters
             if (_random.NextDouble() < 0.005f)
             {
-                // Change radius
-                _circleRadius = 5.0f + (float)_random.NextDouble() * 15.0f;
+                // Change radius - more variation for interesting patterns
+                _circleRadius = 5.0f + (float)_random.NextDouble() * 20.0f;
 
-                // Change height
-                _circleHeight = FlyingHeight + (float)_random.NextDouble() * 10.0f - 5.0f;
+                // Change height - keep within a reasonable range
+                _circleHeight = FlyingHeight + (float)_random.NextDouble() * 15.0f - 7.5f;
+
+                // Occasionally change the circle center for more varied flight paths
+                if (_random.NextDouble() < 0.2f)
+                {
+                    // Shift the circle center slightly
+                    float centerShiftX = (float)_random.NextDouble() * 10.0f - 5.0f;
+                    float centerShiftZ = (float)_random.NextDouble() * 10.0f - 5.0f;
+                    _circleCenter.X += centerShiftX;
+                    _circleCenter.Z += centerShiftZ;
+                }
             }
         }
 
         private void MoveTowardsLanding(double delta)
         {
+            // Store current position to calculate direction
+            Vector3 oldPosition = GlobalPosition;
+
             // Calculate direction to landing position
             Vector3 direction = (_landingPosition - GlobalPosition).Normalized();
 
             // Move towards landing position
             GlobalPosition += direction * FlyingSpeed * (float)delta;
 
-            // Look in the direction of movement
-            LookAt(_landingPosition, Vector3.Up);
+            // Calculate actual movement direction
+            Vector3 actualDirection = GlobalPosition - oldPosition;
+
+            // Only update rotation if we're actually moving
+            if (actualDirection.Length() > 0.01f)
+            {
+                // Look in the direction of movement
+                Vector3 lookTarget = GlobalPosition + actualDirection;
+                LookAt(lookTarget, Vector3.Up);
+            }
+
+            // As we get closer to landing, slow down and start to descend more vertically
+            float distanceToLanding = GlobalPosition.DistanceTo(_landingPosition);
+            if (distanceToLanding < 5.0f)
+            {
+                // Slow down as we approach the landing spot
+                float slowdownFactor = Mathf.Clamp(distanceToLanding / 5.0f, 0.3f, 1.0f);
+
+                // Adjust height to approach from above
+                if (GlobalPosition.Y < _landingPosition.Y + 2.0f)
+                {
+                    // If we're below the landing spot + buffer, move up
+                    GlobalPosition = new Vector3(
+                        GlobalPosition.X,
+                        Mathf.Lerp(GlobalPosition.Y, _landingPosition.Y + 2.0f, 0.1f),
+                        GlobalPosition.Z
+                    );
+                }
+
+                // Flap wings more slowly as we prepare to land
+                WingFlapSpeed = Mathf.Lerp(WingFlapSpeed, 2.0f, 0.1f);
+            }
 
             // Check if we've reached the landing position
-            if (GlobalPosition.DistanceTo(_landingPosition) < LandingDistance)
+            if (distanceToLanding < LandingDistance)
             {
                 // Land
                 GlobalPosition = _landingPosition;
+
+                // Rotate to face a random direction when perched
+                float randomRotation = (float)_random.NextDouble() * Mathf.Pi * 2;
+                Rotation = new Vector3(0, randomRotation, 0);
 
                 // Change to perched state
                 ChangeState(FaunaState.Perched);
 
                 // Reset wings
                 ResetWings();
+
+                GD.Print($"Bird landed at {_landingPosition}");
             }
         }
 
@@ -415,14 +499,22 @@ namespace CubeGen.World.Fauna
                 _wingFlapAngle -= Mathf.Pi * 2;
             }
 
-            // Calculate wing rotation
-            float wingRotation = Mathf.Sin(_wingFlapAngle) * 0.5f;
+            // Calculate wing rotation - increase amplitude for more visible flapping
+            float wingRotation = Mathf.Sin(_wingFlapAngle) * 0.8f;
 
-            // Apply rotation to wings
+            // Apply rotation to wings - use Z rotation for up/down movement
             if (_leftWing != null && _rightWing != null)
             {
+                // For birds, wings should move up and down (Z rotation)
+                // Negative rotation for left wing makes it go up when right wing goes down
                 _leftWing.Rotation = new Vector3(0, 0, -wingRotation);
                 _rightWing.Rotation = new Vector3(0, 0, wingRotation);
+
+                // Also add a slight Y rotation to make the wings twist a bit during flapping
+                // This creates a more natural flapping motion
+                float twistAmount = Mathf.Sin(_wingFlapAngle) * 0.2f;
+                _leftWing.Rotation += new Vector3(0, twistAmount, 0);
+                _rightWing.Rotation += new Vector3(0, -twistAmount, 0);
             }
         }
 

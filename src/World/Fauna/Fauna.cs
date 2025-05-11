@@ -136,6 +136,14 @@ namespace CubeGen.World.Fauna
             // Simple distance-based visibility check
             return GlobalPosition.DistanceTo(playerPosition) <= maxDistance;
         }
+
+        /// <summary>
+        /// Get the current state of this fauna
+        /// </summary>
+        public FaunaState GetCurrentState()
+        {
+            return _currentState;
+        }
     }
 
     /// <summary>

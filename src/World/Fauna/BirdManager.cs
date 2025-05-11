@@ -130,8 +130,8 @@ namespace CubeGen.World.Fauna
         /// </summary>
         private void SpawnInitialBirds()
         {
-            // Spawn a few birds to start
-            int initialBirdCount = MaxBirds / 2;
+            // Spawn just a few birds to start (to avoid sudden appearance)
+            int initialBirdCount = Mathf.Min(5, MaxBirds / 4);
 
             for (int i = 0; i < initialBirdCount; i++)
             {
@@ -139,6 +139,38 @@ namespace CubeGen.World.Fauna
             }
 
             GD.Print($"Spawned {initialBirdCount} initial birds");
+
+            // Create a timer to gradually spawn more birds
+            Timer spawnTimer = new Timer();
+            spawnTimer.WaitTime = 2.0f; // Spawn birds every 2 seconds
+            spawnTimer.Timeout += OnSpawnTimerTimeout;
+            spawnTimer.OneShot = false;
+            AddChild(spawnTimer);
+            spawnTimer.Start();
+        }
+
+        /// <summary>
+        /// Called when the spawn timer times out
+        /// </summary>
+        private void OnSpawnTimerTimeout()
+        {
+            // If we haven't reached the target number of birds, spawn another one
+            if (_activeBirds.Count < MaxBirds)
+            {
+                SpawnBird();
+                GD.Print($"Gradually spawned bird. Active birds: {_activeBirds.Count}/{MaxBirds}");
+            }
+            else
+            {
+                // If we've reached the target, stop the timer
+                Timer spawnTimer = GetNode<Timer>("Timer");
+                if (spawnTimer != null)
+                {
+                    spawnTimer.Stop();
+                    spawnTimer.QueueFree();
+                    GD.Print("Gradual bird spawning complete");
+                }
+            }
         }
 
         /// <summary>
@@ -155,19 +187,43 @@ namespace CubeGen.World.Fauna
             for (int i = _activeBirds.Count - 1; i >= 0; i--)
             {
                 Bird bird = _activeBirds[i];
+                float distanceToPlayer = bird.GlobalPosition.DistanceTo(playerPosition);
 
-                if (bird.GlobalPosition.DistanceTo(playerPosition) > DespawnDistance)
+                // Only despawn birds if they're either:
+                // 1. Extremely far away (regardless of state)
+                // 2. Perched and beyond the normal despawn distance
+                bool shouldDespawn = false;
+
+                if (distanceToPlayer > DespawnDistance * 1.5f)
+                {
+                    // Birds that are extremely far away should always despawn
+                    shouldDespawn = true;
+                }
+                else if (distanceToPlayer > DespawnDistance && bird.GetCurrentState() == FaunaState.Perched)
+                {
+                    // Perched birds can despawn at the normal distance
+                    shouldDespawn = true;
+                }
+
+                if (shouldDespawn)
                 {
                     // Despawn bird
                     DespawnBird(bird);
                     _activeBirds.RemoveAt(i);
+
+                    // Debug output
+                    GD.Print($"Despawned bird at distance {distanceToPlayer:F1}, state: {bird.GetCurrentState()}");
                 }
             }
 
-            // Spawn new birds if needed
-            while (_activeBirds.Count < MaxBirds)
+            // Spawn new birds if needed, but do it gradually
+            // Only spawn one bird per update to avoid sudden appearance of many birds
+            if (_activeBirds.Count < MaxBirds && _random.NextDouble() < 0.3f)
             {
                 SpawnBird();
+
+                // Debug output
+                GD.Print($"Spawned new bird. Active birds: {_activeBirds.Count}/{MaxBirds}");
             }
         }
 
@@ -281,18 +337,30 @@ namespace CubeGen.World.Fauna
             // Random angle
             float angle = (float)_random.NextDouble() * Mathf.Pi * 2;
 
-            // Random distance from player (within spawn radius)
-            float distance = SpawnRadius * 0.5f + (float)_random.NextDouble() * (SpawnRadius * 0.5f);
+            // Random distance from player (within spawn radius, but not too close)
+            // Use a minimum distance to prevent birds from spawning too close to the player
+            float minDistance = SpawnRadius * 0.4f;
+            float maxDistance = SpawnRadius * 0.8f;
+            float distance = minDistance + (float)_random.NextDouble() * (maxDistance - minDistance);
 
             // Calculate position
             float x = playerPosition.X + Mathf.Cos(angle) * distance;
             float z = playerPosition.Z + Mathf.Sin(angle) * distance;
 
-            // Set height
-            float y = playerPosition.Y + SpawnHeight + (float)_random.NextDouble() * 20.0f - 10.0f;
+            // Set height - make it more consistent but with some variation
+            // Use the player's height as a reference point
+            float baseHeight = playerPosition.Y + SpawnHeight;
+            float heightVariation = 10.0f; // Less variation than before
+            float y = baseHeight + (float)_random.NextDouble() * heightVariation - (heightVariation / 2);
+
+            // Ensure minimum height above ground
+            y = Mathf.Max(y, 30.0f);
 
             // Set position
             bird.GlobalPosition = new Vector3(x, y, z);
+
+            // Debug output
+            GD.Print($"Positioned bird at ({x:F1}, {y:F1}, {z:F1}), distance from player: {distance:F1}");
         }
 
         /// <summary>

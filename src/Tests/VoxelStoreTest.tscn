@@ -1,0 +1,16 @@
+[gd_scene load_steps=2 format=3 uid="uid://c8q6y7x3yjnx8"]
+
+[ext_resource type="Script" path="res://src/Tests/VoxelStoreTest.cs" id="1_yjnxs"]
+
+[node name="VoxelStoreTest" type="Node3D"]
+script = ExtResource("1_yjnxs")
+Seed = 12345
+TestSphereCenter = Vector3(8, 30, 8)
+TestSphereRadius = 4.0
+TestVoxelType = 3
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.866025, 0.5, 0, -0.5, 0.866025, 0, 35, 20)
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866025, 0.25, -0.433013, 0, 0.866025, 0.5, 0.5, -0.433013, 0.75, 0, 10, 0)

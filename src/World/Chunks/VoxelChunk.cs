@@ -103,7 +103,16 @@ public class VoxelChunk
     {
         if (IsInBounds(x, y, z))
         {
+            // Update local cache
             _voxels[x][y][z] = type;
+
+            // Update the central voxel store
+            int worldX = Position.X * Size + x;
+            int worldY = y;
+            int worldZ = Position.Y * Size + z;
+
+            // Use the VoxelStore to set the voxel
+            VoxelStore.Instance.SetVoxelType(worldX, worldY, worldZ, type);
         }
     }
 

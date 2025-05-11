@@ -141,6 +141,15 @@ public partial class CloudGenerator : Node3D
                     // Threshold for placing a voxel
                     if (finalFactor > 0.4f)
                     {
+                        // Convert to world coordinates
+                        int cloudWorldX = (int)(centerX + (x - centerChunkX) * CloudScale);
+                        int cloudWorldY = CloudHeight + y;
+                        int cloudWorldZ = (int)(centerZ + (z - centerChunkZ) * CloudScale);
+
+                        // Use VoxelStore to set the voxel
+                        VoxelStore.Instance.SetVoxelType(cloudWorldX, cloudWorldY, cloudWorldZ, VoxelType.Cloud);
+
+                        // Also update the local chunk for mesh generation
                         chunk.SetVoxel(x, y, z, VoxelType.Cloud);
                     }
                 }

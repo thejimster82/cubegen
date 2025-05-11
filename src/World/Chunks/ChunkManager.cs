@@ -192,6 +192,34 @@ public partial class ChunkManager : Node3D
 		ProcessChunkRequests();
 		ProcessChunkRemovals();
 		ProcessCompletedMeshes();
+
+		// Process any modified chunks from the VoxelStore
+		ProcessModifiedChunks();
+	}
+
+	/// <summary>
+	/// Process chunks that have been modified in the VoxelStore
+	/// </summary>
+	private void ProcessModifiedChunks()
+	{
+		// Get all modified chunks from the VoxelStore
+		var modifiedChunks = CubeGen.World.Common.VoxelStore.Instance.GetModifiedChunks();
+
+		foreach (var chunkPos in modifiedChunks)
+		{
+			// Check if we have chunk data for this position
+			if (_chunkData.TryGetValue(chunkPos, out VoxelChunk chunk))
+			{
+				// Re-populate the chunk from the VoxelStore
+				chunk.PopulateFromWorldProvider();
+
+				// Queue the chunk for mesh update
+				_meshGenerator.QueueChunk(chunk);
+
+				// Clear the modified flag in the VoxelStore
+				CubeGen.World.Common.VoxelStore.Instance.ClearChunkModified(chunkPos);
+			}
+		}
 	}
 
 	private void ProcessChunkRequests()

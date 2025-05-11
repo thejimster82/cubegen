@@ -38,6 +38,10 @@ public partial class WorldGenerator : Node3D
 		WorldDataProvider.Instance.Initialize(Seed, ChunkSize, ChunkHeight, VoxelScale);
 		GD.Print($"WorldDataProvider initialized with seed: {Seed}");
 
+		// Initialize the VoxelStore with the chunk size
+		VoxelStore.Instance.Initialize(WorldDataProvider.Instance, ChunkSize);
+		GD.Print($"VoxelStore initialized with chunk size: {ChunkSize}");
+
 		// Initialize the FaunaSpawner
 		var birdManager = GetNode<CubeGen.World.Fauna.BirdManager>("/root/World/BirdManager");
 		if (birdManager != null)
@@ -120,7 +124,7 @@ public partial class WorldGenerator : Node3D
 		if (_chunkManager == null) return;
 
 		// Check if the chunk has already been generated in the VoxelStore
-		if (CubeGen.World.Common.VoxelStore.Instance.IsChunkGenerated(chunkPos))
+		if (VoxelStore.Instance.IsChunkGenerated(chunkPos))
 		{
 			// If it's already generated, just create a chunk object and populate it
 			VoxelChunk existingChunk = new VoxelChunk(ChunkSize, ChunkHeight, chunkPos, VoxelScale);
@@ -169,8 +173,8 @@ public partial class WorldGenerator : Node3D
 	/// </summary>
 	public static VoxelType GetVoxelTypeAtPosition(int worldX, int worldY, int worldZ)
 	{
-		// Use the WorldDataProvider as the source of truth
-		return WorldDataProvider.Instance.GetVoxelTypeAt(worldX, worldY, worldZ);
+		// Use the VoxelStore as the source of truth
+		return VoxelStore.Instance.GetVoxelType(worldX, worldY, worldZ);
 	}
 
 	// Get biome type for a world position - instance method
@@ -928,11 +932,17 @@ public partial class WorldGenerator : Node3D
 							// Place the decoration if appropriate
 							if (canPlace)
 							{
-								// Store the decoration type in the voxel data
-								chunk.SetVoxel(x, surfaceHeight + 1, z, placement.Type);
+								// Convert to world coordinates
+								int decorationWorldX = chunk.Position.X * chunk.Size + x;
+								int decorationWorldY = surfaceHeight + 1;
+								int decorationWorldZ = chunk.Position.Y * chunk.Size + z;
 
-								// Store the placement information in the chunk's metadata
-								// This will be used by the mesh generator to position the decoration
+								// Use VoxelStore to set the voxel and decoration placement
+								VoxelStore.Instance.SetVoxelType(decorationWorldX, decorationWorldY, decorationWorldZ, placement.Type);
+								VoxelStore.Instance.SetDecorationPlacement(decorationWorldX, decorationWorldY, decorationWorldZ, placement);
+
+								// Also update the local chunk for mesh generation
+								chunk.SetVoxel(x, surfaceHeight + 1, z, placement.Type);
 								chunk.SetDecorationPlacement(x, surfaceHeight + 1, z, placement);
 							}
 						}
@@ -1062,8 +1072,12 @@ public partial class WorldGenerator : Node3D
 										// Only place seashells on sand
 										if (chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Sand)
 										{
-											// Use the decoration system to place seashells
-											Vector2I worldPos = new Vector2I(worldX, worldZ);
+											// Convert to world coordinates
+											int seashellWorldX = chunk.Position.X * chunk.Size + x;
+											int seashellWorldY = surfaceHeight + 1;
+											int seashellWorldZ = chunk.Position.Y * chunk.Size + z;
+
+											// Create the decoration placement
 											DecorationClusters.DecorationPlacement seashellPlacement = new DecorationClusters.DecorationPlacement(
 												VoxelType.Seashell,
 												new Vector2(random.Next(-20, 20) / 100.0f, random.Next(-20, 20) / 100.0f),
@@ -1071,7 +1085,11 @@ public partial class WorldGenerator : Node3D
 												0.8f + (float)random.NextDouble() * 0.4f
 											);
 
-											// Place the seashell
+											// Place the seashell using VoxelStore
+											VoxelStore.Instance.SetVoxelType(seashellWorldX, seashellWorldY, seashellWorldZ, VoxelType.Seashell);
+											VoxelStore.Instance.SetDecorationPlacement(seashellWorldX, seashellWorldY, seashellWorldZ, seashellPlacement);
+
+											// Also update the local chunk for mesh generation
 											chunk.SetVoxel(x, surfaceHeight + 1, z, VoxelType.Seashell);
 											chunk.SetDecorationPlacement(x, surfaceHeight + 1, z, seashellPlacement);
 
@@ -1244,6 +1262,15 @@ public partial class WorldGenerator : Node3D
 					// We already checked chunk boundaries in AddBiomeObjects, so this should be safe
 					if (random.NextDouble() > 0.2f && surfaceHeight + y < chunk.Height)
 					{
+						// Convert to world coordinates
+						int worldX = chunk.Position.X * chunk.Size + nx;
+						int worldY = surfaceHeight + y;
+						int worldZ = chunk.Position.Y * chunk.Size + nz;
+
+						// Use VoxelStore to set the voxel
+						VoxelStore.Instance.SetVoxelType(worldX, worldY, worldZ, VoxelType.Wood);
+
+						// Also update the local chunk for mesh generation
 						chunk.SetVoxel(nx, surfaceHeight + y, nz, VoxelType.Wood);
 					}
 				}
@@ -1270,6 +1297,15 @@ public partial class WorldGenerator : Node3D
 					// We already checked chunk boundaries in AddBiomeObjects, so this should be safe
 					if (surfaceHeight + y < chunk.Height)
 					{
+						// Convert to world coordinates
+						int worldX = chunk.Position.X * chunk.Size + nx;
+						int worldY = surfaceHeight + y;
+						int worldZ = chunk.Position.Y * chunk.Size + nz;
+
+						// Use VoxelStore to set the voxel
+						VoxelStore.Instance.SetVoxelType(worldX, worldY, worldZ, VoxelType.Wood);
+
+						// Also update the local chunk for mesh generation
 						chunk.SetVoxel(nx, surfaceHeight + y, nz, VoxelType.Wood);
 					}
 				}
@@ -1318,6 +1354,15 @@ public partial class WorldGenerator : Node3D
 								// But ensure the tree still looks full and balanced
 								// if (distance > effectiveRadius - 0.8f && random.NextDouble() < 0.3f)
 
+								// Convert to world coordinates
+								int worldX = chunk.Position.X * chunk.Size + nx;
+								int worldY = ny;
+								int worldZ = chunk.Position.Y * chunk.Size + nz;
+
+								// Use VoxelStore to set the voxel
+								VoxelStore.Instance.SetVoxelType(worldX, worldY, worldZ, VoxelType.Leaves);
+
+								// Also update the local chunk for mesh generation
 								chunk.SetVoxel(nx, ny, nz, VoxelType.Leaves);
 							}
 						}

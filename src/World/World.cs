@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using CubeGen.World.Common;
 using CubeGen.World.Generation;
+using CubeGen.World.Environment;
 
 public partial class World : Node3D
 {
@@ -22,6 +23,7 @@ public partial class World : Node3D
 	private WorldGenerator _worldGenerator;
 	private ChunkManager _chunkManager;
 	private CloudGenerator _cloudGenerator;
+	private WindSystem _windSystem;
 	private Player _player;
 	private Godot.Timer _chunkUpdateTimer;
 	private Camera3D _mapCamera;
@@ -67,6 +69,9 @@ public partial class World : Node3D
 			_cloudGenerator.Seed = Seed;
 		}
 
+		// Create and initialize the wind system
+		CreateWindSystem();
+
 		// Connect chunk requested signal
 		_chunkManager.ChunkRequested += OnChunkRequested;
 
@@ -79,6 +84,23 @@ public partial class World : Node3D
 		_chunkUpdateTimer.Timeout += OnChunkUpdateTimerTimeout;
 		AddChild(_chunkUpdateTimer);
 		_chunkUpdateTimer.Start();
+	}
+
+	private void CreateWindSystem()
+	{
+		// Create a new WindSystem node
+		_windSystem = new WindSystem();
+		_windSystem.Name = "WindSystem";
+
+		// Set wind parameters
+		_windSystem.WindStrength = 0.5f;
+		_windSystem.WindGustiness = 0.3f;
+		_windSystem.WindSpeed = 1.0f;
+
+		// Add to scene
+		AddChild(_windSystem);
+
+		GD.Print("Wind system created and initialized");
 	}
 
 	public override void _Input(InputEvent @event)

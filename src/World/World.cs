@@ -34,6 +34,11 @@ public partial class World : Node3D
 	private Label _biomeLabel;
 	private Label _controlsLabel;
 	private bool _isMapMode = false;
+	private WorldEnvironment _worldEnvironment;
+
+	// Store original fog settings to restore when exiting map view
+	private bool _originalFogEnabled;
+	private bool _originalVolumetricFogEnabled;
 
 	// Store camera rotation to preserve it during movement and zooming
 	private Basis _mapCameraRotation;
@@ -52,6 +57,9 @@ public partial class World : Node3D
 
 		// Get cloud generator
 		_cloudGenerator = GetNode<CloudGenerator>("CloudGenerator");
+
+		// Get the WorldEnvironment node
+		_worldEnvironment = GetNode<WorldEnvironment>("WorldEnvironment");
 
 		// Set seed
 		if (Seed == 0)
@@ -356,6 +364,24 @@ public partial class World : Node3D
 			_player.SetProcessInput(false);
 			_player.SetPhysicsProcess(false);
 		}
+
+		// Disable fog for map view
+		if (_worldEnvironment != null)
+		{
+			Godot.Environment env = _worldEnvironment.Environment;
+			if (env != null)
+			{
+				// Store original fog settings
+				_originalFogEnabled = env.FogEnabled;
+				_originalVolumetricFogEnabled = env.VolumetricFogEnabled;
+
+				// Disable fog for better map visibility
+				env.FogEnabled = false;
+				env.VolumetricFogEnabled = false;
+
+				GD.Print("Fog disabled for map view");
+			}
+		}
 	}
 
 	private void DisableMapMode()
@@ -388,6 +414,20 @@ public partial class World : Node3D
 			// Re-enable player input
 			_player.SetProcessInput(true);
 			_player.SetPhysicsProcess(true);
+		}
+
+		// Restore fog settings
+		if (_worldEnvironment != null)
+		{
+			Godot.Environment env = _worldEnvironment.Environment;
+			if (env != null)
+			{
+				// Restore original fog settings
+				env.FogEnabled = _originalFogEnabled;
+				env.VolumetricFogEnabled = _originalVolumetricFogEnabled;
+
+				GD.Print("Fog settings restored");
+			}
 		}
 	}
 

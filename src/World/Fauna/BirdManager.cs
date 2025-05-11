@@ -13,10 +13,10 @@ namespace CubeGen.World.Fauna
     /// </summary>
     public partial class BirdManager : Node3D
     {
-        [Export] public int MaxBirds { get; set; } = 8; // Reduced from 20 to 8
-        [Export] public float SpawnHeight { get; set; } = 40.0f;
-        [Export] public float SpawnRadius { get; set; } = 150.0f; // Increased from 100.0f to 150.0f
-        [Export] public float DespawnDistance { get; set; } = 200.0f; // Increased from 150.0f to 200.0f
+        [Export] public int MaxBirds { get; set; } = 5; // Reduced from 8 to 5
+        [Export] public float SpawnHeight { get; set; } = 70.0f; // Increased from 40.0f to 70.0f
+        [Export] public float SpawnRadius { get; set; } = 150.0f;
+        [Export] public float DespawnDistance { get; set; } = 200.0f;
         [Export] public float UpdateInterval { get; set; } = 1.0f;
         [Export] public PackedScene BirdScene { get; set; }
 
@@ -42,6 +42,12 @@ namespace CubeGen.World.Fauna
         // Seed for consistent bird generation
         private int _seed;
 
+        // Noise for bird distribution
+        private FastNoiseLite _birdDistributionNoise;
+
+        // World generator reference for biome information
+        private WorldGenerator _worldGenerator;
+
         public override void _Ready()
         {
             // Initialize bird colors
@@ -53,12 +59,18 @@ namespace CubeGen.World.Fauna
             // Get player reference
             _player = GetTree().GetFirstNodeInGroup("Player") as Node3D;
 
+            // Get world generator reference
+            _worldGenerator = GetNode<WorldGenerator>("/root/World/WorldGenerator");
+
             // Get chunk manager reference
-            _chunkManager = GetNode<ChunkManager>("/root/World/WorldGenerator/ChunkManager");
+            _chunkManager = _worldGenerator?.GetNode<ChunkManager>("ChunkManager");
 
             // Initialize random with world seed
-            _seed = GetNode<WorldGenerator>("/root/World/WorldGenerator").Seed;
+            _seed = _worldGenerator?.Seed ?? 0;
             _random = new Random(_seed);
+
+            // Initialize noise for bird distribution
+            InitializeNoise();
 
             // Initial bird spawning
             SpawnInitialBirds();
@@ -102,6 +114,20 @@ namespace CubeGen.World.Fauna
                 // Update bird population
                 UpdateBirdPopulation();
             }
+        }
+
+        /// <summary>
+        /// Initialize noise for bird distribution
+        /// </summary>
+        private void InitializeNoise()
+        {
+            // Create noise for bird distribution
+            _birdDistributionNoise = new FastNoiseLite();
+            _birdDistributionNoise.Seed = _seed;
+            _birdDistributionNoise.NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin;
+            _birdDistributionNoise.Frequency = 0.001f; // Very low frequency for large-scale patterns
+
+            GD.Print($"Bird distribution noise initialized with seed {_seed}");
         }
 
         /// <summary>
@@ -151,27 +177,76 @@ namespace CubeGen.World.Fauna
         }
 
         /// <summary>
-        /// Spawn initial birds in the world
+        /// Spawn initial birds in the world distributed across different biomes
         /// </summary>
         private void SpawnInitialBirds()
         {
-            // Spawn just a couple of birds to start (to avoid sudden appearance)
-            int initialBirdCount = Mathf.Min(2, MaxBirds / 6); // Reduced from 5 to 2
-
-            // Only spawn initial birds if we have a player reference
-            if (_player != null)
+            // Only spawn initial birds if we have a player reference and world generator
+            if (_player != null && _worldGenerator != null)
             {
-                for (int i = 0; i < initialBirdCount; i++)
+                // We'll spawn birds in different biomes across the map
+                // This ensures a good initial distribution
+                List<Vector3> birdPositions = new List<Vector3>();
+
+                // Get player position as reference
+                Vector3 playerPosition = _player.GlobalPosition;
+
+                // Define biome types to focus on
+                BiomeType[] preferredBiomes = new BiomeType[]
                 {
-                    SpawnBird();
+                    BiomeType.ForestLands,   // Forest (highest priority)
+                    BiomeType.Islands,       // Islands
+                    BiomeType.Desert,        // Desert
+                    BiomeType.Tundra         // Tundra
+                };
+
+                // Try to find positions in each preferred biome
+                foreach (BiomeType biomeType in preferredBiomes)
+                {
+                    // Try to find a position in this biome
+                    Vector3 position = FindPositionInBiome(biomeType, playerPosition);
+
+                    // If we found a valid position, add it
+                    if (position != Vector3.Zero)
+                    {
+                        birdPositions.Add(position);
+                        GD.Print($"Found initial bird position in {biomeType} biome at {position}");
+                    }
                 }
 
-                GD.Print($"Spawned {initialBirdCount} initial birds");
+                // Also add some completely random positions
+                for (int i = 0; i < 3; i++)
+                {
+                    Vector3 randomPosition = FindPositionUsingNoise(playerPosition);
+                    if (randomPosition != Vector3.Zero)
+                    {
+                        birdPositions.Add(randomPosition);
+                        GD.Print($"Found random initial bird position at {randomPosition}");
+                    }
+                }
+
+                // Spawn birds at the found positions, but limit to MaxBirds
+                int initialBirdCount = Mathf.Min(MaxBirds, birdPositions.Count);
+
+                for (int i = 0; i < initialBirdCount; i++)
+                {
+                    // Create a new bird
+                    Bird bird = SpawnBird();
+
+                    // Position it at one of the found positions
+                    bird.GlobalPosition = birdPositions[i];
+
+                    // Get biome at this position
+                    BiomeType biome = WorldGenerator.GetBiomeType((int)birdPositions[i].X, (int)birdPositions[i].Z);
+
+                    GD.Print($"Spawned initial bird in {biome} biome at {birdPositions[i]}");
+                }
+
+                GD.Print($"Spawned {initialBirdCount} initial birds across different biomes");
             }
             else
             {
-                GD.Print("No player reference, delaying initial bird spawning");
-                initialBirdCount = 0;
+                GD.Print("No player reference or world generator, delaying initial bird spawning");
             }
 
             // We'll use a different approach to avoid Timer issues
@@ -180,7 +255,77 @@ namespace CubeGen.World.Fauna
             _gradualSpawningActive = true;
             _gradualSpawnTimer = 0.0f;
 
-            GD.Print("Gradual bird spawning started");
+            GD.Print("Gradual bird spawning with biome-based distribution started");
+        }
+
+        /// <summary>
+        /// Find a position in a specific biome
+        /// </summary>
+        private Vector3 FindPositionInBiome(BiomeType targetBiome, Vector3 playerPosition)
+        {
+            // Define a very large search area to cover the entire map
+            float mapSearchRadius = 2000.0f;
+
+            // Try many positions to find one in the target biome
+            const int MAX_ATTEMPTS = 50;
+
+            for (int i = 0; i < MAX_ATTEMPTS; i++)
+            {
+                // Generate a completely random position on the map
+                float mapX = (float)(_random.NextDouble() * mapSearchRadius * 2 - mapSearchRadius);
+                float mapZ = (float)(_random.NextDouble() * mapSearchRadius * 2 - mapSearchRadius);
+
+                // Get the biome type at this position
+                BiomeType biomeType = WorldGenerator.GetBiomeType((int)mapX, (int)mapZ);
+
+                // If this is the target biome, use this position
+                if (biomeType == targetBiome)
+                {
+                    // Get terrain height at this position
+                    float terrainHeight = GetTerrainHeight(mapX, mapZ);
+
+                    // Calculate bird height above terrain
+                    float birdHeight = terrainHeight + SpawnHeight;
+
+                    // Add variation based on noise
+                    float heightVariation = 30.0f;
+                    float heightNoise = _birdDistributionNoise.GetNoise2D(mapX * 1.5f, mapZ * 1.5f);
+                    birdHeight += heightNoise * heightVariation;
+
+                    // Adjust height based on biome (birds fly higher in forests)
+                    if (biomeType == BiomeType.ForestLands)
+                    {
+                        birdHeight += 20.0f;
+                    }
+
+                    // Ensure minimum height
+                    birdHeight = Mathf.Max(birdHeight, 60.0f);
+
+                    // Check if the position is too far from the player
+                    Vector3 position = new Vector3(mapX, birdHeight, mapZ);
+                    float distanceToPlayer = position.DistanceTo(playerPosition);
+
+                    if (distanceToPlayer > SpawnRadius * 10.0f)
+                    {
+                        // If too far, find a position in the same direction but closer
+                        Vector3 direction = (position - playerPosition).Normalized();
+                        float adjustedDistance = SpawnRadius * 5.0f;
+
+                        // Calculate adjusted position
+                        Vector3 adjustedPosition = playerPosition + direction * adjustedDistance;
+
+                        // Keep the same height
+                        adjustedPosition.Y = birdHeight;
+
+                        return adjustedPosition;
+                    }
+
+                    return position;
+                }
+            }
+
+            // If we couldn't find a position in the target biome, return zero vector
+            return Vector3.Zero;
         }
 
         // Flag to track if gradual spawning is active
@@ -188,7 +333,7 @@ namespace CubeGen.World.Fauna
         // Timer for gradual spawning
         private float _gradualSpawnTimer = 0.0f;
         // Interval between gradual spawns
-        private const float GRADUAL_SPAWN_INTERVAL = 4.0f; // Increased from 2.0f to 4.0f
+        private const float GRADUAL_SPAWN_INTERVAL = 8.0f; // Increased from 4.0f to 8.0f
 
         /// <summary>
         /// Update bird population based on player position
@@ -249,16 +394,93 @@ namespace CubeGen.World.Fauna
                 _activeBirds.Remove(bird);
             }
 
-            // Spawn new birds if needed, but do it gradually
-            // Only spawn one bird per update to avoid sudden appearance of many birds
-            // Reduced probability to make spawning even more gradual
-            if (_activeBirds.Count < MaxBirds && _random.NextDouble() < 0.2f)
+            // Spawn new birds if needed, but use biome information for spawning
+            if (_activeBirds.Count < MaxBirds && _worldGenerator != null)
             {
-                SpawnBird();
+                // Get the biome at the player's position
+                BiomeType currentBiome = WorldGenerator.GetBiomeType((int)playerPosition.X, (int)playerPosition.Z);
 
-                // Debug output
-                GD.Print($"Spawned new bird. Active birds: {_activeBirds.Count}/{MaxBirds}");
+                // Get biome score for this area
+                float biomeScore = GetBiomeScore(currentBiome);
+
+                // Sample noise at player position
+                float noiseValue = _birdDistributionNoise.GetNoise2D(playerPosition.X, playerPosition.Z);
+
+                // Convert noise from [-1,1] to [0,1] range
+                noiseValue = (noiseValue + 1.0f) * 0.5f;
+
+                // Calculate combined score (biome + noise)
+                float combinedScore = biomeScore * 0.7f + noiseValue * 0.3f;
+
+                // Scale the spawn probability based on combined score
+                float spawnProbability = 0.03f * combinedScore * 2.0f;
+
+                // Only spawn if random value is less than spawn probability
+                if (_random.NextDouble() < spawnProbability)
+                {
+                    // Decide whether to spawn in current biome or a preferred biome
+                    bool spawnInCurrentBiome = _random.NextDouble() < 0.3f;
+
+                    if (spawnInCurrentBiome)
+                    {
+                        // Spawn a bird in the current biome
+                        Bird bird = SpawnBird();
+
+                        // Find a position in the current biome
+                        Vector3 position = FindPositionInBiome(currentBiome, playerPosition);
+
+                        // If we found a valid position, use it
+                        if (position != Vector3.Zero)
+                        {
+                            bird.GlobalPosition = position;
+                            GD.Print($"Spawned new bird in current biome ({currentBiome}). Active birds: {_activeBirds.Count}/{MaxBirds}");
+                        }
+                    }
+                    else
+                    {
+                        // Try to spawn in a preferred biome
+                        BiomeType targetBiome = GetRandomPreferredBiome();
+
+                        // Find a position in the target biome
+                        Vector3 position = FindPositionInBiome(targetBiome, playerPosition);
+
+                        // If we found a valid position, spawn a bird there
+                        if (position != Vector3.Zero)
+                        {
+                            Bird bird = SpawnBird();
+                            bird.GlobalPosition = position;
+                            GD.Print($"Spawned new bird in preferred biome ({targetBiome}). Active birds: {_activeBirds.Count}/{MaxBirds}");
+                        }
+                        else
+                        {
+                            // If we couldn't find a position in the target biome, use noise-based position
+                            Bird bird = SpawnBird();
+                            GD.Print($"Spawned new bird using noise. Active birds: {_activeBirds.Count}/{MaxBirds}");
+                        }
+                    }
+                }
             }
+        }
+
+        /// <summary>
+        /// Get a random preferred biome for birds
+        /// </summary>
+        private BiomeType GetRandomPreferredBiome()
+        {
+            // Define biome types to focus on with their weights
+            BiomeType[] preferredBiomes = new BiomeType[]
+            {
+                BiomeType.ForestLands,   // Forest (highest priority)
+                BiomeType.ForestLands,   // Added twice for higher weight
+                BiomeType.Islands,       // Islands
+                BiomeType.Islands,       // Added twice for higher weight
+                BiomeType.Desert,        // Desert
+                BiomeType.Tundra         // Tundra
+            };
+
+            // Pick a random biome from the weighted list
+            int index = _random.Next(0, preferredBiomes.Length);
+            return preferredBiomes[index];
         }
 
         /// <summary>
@@ -352,43 +574,196 @@ namespace CubeGen.World.Fauna
         }
 
         /// <summary>
-        /// Position a bird in the world
+        /// Position a bird in the world using noise for distribution
         /// </summary>
         private void PositionBird(Bird bird)
         {
             if (_player == null)
                 return;
 
-            // Get player position
+            // Get player position as a reference point
             Vector3 playerPosition = _player.GlobalPosition;
 
-            // Random angle
+            // Use noise to find a suitable position across the map
+            Vector3 birdPosition = FindPositionUsingNoise(playerPosition);
+
+            // Set the bird's position
+            bird.GlobalPosition = birdPosition;
+
+            // Debug output
+            float distanceFromPlayer = birdPosition.DistanceTo(playerPosition);
+            GD.Print($"Positioned bird at ({birdPosition.X:F1}, {birdPosition.Y:F1}, {birdPosition.Z:F1}), distance from player: {distanceFromPlayer:F1}");
+        }
+
+        /// <summary>
+        /// Find a suitable position for a bird using noise and biome information
+        /// </summary>
+        private Vector3 FindPositionUsingNoise(Vector3 playerPosition)
+        {
+            if (_worldGenerator == null)
+            {
+                // Fallback if world generator is not available
+                return FallbackPosition(playerPosition);
+            }
+
+            // Define a very large search area to cover the entire map
+            // This is much larger than the player's view distance
+            float mapSearchRadius = 1000.0f;
+
+            // Try many positions to find one with good biome and noise value
+            const int MAX_ATTEMPTS = 30;
+            float bestScore = -1.0f;
+            Vector3 bestPosition = Vector3.Zero;
+
+            for (int i = 0; i < MAX_ATTEMPTS; i++)
+            {
+                // Generate a completely random position on the map
+                // This is NOT centered on the player
+                float mapX = (float)(_random.NextDouble() * mapSearchRadius * 2 - mapSearchRadius);
+                float mapZ = (float)(_random.NextDouble() * mapSearchRadius * 2 - mapSearchRadius);
+
+                // Get the biome type at this position
+                BiomeType biomeType = WorldGenerator.GetBiomeType((int)mapX, (int)mapZ);
+
+                // Calculate biome score - forests and islands have higher scores
+                float biomeScore = GetBiomeScore(biomeType);
+
+                // Sample noise at this position
+                float noiseValue = _birdDistributionNoise.GetNoise2D(mapX, mapZ);
+
+                // Convert noise from [-1,1] to [0,1] range
+                noiseValue = (noiseValue + 1.0f) * 0.5f;
+
+                // Calculate combined score (biome + noise)
+                float combinedScore = biomeScore * 0.7f + noiseValue * 0.3f;
+
+                // If this position has a better score, use it
+                if (combinedScore > bestScore)
+                {
+                    // Get terrain height at this position
+                    float terrainHeight = GetTerrainHeight(mapX, mapZ);
+
+                    // Calculate bird height above terrain
+                    float birdHeight = terrainHeight + SpawnHeight;
+
+                    // Add variation based on noise and biome
+                    float heightVariation = 30.0f;
+                    float heightNoise = _birdDistributionNoise.GetNoise2D(mapX * 1.5f, mapZ * 1.5f);
+                    birdHeight += heightNoise * heightVariation;
+
+                    // Adjust height based on biome (birds fly higher in forests)
+                    if (biomeType == BiomeType.ForestLands)
+                    {
+                        birdHeight += 20.0f;
+                    }
+
+                    // Ensure minimum height
+                    birdHeight = Mathf.Max(birdHeight, 60.0f);
+
+                    // Save this position
+                    bestPosition = new Vector3(mapX, birdHeight, mapZ);
+                    bestScore = combinedScore;
+                }
+            }
+
+            // If we couldn't find a good position, use a fallback
+            if (bestScore < 0.3f)
+            {
+                return FallbackPosition(playerPosition);
+            }
+
+            // Check if the position is too far from the player
+            float distanceToPlayer = bestPosition.DistanceTo(playerPosition);
+            if (distanceToPlayer > SpawnRadius * 5.0f)
+            {
+                // If too far, find a position in the same direction but closer
+                Vector3 direction = (bestPosition - playerPosition).Normalized();
+                float adjustedDistance = SpawnRadius * 3.0f;
+
+                // Calculate adjusted position
+                Vector3 adjustedPosition = playerPosition + direction * adjustedDistance;
+
+                // Keep the same height
+                adjustedPosition.Y = bestPosition.Y;
+
+                return adjustedPosition;
+            }
+
+            return bestPosition;
+        }
+
+        /// <summary>
+        /// Get a score for a biome type based on bird preference
+        /// </summary>
+        private float GetBiomeScore(BiomeType biomeType)
+        {
+            switch (biomeType)
+            {
+                case BiomeType.ForestLands:
+                    return 1.0f; // Forests have the highest score
+                case BiomeType.Islands:
+                    return 0.9f; // Islands are also good
+                case BiomeType.Desert:
+                    return 0.4f; // Deserts have fewer birds
+                case BiomeType.Tundra:
+                    return 0.3f; // Tundra has even fewer birds
+                default:
+                    return 0.5f; // Default score for other biomes
+            }
+        }
+
+        /// <summary>
+        /// Get the terrain height at a specific position
+        /// </summary>
+        private float GetTerrainHeight(float x, float z)
+        {
+            if (_chunkManager == null)
+            {
+                // Fallback if chunk manager is not available
+                return 30.0f;
+            }
+
+            // Convert to integer coordinates
+            int worldX = (int)x;
+            int worldZ = (int)z;
+
+            // Start from a reasonable height and search downward
+            int startY = 100;
+
+            for (int y = startY; y >= 0; y--)
+            {
+                VoxelType voxelType = _chunkManager.GetVoxelType(worldX, y, worldZ);
+
+                // If we find a non-air voxel, this is the highest point
+                if (voxelType != VoxelType.Air && voxelType != VoxelType.Water)
+                {
+                    return y;
+                }
+            }
+
+            // If we couldn't find terrain, return a default height
+            return 30.0f;
+        }
+
+        /// <summary>
+        /// Fallback position calculation if other methods fail
+        /// </summary>
+        private Vector3 FallbackPosition(Vector3 playerPosition)
+        {
+            // Generate a position in a large radius around the player
             float angle = (float)_random.NextDouble() * Mathf.Pi * 2;
-
-            // Random distance from player (within spawn radius, but not too close)
-            // Use a much larger minimum distance to prevent birds from spawning too close to the player
-            float minDistance = SpawnRadius * 0.7f;  // Increased from 0.4f to 0.7f
-            float maxDistance = SpawnRadius * 0.95f; // Increased from 0.8f to 0.95f
-            float distance = minDistance + (float)_random.NextDouble() * (maxDistance - minDistance);
-
-            // Calculate position
+            float distance = SpawnRadius * 2.0f;
             float x = playerPosition.X + Mathf.Cos(angle) * distance;
             float z = playerPosition.Z + Mathf.Sin(angle) * distance;
 
-            // Set height - make it more consistent but with some variation
-            // Use the player's height as a reference point
-            float baseHeight = playerPosition.Y + SpawnHeight;
-            float heightVariation = 10.0f; // Less variation than before
-            float y = baseHeight + (float)_random.NextDouble() * heightVariation - (heightVariation / 2);
+            // Calculate height with some noise variation
+            float heightNoise = _birdDistributionNoise.GetNoise2D(x * 1.5f, z * 1.5f);
+            float y = playerPosition.Y + SpawnHeight + heightNoise * 20.0f;
 
-            // Ensure minimum height above ground
-            y = Mathf.Max(y, 30.0f);
+            // Ensure minimum height
+            y = Mathf.Max(y, 60.0f);
 
-            // Set position
-            bird.GlobalPosition = new Vector3(x, y, z);
-
-            // Debug output
-            GD.Print($"Positioned bird at ({x:F1}, {y:F1}, {z:F1}), distance from player: {distance:F1}");
+            return new Vector3(x, y, z);
         }
 
         /// <summary>

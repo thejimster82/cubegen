@@ -12,7 +12,7 @@ namespace CubeGen.World.Fauna
     public partial class Bird : Fauna
     {
         // Bird-specific properties
-        [Export] public float FlyingHeight { get; set; } = 20.0f;
+        [Export] public float FlyingHeight { get; set; } = 50.0f; // Increased from 20.0f to 50.0f
         [Export] public float FlyingSpeed { get; set; } = 3.0f;
         [Export] public float WingFlapSpeed { get; set; } = 5.0f;
         [Export] public float PerchDuration { get; set; } = 10.0f;

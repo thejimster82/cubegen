@@ -157,6 +157,9 @@ namespace CubeGen.Player.CharacterParts
                 material.VertexColorUseAsAlbedo = true;
                 material.Roughness = 0.8f;
 
+                // Fix the face culling to show outside faces instead of inside faces
+                material.CullMode = BaseMaterial3D.CullModeEnum.Front; // Cull front faces to show the inside faces
+
                 // Apply material
                 mesh.SurfaceSetMaterial(0, material);
             }
@@ -356,6 +359,22 @@ namespace CubeGen.Player.CharacterParts
 
             // Get voxel
             return _voxels[x, y, z];
+        }
+
+        /// <summary>
+        /// Regenerate the mesh with the current voxel data
+        /// </summary>
+        public virtual void RegenerateMesh()
+        {
+            // Clear existing mesh
+            if (_meshInstance.Mesh != null)
+            {
+                _meshInstance.Mesh.Dispose();
+                _meshInstance.Mesh = null;
+            }
+
+            // Generate new mesh
+            GenerateMesh();
         }
     }
 }

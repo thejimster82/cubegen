@@ -301,5 +301,19 @@ namespace CubeGen.Player
             _rightLeg.ClothingColor = pantsColor;
             _rightLeg.GenerateMesh();
         }
+
+        /// <summary>
+        /// Regenerate all character part meshes
+        /// </summary>
+        public void RegenerateAllMeshes()
+        {
+            // Regenerate each body part mesh
+            _head.RegenerateMesh();
+            _body.RegenerateMesh();
+            _leftArm.RegenerateMesh();
+            _rightArm.RegenerateMesh();
+            _leftLeg.RegenerateMesh();
+            _rightLeg.RegenerateMesh();
+        }
     }
 }

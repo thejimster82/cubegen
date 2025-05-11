@@ -133,6 +133,17 @@ public partial class Player : CharacterBody3D
 		}
 	}
 
+	/// <summary>
+	/// Regenerate all character meshes to fix face culling issues
+	/// </summary>
+	public void RegenerateCharacterMeshes()
+	{
+		if (_voxelCharacter != null)
+		{
+			_voxelCharacter.RegenerateAllMeshes();
+		}
+	}
+
 	// Create a UI indicator for when the player is in water
 	private void CreateWaterIndicator()
 	{

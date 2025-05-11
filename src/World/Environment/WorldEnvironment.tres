@@ -14,7 +14,6 @@ sky_material = SubResource("ProceduralSkyMaterial_jkr2v")
 background_mode = 2
 sky = SubResource("Sky_jkr2v")
 tonemap_mode = 2
-ssao_enabled = true
 ssao_radius = 2.0
 ssao_intensity = 1.0
 ssil_enabled = true

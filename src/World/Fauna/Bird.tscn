@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://birdscene"]
+
+[ext_resource type="Script" path="res://src/World/Fauna/Bird.cs" id="1_bird"]
+
+[node name="Bird" type="Node3D"]
+script = ExtResource("1_bird")

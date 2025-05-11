@@ -217,6 +217,19 @@ public partial class ChunkManager : Node3D
 
 					// Add to dictionary
 					_chunks.TryAdd(chunk.Position, newMesh);
+
+					// Check if this chunk has fauna that needs to be spawned
+					if (CubeGen.World.Fauna.FaunaSpawner.Instance.ChunkHasFauna(chunk.Position))
+					{
+						// Get the BirdManager
+						var birdManager = GetNode<CubeGen.World.Fauna.BirdManager>("/root/World/BirdManager");
+						if (birdManager != null)
+						{
+							// Spawn fauna for this chunk
+							CubeGen.World.Fauna.FaunaSpawner.Instance.SpawnFaunaForChunk(chunk.Position, birdManager);
+							GD.Print($"Spawned fauna for chunk {chunk.Position} during mesh processing");
+						}
+					}
 				}
 
 				meshesProcessed++;

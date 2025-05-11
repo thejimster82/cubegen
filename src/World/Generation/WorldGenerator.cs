@@ -34,6 +34,18 @@ public partial class WorldGenerator : Node3D
 		BiomeRegionGenerator.Instance.Initialize(Seed);
 		GD.Print($"BiomeRegionGenerator initialized with seed: {Seed}");
 
+		// Initialize the FaunaSpawner
+		var birdManager = GetNode<CubeGen.World.Fauna.BirdManager>("/root/World/BirdManager");
+		if (birdManager != null)
+		{
+			CubeGen.World.Fauna.FaunaSpawner.Instance.Initialize(Seed, birdManager);
+			GD.Print("FaunaSpawner initialized");
+		}
+		else
+		{
+			GD.PrintErr("BirdManager not found for FaunaSpawner initialization!");
+		}
+
 		InitializeNoise();
 		_chunkManager = GetNode<ChunkManager>("ChunkManager");
 
@@ -203,6 +215,9 @@ public partial class WorldGenerator : Node3D
 		// Add objects like trees based on biome
 		AddBiomeObjects(chunk, chunkPos, ChunkSize);
 
+		// Process the chunk for fauna spawning
+		CubeGen.World.Fauna.FaunaSpawner.Instance.ProcessChunkForFauna(chunk);
+
 		// First, add the chunk data to the chunk manager
 		// This makes the data available for neighboring chunks' AO calculations
 		_chunkManager.AddChunk(chunk);
@@ -210,6 +225,9 @@ public partial class WorldGenerator : Node3D
 
 	// Static biome noise for use by other classes
 	private static FastNoiseLite _staticBiomeNoise;
+
+	// Static reference to ChunkManager for use by other classes
+	private static ChunkManager _staticChunkManager;
 
 	// Initialize static noise
 	private static void InitializeStaticNoise(int seed)
@@ -224,6 +242,38 @@ public partial class WorldGenerator : Node3D
 
 		// Initialize the BiomeSubRegions with the same seed
 		BiomeSubRegions.Initialize(seed);
+	}
+
+	/// <summary>
+	/// Get the voxel type at a specific world position
+	/// </summary>
+	public static VoxelType GetVoxelTypeAtPosition(int worldX, int worldY, int worldZ)
+	{
+		// If we have a static reference to the ChunkManager, use it
+		if (_staticChunkManager != null)
+		{
+			return _staticChunkManager.GetVoxelType(worldX, worldY, worldZ);
+		}
+
+		// Otherwise, try to find the ChunkManager in the scene
+		SceneTree tree = (SceneTree)Engine.GetMainLoop();
+		Node worldNode = tree.Root.GetNodeOrNull("World");
+		if (worldNode != null)
+		{
+			WorldGenerator worldGen = worldNode.GetNodeOrNull<WorldGenerator>("WorldGenerator");
+			if (worldGen != null)
+			{
+				ChunkManager chunkManager = worldGen.GetNodeOrNull<ChunkManager>("ChunkManager");
+				if (chunkManager != null)
+				{
+					_staticChunkManager = chunkManager;
+					return chunkManager.GetVoxelType(worldX, worldY, worldZ);
+				}
+			}
+		}
+
+		// If we couldn't find the ChunkManager, return Air
+		return VoxelType.Air;
 	}
 
 	// Get biome type for a world position - instance method

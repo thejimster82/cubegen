@@ -6,6 +6,62 @@ using CubeGen.World.Common;
 namespace CubeGen.World.Generation.POI
 {
     /// <summary>
+    /// Represents an Axis-Aligned Bounding Box for a POI structure
+    /// </summary>
+    public struct POIAABB
+    {
+        public int MinX;
+        public int MaxX;
+        public int MinY;
+        public int MaxY;
+        public int MinZ;
+        public int MaxZ;
+
+        public POIAABB(int minX, int maxX, int minY, int maxY, int minZ, int maxZ)
+        {
+            MinX = minX;
+            MaxX = maxX;
+            MinY = minY;
+            MaxY = maxY;
+            MinZ = minZ;
+            MaxZ = maxZ;
+        }
+
+        /// <summary>
+        /// Check if this AABB contains a point
+        /// </summary>
+        public bool Contains(int x, int y, int z)
+        {
+            return x >= MinX && x <= MaxX &&
+                   y >= MinY && y <= MaxY &&
+                   z >= MinZ && z <= MaxZ;
+        }
+
+        /// <summary>
+        /// Get all chunk positions that this AABB overlaps with
+        /// </summary>
+        public HashSet<Vector2I> GetOverlappingChunks(int chunkSize)
+        {
+            HashSet<Vector2I> chunks = new HashSet<Vector2I>();
+
+            int minChunkX = MinX / chunkSize;
+            int maxChunkX = MaxX / chunkSize;
+            int minChunkZ = MinZ / chunkSize;
+            int maxChunkZ = MaxZ / chunkSize;
+
+            for (int cx = minChunkX; cx <= maxChunkX; cx++)
+            {
+                for (int cz = minChunkZ; cz <= maxChunkZ; cz++)
+                {
+                    chunks.Add(new Vector2I(cx, cz));
+                }
+            }
+
+            return chunks;
+        }
+    }
+
+    /// <summary>
     /// Handles direct voxel modifications for Points of Interest
     /// This approach ensures consistent POI generation across chunk boundaries
     /// </summary>
@@ -25,6 +81,10 @@ namespace CubeGen.World.Generation.POI
 
         // Track which POIs have been processed
         private static HashSet<Vector2I> _processedPOIs = new HashSet<Vector2I>();
+
+        // Store the AABB for each POI
+        // Key is POI position, value is the AABB
+        private static Dictionary<Vector2I, POIAABB> _poiAABBs = new Dictionary<Vector2I, POIAABB>();
 
         // Debug counter for POIs processed
         private static int _poisProcessed = 0;
@@ -93,20 +153,40 @@ namespace CubeGen.World.Generation.POI
             Vector2I poiPos = new Vector2I(poi.Position.X, poi.Position.Y);
             int chunkSize = 16; // Standard chunk size
 
-            // Calculate the range of chunks affected by this POI
-            int minChunkX = (poi.Position.X - poi.InfluenceRadius) / chunkSize;
-            int maxChunkX = (poi.Position.X + poi.InfluenceRadius) / chunkSize;
-            int minChunkZ = (poi.Position.Y - poi.InfluenceRadius) / chunkSize;
-            int maxChunkZ = (poi.Position.Y + poi.InfluenceRadius) / chunkSize;
-
-            // Mark all chunks in this range as affected by this POI
-            for (int cx = minChunkX; cx <= maxChunkX; cx++)
+            // If we have an AABB for this POI, use it to determine affected chunks
+            if (_poiAABBs.TryGetValue(poiPos, out POIAABB aabb))
             {
-                for (int cz = minChunkZ; cz <= maxChunkZ; cz++)
+                // Get all chunks that overlap with the AABB
+                HashSet<Vector2I> overlappingChunks = aabb.GetOverlappingChunks(chunkSize);
+
+                // Add all these chunks to the affected chunks set
+                foreach (Vector2I chunkPos in overlappingChunks)
                 {
-                    Vector2I chunkPos = new Vector2I(cx, cz);
                     _poiAffectedChunks[poiPos].Add(chunkPos);
                 }
+
+                GD.Print($"POI at {poiPos} affects {overlappingChunks.Count} chunks based on AABB");
+            }
+            else
+            {
+                // Fallback to using influence radius if no AABB is available
+                // Calculate the range of chunks affected by this POI
+                int minChunkX = (poi.Position.X - poi.InfluenceRadius) / chunkSize;
+                int maxChunkX = (poi.Position.X + poi.InfluenceRadius) / chunkSize;
+                int minChunkZ = (poi.Position.Y - poi.InfluenceRadius) / chunkSize;
+                int maxChunkZ = (poi.Position.Y + poi.InfluenceRadius) / chunkSize;
+
+                // Mark all chunks in this range as affected by this POI
+                for (int cx = minChunkX; cx <= maxChunkX; cx++)
+                {
+                    for (int cz = minChunkZ; cz <= maxChunkZ; cz++)
+                    {
+                        Vector2I chunkPos = new Vector2I(cx, cz);
+                        _poiAffectedChunks[poiPos].Add(chunkPos);
+                    }
+                }
+
+                GD.Print($"POI at {poiPos} affects chunks based on influence radius (no AABB available)");
             }
         }
 
@@ -123,6 +203,14 @@ namespace CubeGen.World.Generation.POI
                 }
             }
             return false;
+        }
+
+        /// <summary>
+        /// Get the AABB for a POI if it exists
+        /// </summary>
+        public static bool TryGetPOIAABB(Vector2I poiPos, out POIAABB aabb)
+        {
+            return _poiAABBs.TryGetValue(poiPos, out aabb);
         }
 
         /// <summary>
@@ -202,6 +290,22 @@ namespace CubeGen.World.Generation.POI
         }
 
         /// <summary>
+        /// Calculate and store the AABB for a POI structure
+        /// </summary>
+        public static void CalculateAndStoreAABB(PointOfInterest poi, int minX, int maxX, int minY, int maxY, int minZ, int maxZ)
+        {
+            Vector2I poiPos = new Vector2I(poi.Position.X, poi.Position.Y);
+
+            // Create the AABB
+            POIAABB aabb = new POIAABB(minX, maxX, minY, maxY, minZ, maxZ);
+
+            // Store it
+            _poiAABBs[poiPos] = aabb;
+
+            GD.Print($"Calculated AABB for POI at {poiPos}: X({minX}-{maxX}), Y({minY}-{maxY}), Z({minZ}-{maxZ})");
+        }
+
+        /// <summary>
         /// Generate a tower structure
         /// </summary>
         private static void GenerateTower(PointOfInterest poi, int chunkHeight, float waterLevel)
@@ -209,9 +313,14 @@ namespace CubeGen.World.Generation.POI
             // Create a random generator with the POI's seed
             Random random = new Random(poi.Seed);
 
-            // Tower parameters
-            int baseRadius = 6;
-            int towerHeight = 30 + random.Next(20); // 30-50 blocks tall
+            // Tower parameters - ensure they fit within influence radius
+            int maxRadius = poi.InfluenceRadius / 4; // Ensure structure fits well within influence radius
+            int baseRadius = Math.Min(6, maxRadius);
+
+            // Adjust tower height based on influence radius
+            int maxHeight = poi.InfluenceRadius / 2;
+            int towerHeight = Math.Min(30 + random.Next(20), maxHeight); // 30-50 blocks tall, but capped by influence radius
+
             int baseHeight = Mathf.FloorToInt(waterLevel * chunkHeight) + 2; // Slightly above water level
 
             // Create a flat base for the tower
@@ -219,6 +328,17 @@ namespace CubeGen.World.Generation.POI
             int maxX = poi.Position.X + baseRadius * 2;
             int minZ = poi.Position.Y - baseRadius * 2;
             int maxZ = poi.Position.Y + baseRadius * 2;
+
+            // Calculate the AABB for this tower
+            int aabbMinX = minX;
+            int aabbMaxX = maxX;
+            int aabbMinY = baseHeight;
+            int aabbMaxY = baseHeight + towerHeight;
+            int aabbMinZ = minZ;
+            int aabbMaxZ = maxZ;
+
+            // Store the AABB
+            CalculateAndStoreAABB(poi, aabbMinX, aabbMaxX, aabbMinY, aabbMaxY, aabbMinZ, aabbMaxZ);
 
             // Flatten terrain around the tower
             for (int x = minX; x <= maxX; x++)
@@ -229,7 +349,9 @@ namespace CubeGen.World.Generation.POI
                     int dz = z - poi.Position.Y;
                     float distanceSquared = dx * dx + dz * dz;
 
-                    if (distanceSquared <= baseRadius * baseRadius * 4)
+                    // Ensure we're within the POI's influence radius
+                    if (distanceSquared <= baseRadius * baseRadius * 4 &&
+                        distanceSquared <= poi.InfluenceRadius * poi.InfluenceRadius)
                     {
                         // Set terrain height to base height
                         SetTerrainHeight(x, z, baseHeight);
@@ -258,9 +380,10 @@ namespace CubeGen.World.Generation.POI
                         int dz = z - poi.Position.Y;
                         float distanceSquared = dx * dx + dz * dz;
 
-                        // Create walls (hollow tower)
+                        // Create walls (hollow tower) and ensure we're within the POI's influence radius
                         if (distanceSquared <= currentRadius * currentRadius &&
-                            (distanceSquared >= (currentRadius - 1) * (currentRadius - 1) || isFloor))
+                            (distanceSquared >= (currentRadius - 1) * (currentRadius - 1) || isFloor) &&
+                            distanceSquared <= poi.InfluenceRadius * poi.InfluenceRadius)
                         {
                             // Use different materials for variety
                             VoxelType material = VoxelType.Stone;
@@ -286,10 +409,26 @@ namespace CubeGen.World.Generation.POI
             // Create a random generator with the POI's seed
             Random random = new Random(poi.Seed);
 
-            // Rock formation parameters
-            int baseRadius = 8;
-            int height = 15 + random.Next(10); // 15-25 blocks tall
+            // Rock formation parameters - ensure they fit within influence radius
+            int maxRadius = poi.InfluenceRadius / 4; // Ensure structure fits well within influence radius
+            int baseRadius = Math.Min(8, maxRadius);
+
+            // Adjust height based on influence radius
+            int maxHeight = poi.InfluenceRadius / 3;
+            int height = Math.Min(15 + random.Next(10), maxHeight); // 15-25 blocks tall, but capped by influence radius
+
             int baseHeight = Mathf.FloorToInt(waterLevel * chunkHeight) + 1; // Slightly above water level
+
+            // Calculate the AABB for this rock formation
+            int aabbMinX = poi.Position.X - baseRadius;
+            int aabbMaxX = poi.Position.X + baseRadius;
+            int aabbMinY = baseHeight;
+            int aabbMaxY = baseHeight + height;
+            int aabbMinZ = poi.Position.Y - baseRadius;
+            int aabbMaxZ = poi.Position.Y + baseRadius;
+
+            // Store the AABB
+            CalculateAndStoreAABB(poi, aabbMinX, aabbMaxX, aabbMinY, aabbMaxY, aabbMinZ, aabbMaxZ);
 
             // Create the rock formation
             for (int y = baseHeight; y <= baseHeight + height; y++)
@@ -310,7 +449,9 @@ namespace CubeGen.World.Generation.POI
                         float noise = (float)random.NextDouble() * 0.3f;
                         float radiusSquared = (currentRadius * (1.0f - noise)) * (currentRadius * (1.0f - noise));
 
-                        if (distanceSquared <= radiusSquared)
+                        // Ensure we're within the POI's influence radius
+                        if (distanceSquared <= radiusSquared &&
+                            distanceSquared <= poi.InfluenceRadius * poi.InfluenceRadius)
                         {
                             // Set terrain height
                             if (y == baseHeight)
@@ -344,9 +485,14 @@ namespace CubeGen.World.Generation.POI
             // Create a random generator with the POI's seed
             Random random = new Random(poi.Seed);
 
-            // Ruin parameters
-            int baseRadius = 7;
-            int height = 10 + random.Next(8); // 10-18 blocks tall
+            // Ruin parameters - ensure they fit within influence radius
+            int maxRadius = poi.InfluenceRadius / 4; // Ensure structure fits well within influence radius
+            int baseRadius = Math.Min(7, maxRadius);
+
+            // Adjust height based on influence radius
+            int maxHeight = poi.InfluenceRadius / 3;
+            int height = Math.Min(10 + random.Next(8), maxHeight); // 10-18 blocks tall, but capped by influence radius
+
             int baseHeight = Mathf.FloorToInt(waterLevel * chunkHeight) + 1; // Slightly above water level
 
             // Create a flat base for the ruin
@@ -354,6 +500,17 @@ namespace CubeGen.World.Generation.POI
             int maxX = poi.Position.X + baseRadius * 2;
             int minZ = poi.Position.Y - baseRadius * 2;
             int maxZ = poi.Position.Y + baseRadius * 2;
+
+            // Calculate the AABB for this ruin
+            int aabbMinX = minX;
+            int aabbMaxX = maxX;
+            int aabbMinY = baseHeight;
+            int aabbMaxY = baseHeight + height;
+            int aabbMinZ = minZ;
+            int aabbMaxZ = maxZ;
+
+            // Store the AABB
+            CalculateAndStoreAABB(poi, aabbMinX, aabbMaxX, aabbMinY, aabbMaxY, aabbMinZ, aabbMaxZ);
 
             // Flatten terrain around the ruin
             for (int x = minX; x <= maxX; x++)
@@ -364,7 +521,9 @@ namespace CubeGen.World.Generation.POI
                     int dz = z - poi.Position.Y;
                     float distanceSquared = dx * dx + dz * dz;
 
-                    if (distanceSquared <= baseRadius * baseRadius * 3)
+                    // Ensure we're within the POI's influence radius
+                    if (distanceSquared <= baseRadius * baseRadius * 3 &&
+                        distanceSquared <= poi.InfluenceRadius * poi.InfluenceRadius)
                     {
                         // Set terrain height to base height
                         SetTerrainHeight(x, z, baseHeight);
@@ -390,9 +549,10 @@ namespace CubeGen.World.Generation.POI
                         int dz = z - poi.Position.Y;
                         float distanceSquared = dx * dx + dz * dz;
 
-                        // Create walls with gaps for a ruined look
+                        // Create walls with gaps for a ruined look and ensure we're within the POI's influence radius
                         if (distanceSquared <= currentRadius * currentRadius &&
-                            distanceSquared >= (currentRadius - 1) * (currentRadius - 1))
+                            distanceSquared >= (currentRadius - 1) * (currentRadius - 1) &&
+                            distanceSquared <= poi.InfluenceRadius * poi.InfluenceRadius)
                         {
                             // Add random gaps to make it look ruined
                             float ruinChance = (float)(y - baseHeight) / height; // More gaps higher up
@@ -415,13 +575,30 @@ namespace CubeGen.World.Generation.POI
             // Create a random generator with the POI's seed
             Random random = new Random(poi.Seed);
 
-            // Waterfall parameters
-            int baseRadius = 5;
-            int height = 20 + random.Next(10); // 20-30 blocks tall
+            // Waterfall parameters - ensure they fit within influence radius
+            int maxRadius = poi.InfluenceRadius / 5; // Ensure structure fits well within influence radius
+            int baseRadius = Math.Min(5, maxRadius);
+
+            // Adjust height based on influence radius
+            int maxHeight = poi.InfluenceRadius / 2;
+            int height = Math.Min(20 + random.Next(10), maxHeight); // 20-30 blocks tall, but capped by influence radius
+
             int baseHeight = Mathf.FloorToInt(waterLevel * chunkHeight) - 2; // Below water level for the pool
 
             // Create a pool at the bottom
-            int poolRadius = baseRadius * 2;
+            int poolRadius = Math.Min(baseRadius * 2, poi.InfluenceRadius / 3);
+
+            // Calculate the AABB for this waterfall
+            int aabbMinX = poi.Position.X - poolRadius;
+            int aabbMaxX = poi.Position.X + poolRadius;
+            int aabbMinY = baseHeight;
+            int aabbMaxY = baseHeight + height;
+            int aabbMinZ = poi.Position.Y - poolRadius;
+            int aabbMaxZ = poi.Position.Y + poolRadius;
+
+            // Store the AABB
+            CalculateAndStoreAABB(poi, aabbMinX, aabbMaxX, aabbMinY, aabbMaxY, aabbMinZ, aabbMaxZ);
+
             for (int x = poi.Position.X - poolRadius; x <= poi.Position.X + poolRadius; x++)
             {
                 for (int z = poi.Position.Y - poolRadius; z <= poi.Position.Y + poolRadius; z++)
@@ -430,7 +607,9 @@ namespace CubeGen.World.Generation.POI
                     int dz = z - poi.Position.Y;
                     float distanceSquared = dx * dx + dz * dz;
 
-                    if (distanceSquared <= poolRadius * poolRadius)
+                    // Ensure we're within the POI's influence radius
+                    if (distanceSquared <= poolRadius * poolRadius &&
+                        distanceSquared <= poi.InfluenceRadius * poi.InfluenceRadius)
                     {
                         // Set terrain height to base height
                         SetTerrainHeight(x, z, baseHeight);
@@ -459,8 +638,9 @@ namespace CubeGen.World.Generation.POI
                         int dz = z - poi.Position.Y;
                         float distanceSquared = dx * dx + dz * dz;
 
-                        // Create the water stream
-                        if (distanceSquared <= currentRadius * currentRadius)
+                        // Create the water stream and ensure we're within the POI's influence radius
+                        if (distanceSquared <= currentRadius * currentRadius &&
+                            distanceSquared <= poi.InfluenceRadius * poi.InfluenceRadius)
                         {
                             // Set water voxels
                             SetVoxel(x, y, z, VoxelType.Water);
@@ -478,10 +658,22 @@ namespace CubeGen.World.Generation.POI
             // Create a random generator with the POI's seed
             Random random = new Random(poi.Seed);
 
-            // Structure parameters
-            int baseRadius = 4;
+            // Structure parameters - ensure they fit within influence radius
+            int maxRadius = poi.InfluenceRadius / 3; // Ensure structure fits well within influence radius
+            int baseRadius = Math.Min(4, maxRadius);
             int height = 8 + random.Next(5); // 8-13 blocks tall
             int baseHeight = Mathf.FloorToInt(waterLevel * chunkHeight) + 1; // Slightly above water level
+
+            // Calculate the AABB for this structure
+            int aabbMinX = poi.Position.X - baseRadius;
+            int aabbMaxX = poi.Position.X + baseRadius;
+            int aabbMinY = baseHeight;
+            int aabbMaxY = baseHeight + height;
+            int aabbMinZ = poi.Position.Y - baseRadius;
+            int aabbMaxZ = poi.Position.Y + baseRadius;
+
+            // Store the AABB
+            CalculateAndStoreAABB(poi, aabbMinX, aabbMaxX, aabbMinY, aabbMaxY, aabbMinZ, aabbMaxZ);
 
             // Create a simple structure
             for (int y = baseHeight; y <= baseHeight + height; y++)
@@ -498,7 +690,9 @@ namespace CubeGen.World.Generation.POI
                         int dz = z - poi.Position.Y;
                         float distanceSquared = dx * dx + dz * dz;
 
-                        if (distanceSquared <= currentRadius * currentRadius)
+                        // Ensure we're within the POI's influence radius
+                        if (distanceSquared <= currentRadius * currentRadius &&
+                            distanceSquared <= poi.InfluenceRadius * poi.InfluenceRadius)
                         {
                             // Set terrain height
                             if (y == baseHeight)

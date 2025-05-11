@@ -114,14 +114,15 @@ namespace CubeGen.World.Generation.POI
         /// </summary>
         private int GetInfluenceRadiusFromSize(POISize size)
         {
+            return 120;
             switch (size)
             {
-                case POISize.Tiny: return 15;    // Increased from 5
-                case POISize.Small: return 30;   // Increased from 10
-                case POISize.Medium: return 60;  // Increased from 20
-                case POISize.Large: return 100;  // Increased from 40
-                case POISize.Huge: return 150;   // Increased from 80
-                default: return 60;              // Increased from 20
+                case POISize.Tiny: return 40;    // Increased from 15 to ensure structures fit
+                case POISize.Small: return 80;   // Increased from 30 to ensure structures fit
+                case POISize.Medium: return 120; // Increased from 60 to ensure structures fit
+                case POISize.Large: return 200;  // Increased from 100 to ensure structures fit
+                case POISize.Huge: return 300;   // Increased from 150 to ensure structures fit
+                default: return 120;             // Increased from 60 to ensure structures fit
             }
         }
 

@@ -31,7 +31,7 @@ namespace CubeGen.World.Generation.POI
         private int _worldSeed;
 
         // Maximum influence radius of any POI (used for search optimization)
-        private const int MAX_POI_INFLUENCE_RADIUS = 150; // Increased significantly to ensure we don't miss any POIs
+        private const int MAX_POI_INFLUENCE_RADIUS = 300; // Increased to match the largest POI influence radius (Huge size)
 
         // Cache for POIs affecting chunks to avoid recalculation
         // Key is chunk position, value is list of POIs affecting that chunk
@@ -127,9 +127,23 @@ namespace CubeGen.World.Generation.POI
             int chunkMinZ = chunkPos.Y * chunkSize;
             int chunkMaxZ = chunkMinZ + chunkSize;
 
-            // Calculate the maximum distance from the POI to the chunk
-            int maxDistanceX = Math.Max(Math.Abs(chunkMinX - poi.Position.X), Math.Abs(chunkMaxX - poi.Position.X));
-            int maxDistanceZ = Math.Max(Math.Abs(chunkMinZ - poi.Position.Y), Math.Abs(chunkMaxZ - poi.Position.Y));
+            // First, check if we have an AABB for this POI
+            Vector2I poiPos = new Vector2I(poi.Position.X, poi.Position.Y);
+            if (POIVoxelModifier.TryGetPOIAABB(poiPos, out POIAABB aabb))
+            {
+                // Check if the AABB overlaps with the chunk
+                bool overlapsX = (aabb.MinX < chunkMaxX && aabb.MaxX >= chunkMinX);
+                bool overlapsZ = (aabb.MinZ < chunkMaxZ && aabb.MaxZ >= chunkMinZ);
+
+                if (overlapsX && overlapsZ)
+                {
+                    GD.Print($"POI at {poiPos} affects chunk {chunkPos} based on AABB overlap");
+                    return true;
+                }
+
+                // If we have an AABB but it doesn't overlap, still check the influence radius as a fallback
+                // This ensures we don't miss any POIs that might affect the chunk
+            }
 
             // If the POI is inside the chunk, it definitely affects it
             if (poi.Position.X >= chunkMinX && poi.Position.X < chunkMaxX &&
@@ -137,6 +151,10 @@ namespace CubeGen.World.Generation.POI
             {
                 return true;
             }
+
+            // Calculate the maximum distance from the POI to the chunk
+            int maxDistanceX = Math.Max(Math.Abs(chunkMinX - poi.Position.X), Math.Abs(chunkMaxX - poi.Position.X));
+            int maxDistanceZ = Math.Max(Math.Abs(chunkMinZ - poi.Position.Y), Math.Abs(chunkMaxZ - poi.Position.Y));
 
             // Check if the POI's influence radius overlaps with the chunk
             return Math.Max(maxDistanceX, maxDistanceZ) <= poi.InfluenceRadius;

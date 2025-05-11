@@ -30,6 +30,8 @@ namespace CubeGen.World.Common
             _voxelCategories[VoxelType.Cactus] = VoxelCategory.Structure;
             _voxelCategories[VoxelType.IceBlock] = VoxelCategory.Structure;
             _voxelCategories[VoxelType.SnowLeaves] = VoxelCategory.Structure;
+            _voxelCategories[VoxelType.Ice] = VoxelCategory.Structure;
+            _voxelCategories[VoxelType.Coconut] = VoxelCategory.Structure;
 
             // Set decoration categories
             _voxelCategories[VoxelType.TallGrass] = VoxelCategory.Decoration;

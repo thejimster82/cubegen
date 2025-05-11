@@ -34,6 +34,10 @@ public partial class WorldGenerator : Node3D
 		BiomeRegionGenerator.Instance.Initialize(Seed);
 		GD.Print($"BiomeRegionGenerator initialized with seed: {Seed}");
 
+		// Initialize the BiomeObjectManager
+		BiomeObjectManager.Instance.Initialize(Seed, ChunkSize);
+		GD.Print("BiomeObjectManager initialized");
+
 		// Initialize the FaunaSpawner
 		var birdManager = GetNode<CubeGen.World.Fauna.BirdManager>("/root/World/BirdManager");
 		if (birdManager != null)
@@ -212,8 +216,121 @@ public partial class WorldGenerator : Node3D
 			}
 		}
 
-		// Add objects like trees based on biome
-		AddBiomeObjects(chunk, chunkPos, ChunkSize);
+		// Debug output for this chunk
+		GD.Print($"[WorldGenerator] Generating chunk at position {chunkPos}");
+
+		// Check if this chunk has already processed its anchor biome objects
+		bool isChunkProcessed = BiomeObjectManager.Instance.IsChunkProcessed(chunkPos);
+		GD.Print($"[WorldGenerator] Chunk {chunkPos} processed status: {isChunkProcessed}");
+
+		// If this chunk hasn't been processed yet, check if it contains any anchor points
+		if (!isChunkProcessed)
+		{
+			GD.Print($"[WorldGenerator] Generating biome objects for chunk {chunkPos}");
+
+			// Generate biome objects for this chunk (only the chunk with the anchor point generates the object)
+			List<BiomeObject> generatedObjects = BiomeObjectGenerator.GenerateBiomeObjectsForChunk(chunkPos, ChunkSize, Seed);
+
+			GD.Print($"[WorldGenerator] Generated {generatedObjects.Count} biome objects for chunk {chunkPos}");
+
+			// Register the generated objects with the manager
+			foreach (var biomeObject in generatedObjects)
+			{
+				BiomeObjectManager.Instance.RegisterBiomeObject(biomeObject);
+				GD.Print($"[WorldGenerator] Generated biome object {biomeObject.Id} of type {biomeObject.Type} at anchor point {biomeObject.AnchorPoint}");
+
+				// Debug output for the first few objects
+				if (generatedObjects.Count < 5)
+				{
+					Dictionary<Vector3I, VoxelType> objectVoxels = biomeObject.GetAllVoxels();
+					GD.Print($"[WorldGenerator] Object {biomeObject.Id} has {objectVoxels.Count} voxels");
+
+					// Print the first few voxels
+					int count = 0;
+					foreach (var voxelEntry in objectVoxels)
+					{
+						if (count < 10)
+						{
+							Vector3I relativePos = voxelEntry.Key;
+							Vector3I worldPos = biomeObject.RelativeToWorldPosition(relativePos);
+							GD.Print($"[WorldGenerator]   Voxel at relative {relativePos} (world {worldPos}): {voxelEntry.Value}");
+							count++;
+						}
+						else
+						{
+							break;
+						}
+					}
+				}
+			}
+
+			// Mark this chunk as processed
+			BiomeObjectManager.Instance.MarkChunkProcessed(chunkPos);
+		}
+
+		// Apply all biome object voxels that fall within this chunk using the global registry
+		Dictionary<Vector3I, VoxelType> chunkVoxels = BiomeObjectManager.Instance.GetVoxelsInChunk(chunkPos, ChunkSize);
+
+		GD.Print($"[WorldGenerator] Applying {chunkVoxels.Count} biome object voxels to chunk {chunkPos}");
+
+		// Track how many voxels were actually applied
+		int appliedCount = 0;
+		int skippedCount = 0;
+		int outOfBoundsCount = 0;
+
+		// Apply each voxel to the chunk
+		foreach (var voxelEntry in chunkVoxels)
+		{
+			Vector3I worldPos = voxelEntry.Key;
+			VoxelType voxelType = voxelEntry.Value;
+
+			// Convert world position to chunk-local position
+			int localX = worldPos.X - (chunkPos.X * ChunkSize);
+			int localY = worldPos.Y;
+			int localZ = worldPos.Z - (chunkPos.Y * ChunkSize);
+
+			// Make sure the position is valid
+			if (localX >= 0 && localX < ChunkSize && localZ >= 0 && localZ < ChunkSize && localY >= 0 && localY < ChunkHeight)
+			{
+				// Set the voxel in the chunk
+				// Only overwrite if the target is air or water (don't overwrite solid terrain)
+				VoxelType existingType = chunk.GetVoxel(localX, localY, localZ);
+				// if (existingType == VoxelType.Air || existingType == VoxelType.Water)
+				// {
+					chunk.SetVoxel(localX, localY, localZ, voxelType);
+					appliedCount++;
+
+					// Debug output for the first few voxels
+					if (appliedCount < 10)
+					{
+						GD.Print($"[WorldGenerator] Applied voxel at world {worldPos} (local {localX},{localY},{localZ}): {voxelType}");
+					}
+				// }
+				// else
+				// {
+				// 	skippedCount++;
+				// }
+			}
+			else
+			{
+				outOfBoundsCount++;
+				GD.Print($"[WorldGenerator] WARNING: Voxel at world {worldPos} is out of bounds for chunk {chunkPos}!");
+			}
+		}
+
+		GD.Print($"[WorldGenerator] Chunk {chunkPos} voxel application summary:");
+		GD.Print($"[WorldGenerator]   Total voxels: {chunkVoxels.Count}");
+		GD.Print($"[WorldGenerator]   Applied: {appliedCount}");
+		GD.Print($"[WorldGenerator]   Skipped (not air/water): {skippedCount}");
+		GD.Print($"[WorldGenerator]   Out of bounds: {outOfBoundsCount}");
+
+		// After applying all voxels, clean up the registry to save memory
+		// We don't need to keep track of voxels that have already been applied to chunks
+		int cleanedUp = BiomeObjectManager.Instance.CleanupVoxelsInChunk(chunkPos);
+		GD.Print($"[WorldGenerator] Cleaned up {cleanedUp} voxels from registry for chunk {chunkPos}");
+
+		// Note: We're no longer using the old AddBiomeObjects method
+		// All biome objects are now handled by the BiomeObjectManager
 
 		// Process the chunk for fauna spawning
 		CubeGen.World.Fauna.FaunaSpawner.Instance.ProcessChunkForFauna(chunk);
@@ -221,6 +338,114 @@ public partial class WorldGenerator : Node3D
 		// First, add the chunk data to the chunk manager
 		// This makes the data available for neighboring chunks' AO calculations
 		_chunkManager.AddChunk(chunk);
+	}
+
+	/// <summary>
+	/// Applies a biome object to a chunk
+	/// </summary>
+	/// <param name="biomeObject">Biome object to apply</param>
+	/// <param name="chunk">Chunk to apply the object to</param>
+	private void ApplyBiomeObjectToChunk(BiomeObject biomeObject, VoxelChunk chunk)
+	{
+		// Calculate chunk bounds
+		int chunkStartX = chunk.Position.X * ChunkSize;
+		int chunkStartZ = chunk.Position.Y * ChunkSize;
+		int chunkEndX = chunkStartX + ChunkSize;
+		int chunkEndZ = chunkStartZ + ChunkSize;
+
+		// Debug output for the first chunk
+		if (chunk.Position.X == 0 && chunk.Position.Y == 0)
+		{
+			GD.Print($"Applying biome object {biomeObject.Id} of type {biomeObject.Type} to chunk {chunk.Position}");
+			GD.Print($"Chunk bounds: ({chunkStartX}, {chunkStartZ}) to ({chunkEndX}, {chunkEndZ})");
+		}
+
+		// Get all voxels in the biome object
+		Dictionary<Vector3I, VoxelType> objectVoxels = biomeObject.GetAllVoxels();
+
+		// Apply each voxel that falls within this chunk
+		foreach (var voxelEntry in objectVoxels)
+		{
+			// Get world position of this voxel
+			Vector3I worldPos = biomeObject.RelativeToWorldPosition(voxelEntry.Key);
+
+			// Check if this voxel is within the chunk bounds
+			if (worldPos.X >= chunkStartX && worldPos.X < chunkEndX &&
+				worldPos.Z >= chunkStartZ && worldPos.Z < chunkEndZ &&
+				worldPos.Y >= 0 && worldPos.Y < ChunkHeight)
+			{
+				// Convert world position to chunk-local position
+				int localX = worldPos.X - chunkStartX;
+				int localY = worldPos.Y;
+				int localZ = worldPos.Z - chunkStartZ;
+
+				// Set the voxel in the chunk
+				// Only overwrite if the target is air or water (don't overwrite solid terrain)
+				VoxelType existingType = chunk.GetVoxel(localX, localY, localZ);
+				if (existingType == VoxelType.Air || existingType == VoxelType.Water)
+				{
+					chunk.SetVoxel(localX, localY, localZ, voxelEntry.Value);
+
+					// Debug output for the first few voxels in the first chunk
+					if (chunk.Position.X == 0 && chunk.Position.Y == 0 && objectVoxels.Count < 10)
+					{
+						GD.Print($"Set voxel at local ({localX}, {localY}, {localZ}) to {voxelEntry.Value}");
+					}
+				}
+			}
+		}
+	}
+
+	/// <summary>
+	/// Applies all biome object voxels that fall within a chunk
+	/// </summary>
+	/// <param name="chunk">Chunk to apply voxels to</param>
+	private void ApplyBiomeObjectVoxelsToChunk(VoxelChunk chunk)
+	{
+		// Calculate chunk bounds
+		int chunkStartX = chunk.Position.X * ChunkSize;
+		int chunkStartZ = chunk.Position.Y * ChunkSize;
+
+		// Get all biome object voxels that fall within this chunk
+		Dictionary<Vector3I, VoxelType> chunkVoxels = BiomeObjectManager.Instance.GetVoxelsInChunk(chunk.Position, ChunkSize);
+
+		// Debug output for the first chunk
+		if (chunk.Position.X == 0 && chunk.Position.Y == 0)
+		{
+			GD.Print($"Applying {chunkVoxels.Count} biome object voxels to chunk {chunk.Position}");
+		}
+
+		// Apply each voxel to the chunk
+		foreach (var voxelEntry in chunkVoxels)
+		{
+			Vector3I worldPos = voxelEntry.Key;
+			VoxelType voxelType = voxelEntry.Value;
+
+			// Convert world position to chunk-local position
+			int localX = worldPos.X - chunkStartX;
+			int localY = worldPos.Y;
+			int localZ = worldPos.Z - chunkStartZ;
+
+			// Set the voxel in the chunk
+			// Only overwrite if the target is air or water (don't overwrite solid terrain)
+			VoxelType existingType = chunk.GetVoxel(localX, localY, localZ);
+			if (existingType == VoxelType.Air || existingType == VoxelType.Water)
+			{
+				chunk.SetVoxel(localX, localY, localZ, voxelType);
+
+				// Debug output for the first few voxels in the first chunk
+				if (chunk.Position.X == 0 && chunk.Position.Y == 0 && chunkVoxels.Count < 10)
+				{
+					GD.Print($"Set voxel at local ({localX}, {localY}, {localZ}) to {voxelType}");
+				}
+			}
+		}
+
+		// Debug output for the first chunk
+		if (chunk.Position.X == 0 && chunk.Position.Y == 0)
+		{
+			GD.Print($"Finished applying biome object voxels to chunk {chunk.Position}");
+		}
 	}
 
 	// Static biome noise for use by other classes

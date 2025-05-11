@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using CubeGen.World.Common;
 using CubeGen.World.Generation;
 using CubeGen.World.Environment;
+using CubeGen.World.Fauna;
 
 public partial class World : Node3D
 {
@@ -24,8 +25,9 @@ public partial class World : Node3D
 	private ChunkManager _chunkManager;
 	private CloudGenerator _cloudGenerator;
 	private WindSystem _windSystem;
+	private BirdManager _birdManager;
 	private Player _player;
-	private Godot.Timer _chunkUpdateTimer;
+	private Timer _chunkUpdateTimer;
 	private Camera3D _mapCamera;
 	private Node3D _mapVisualizer;
 	private Control _mapUI;
@@ -72,6 +74,9 @@ public partial class World : Node3D
 		// Create and initialize the wind system
 		CreateWindSystem();
 
+		// Create and initialize the bird manager
+		CreateBirdManager();
+
 		// Connect chunk requested signal
 		_chunkManager.ChunkRequested += OnChunkRequested;
 
@@ -101,6 +106,27 @@ public partial class World : Node3D
 		AddChild(_windSystem);
 
 		GD.Print("Wind system created and initialized");
+	}
+
+	private void CreateBirdManager()
+	{
+		// Create a new BirdManager node
+		_birdManager = new BirdManager();
+		_birdManager.Name = "BirdManager";
+
+		// Set bird manager properties
+		_birdManager.MaxBirds = 15;
+		_birdManager.SpawnHeight = 40.0f;
+		_birdManager.SpawnRadius = 100.0f;
+
+		// Create bird scene reference
+		PackedScene birdScene = ResourceLoader.Load<PackedScene>("res://src/World/Fauna/Bird.tscn");
+		_birdManager.BirdScene = birdScene;
+
+		// Add to scene
+		AddChild(_birdManager);
+
+		GD.Print("Bird manager created and initialized");
 	}
 
 	public override void _Input(InputEvent @event)

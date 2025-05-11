@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3 uid="uid://c7yvxw0vf4yea"]
+[gd_scene load_steps=10 format=3 uid="uid://c7yvxw0vf4yea"]
 
 [ext_resource type="Script" uid="uid://bna5ynpu1elev" path="res://src/World/World.cs" id="1_yvnqm"]
 [ext_resource type="Script" uid="uid://cjlr7mfi4phey" path="res://src/World/Generation/WorldGenerator.cs" id="2_yvnqm"]
@@ -7,6 +7,8 @@
 [ext_resource type="PackedScene" uid="uid://bqnvlj8jx8g7y" path="res://src/Player/Player.tscn" id="5_yvnqm"]
 [ext_resource type="Environment" uid="uid://b4e3ckxsxo8gq" path="res://src/World/Environment/WorldEnvironment.tres" id="6_yvnqm"]
 [ext_resource type="PackedScene" uid="uid://b8jn5dpo0eyko" path="res://src/World/Environment/CloudGenerator.tscn" id="7_yvnqm"]
+[ext_resource type="Script" uid="uid://b3vtm7eno82k1" path="res://src/World/Fauna/BirdManager.cs" id="8_yvnqm"]
+[ext_resource type="PackedScene" uid="uid://birdscene" path="res://src/World/Fauna/Bird.tscn" id="9_yvnqm"]
 
 [node name="World" type="Node3D"]
 script = ExtResource("1_yvnqm")
@@ -39,3 +41,8 @@ environment = ExtResource("6_yvnqm")
 
 [node name="CloudGenerator" parent="." instance=ExtResource("7_yvnqm")]
 Seed = 12345
+
+[node name="BirdManager" type="Node3D" parent="."]
+script = ExtResource("8_yvnqm")
+MaxBirds = 15
+BirdScene = ExtResource("9_yvnqm")

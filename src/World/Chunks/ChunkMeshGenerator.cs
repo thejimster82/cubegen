@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Threading;
 using CubeGen.World.Common;
 using CubeGen.World.Generation;
+using CubeGen.World.Materials;
 
 public class ChunkMeshGenerator
 {
@@ -435,8 +436,23 @@ public class ChunkMeshGenerator
                     // Initialize BiomeMaterials if needed
                     BiomeMaterials.Initialize();
 
+                    // Initialize WindMaterials if needed
+                    WindMaterials.Initialize();
+
                     // Get material for this biome and voxel type
-                    Material material = BiomeMaterials.GetMaterial(biomeType, voxelType);
+                    Material material;
+
+                    // Check if this voxel type should use wind materials
+                    if (WindMaterials.ShouldUseWindMaterial(voxelType))
+                    {
+                        // Use wind-enabled material for grass and other suitable decorations
+                        material = WindMaterials.GetWindMaterial(biomeType, voxelType);
+                    }
+                    else
+                    {
+                        // Use standard material for other voxel types
+                        material = BiomeMaterials.GetMaterial(biomeType, voxelType);
+                    }
 
                     // Apply the material to the surface
                     if (material != null)

@@ -1,0 +1,20 @@
+[gd_scene load_steps=3 format=3 uid="uid://bqnxvxnwqvnxv"]
+
+[ext_resource type="Script" uid="uid://c4uaa6ubiqxqh" path="res://src/Tests/WindTest.cs" id="1_yvnqm"]
+[ext_resource type="Script" uid="uid://btxu3fdthb08w" path="res://src/World/Environment/WindSystem.cs" id="2_yvnqm"]
+
+[node name="WindTest" type="Node3D"]
+script = ExtResource("1_yvnqm")
+
+[node name="WindSystem" type="Node" parent="."]
+script = ExtResource("2_yvnqm")
+WindStrength = 0.7
+WindGustiness = 0.4
+WindSpeed = 1.2
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.866025, 0.5, 0, -0.5, 0.866025, 0, 5, 10)
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866025, -0.25, 0.433013, 0, 0.866025, 0.5, -0.5, -0.433013, 0.75, 0, 5, 0)
+shadow_enabled = true

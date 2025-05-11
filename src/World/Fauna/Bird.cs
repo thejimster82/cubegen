@@ -39,6 +39,9 @@ namespace CubeGen.World.Fauna
         private Vector3 _landingPosition;
         private bool _hasLandingTarget = false;
 
+        // Flag to track if flight pattern has been initialized
+        private bool _flightPatternInitialized = false;
+
         public override void _Ready()
         {
             base._Ready();
@@ -47,8 +50,23 @@ namespace CubeGen.World.Fauna
             FaunaName = "Bird";
             MovementSpeed = FlyingSpeed;
 
-            // Initialize flight pattern with a unique random seed
-            _random = new Random(GetInstanceId().GetHashCode() + (int)(GlobalPosition.X * 1000) + (int)(GlobalPosition.Z * 1000));
+            // Initialize random with a unique seed
+            _random = new Random(GetInstanceId().GetHashCode());
+
+            // Start in flying state
+            ChangeState(FaunaState.Moving);
+
+            // We'll initialize the flight pattern in the first _Process call
+            // This ensures the bird's position is properly set before initializing
+        }
+
+        // Initialize flight pattern based on current position
+        private void InitializeFlightPattern()
+        {
+            if (_flightPatternInitialized)
+                return;
+
+            // Initialize flight pattern with current position
             _circleCenter = GlobalPosition;
             _circleHeight = GlobalPosition.Y;
 
@@ -58,15 +76,20 @@ namespace CubeGen.World.Fauna
             // Initialize circle angle with some randomness to prevent birds from flying in sync
             _circleAngle = (float)_random.NextDouble() * Mathf.Pi * 2;
 
-            // Start in flying state
-            ChangeState(FaunaState.Moving);
+            _flightPatternInitialized = true;
 
             // Debug output
-            GD.Print($"Bird initialized at {GlobalPosition}, circle center: {_circleCenter}, height: {_circleHeight}");
+            GD.Print($"Bird flight pattern initialized at {GlobalPosition}, circle center: {_circleCenter}, height: {_circleHeight}");
         }
 
         public override void _PhysicsProcess(double delta)
         {
+            // Make sure flight pattern is initialized before processing movement
+            if (!_flightPatternInitialized)
+            {
+                InitializeFlightPattern();
+            }
+
             // This ensures the bird movement is processed every physics frame
             // This is crucial for consistent movement
             if (_currentState == FaunaState.Moving)
@@ -243,9 +266,12 @@ namespace CubeGen.World.Fauna
                 // Start flying
                 ChangeState(FaunaState.Moving);
 
-                // Set new circle center
+                // Set new circle center based on current position
                 _circleCenter = new Vector3(GlobalPosition.X, 0, GlobalPosition.Z);
                 _circleHeight = GlobalPosition.Y;
+
+                // Make sure the flight pattern is marked as initialized
+                _flightPatternInitialized = true;
             }
         }
 

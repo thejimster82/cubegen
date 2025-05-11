@@ -267,15 +267,15 @@ namespace CubeGen.World.Fauna
             // Set bird properties
             ConfigureBird(bird);
 
+            // Add the bird to the scene tree first
+            AddChild(bird);
+
             // Position the bird at a default position above the player
             if (_player != null)
             {
                 Vector3 playerPos = _player.GlobalPosition;
                 bird.GlobalPosition = new Vector3(playerPos.X, playerPos.Y + 50.0f, playerPos.Z);
             }
-
-            // Add the bird to the scene tree
-            AddChild(bird);
 
             // Ensure the bird is visible
             bird.Visible = true;
@@ -294,7 +294,6 @@ namespace CubeGen.World.Fauna
         /// </summary>
         public Bird SpawnBirdAtPosition(Vector3 position, BirdType birdType, BiomeType biomeType)
         {
-
             Bird bird;
 
             // Create a new bird
@@ -310,11 +309,11 @@ namespace CubeGen.World.Fauna
             // Configure the bird with the specified type
             ConfigureBirdWithType(bird, birdType);
 
-            // Set the bird's position
-            bird.GlobalPosition = position;
-
-            // Add the bird to the scene tree
+            // Add the bird to the scene tree first
             AddChild(bird);
+
+            // Set the bird's position after adding to the scene tree
+            bird.GlobalPosition = position;
 
             // Ensure the bird is visible
             bird.Visible = true;

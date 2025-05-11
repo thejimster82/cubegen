@@ -34,6 +34,10 @@ public partial class WorldGenerator : Node3D
 		BiomeRegionGenerator.Instance.Initialize(Seed);
 		GD.Print($"BiomeRegionGenerator initialized with seed: {Seed}");
 
+		// Initialize the POIManager with the same seed
+		POI.POIManager.Instance.Initialize(Seed);
+		GD.Print($"POIManager initialized with seed: {Seed}");
+
 		InitializeNoise();
 		_chunkManager = GetNode<ChunkManager>("ChunkManager");
 
@@ -103,6 +107,26 @@ public partial class WorldGenerator : Node3D
 	{
 		if (_chunkManager == null) return;
 
+		// Check if this chunk is affected by any POIs
+		// If so, make sure all POIs that affect this chunk are processed first
+		if (POI.POIVoxelModifier.IsChunkAffectedByPOI(chunkPos))
+		{
+			// Get all POIs that affect this chunk
+			List<Vector2I> affectingPOIs = POI.POIVoxelModifier.GetPOIsAffectingChunk(chunkPos);
+
+			// Process each POI to ensure its voxel modifications are generated
+			foreach (Vector2I poiPos in affectingPOIs)
+			{
+				// Find the POI at this position
+				POI.PointOfInterest poi = POI.POIManager.Instance.GetPOIAtPosition(poiPos);
+				if (poi != null)
+				{
+					// Generate voxel modifications for this POI
+					POI.POIVoxelModifier.GeneratePOIVoxels(poi, ChunkHeight, WaterLevel);
+				}
+			}
+		}
+
 		// Create chunk data
 		VoxelChunk chunk = new VoxelChunk(ChunkSize, ChunkHeight, chunkPos, VoxelScale);
 
@@ -139,6 +163,34 @@ public partial class WorldGenerator : Node3D
 				}
 			}
 		}
+
+		// Find POIs that might affect this chunk BEFORE generating terrain
+		// Get POIs directly from the POIManager using the new efficient method
+		int chunkWorldX = chunkPos.X * ChunkSize;
+		int chunkWorldZ = chunkPos.Y * ChunkSize;
+
+		// Use the improved POI detection to ensure we get all POIs that could affect this chunk
+		List<POI.PointOfInterest> chunkPOIs = POI.POIManager.Instance.GetPOIsAffectingChunk(chunkPos, ChunkSize);
+
+		// Debug output to help diagnose POI influence issues
+		if (chunkPOIs.Count > 0)
+		{
+			GD.Print($"Chunk at {chunkPos} is affected by {chunkPOIs.Count} POIs:");
+			foreach (var poi in chunkPOIs)
+			{
+				int dx = poi.Position.X - (chunkWorldX + ChunkSize/2);
+				int dz = poi.Position.Y - (chunkWorldZ + ChunkSize/2);
+				float distance = Mathf.Sqrt(dx * dx + dz * dz);
+				GD.Print($"  - {poi.Type} at {poi.Position}, distance: {distance:F1}, radius: {poi.InfluenceRadius}");
+
+				// Generate voxel modifications for this POI if it hasn't been processed yet
+				// This ensures all chunks see the same POI structure
+				POI.POIVoxelModifier.GeneratePOIVoxels(poi, ChunkHeight, WaterLevel);
+			}
+		}
+
+		// Store POIs in the chunk data for later use during biome object placement
+		chunk.SetMetadata("POIs", chunkPOIs);
 
 		// Generate terrain for the chunk
 		for (int x = 0; x < ChunkSize; x++)
@@ -179,6 +231,10 @@ public partial class WorldGenerator : Node3D
 				// Generate blended terrain height based on all contributing biomes
 				int terrainHeight = GenerateBlendedTerrainHeight(worldX, worldZ, biomeBlendWeights);
 
+				// Check if this position has a modified terrain height from a POI
+				// This uses our new direct voxel modification approach
+				terrainHeight = POI.POIVoxelModifier.GetModifiedTerrainHeight(worldX, worldZ, terrainHeight);
+
 				// Calculate water level height in voxels
 				int waterLevelHeight = Mathf.FloorToInt(WaterLevel * ChunkHeight);
 
@@ -188,6 +244,10 @@ public partial class WorldGenerator : Node3D
 					// Use the primary biome for voxel type determination
 					// This keeps the biome colors distinct while still blending heights
 					VoxelType voxelType = DetermineVoxelType(y, terrainHeight, primaryBiome);
+
+					// Apply POI voxel type modifications using our new direct approach
+					voxelType = POI.POIVoxelModifier.GetModifiedVoxelType(worldX, y, worldZ, voxelType);
+
 					chunk.SetVoxel(x, y, z, voxelType);
 				}
 
@@ -201,6 +261,7 @@ public partial class WorldGenerator : Node3D
 		}
 
 		// Add objects like trees based on biome
+		// The POIs are already stored in the chunk metadata and will be used to influence object placement
 		AddBiomeObjects(chunk, chunkPos, ChunkSize);
 
 		// First, add the chunk data to the chunk manager
@@ -903,6 +964,28 @@ public partial class WorldGenerator : Node3D
 		// true = feature exists at this position, false = no feature
 		bool[,] featureMap = new bool[chunkSize, chunkSize];
 
+		// Calculate world bounds for this chunk
+		int chunkWorldX = chunkPos.X * chunkSize;
+		int chunkWorldZ = chunkPos.Y * chunkSize;
+
+		// Get POIs directly from the POIManager using the new efficient method
+		List<POI.PointOfInterest> nearbyPOIs = POI.POIManager.Instance.GetPOIsAffectingChunk(chunkPos, chunkSize);
+
+		// First, add POI-specific structures
+		// This ensures POIs are placed before any biome objects
+		foreach (var poi in nearbyPOIs)
+		{
+			// Check if the POI is close enough to affect this chunk
+			int poiX = poi.Position.X - chunkWorldX;
+			int poiZ = poi.Position.Y - chunkWorldZ;
+
+			// If the POI is within or close to the chunk, add its structures
+			if (poiX >= -20 && poiX < chunkSize + 20 && poiZ >= -20 && poiZ < chunkSize + 20)
+			{
+				AddPOIStructures(chunk, poi, chunkPos, featureMap);
+			}
+		}
+
 		for (int x = 0; x < chunkSize; x++)
 		{
 			for (int z = 0; z < chunkSize; z++)
@@ -934,11 +1017,62 @@ public partial class WorldGenerator : Node3D
 					if (chunk.GetVoxel(x, surfaceHeight + 1, z) == VoxelType.Air)
 					{
 						// Use the already calculated world position
-						Vector2I worldPos = new Vector2I(worldX, worldZ);
+						Vector2I decorationWorldPos = new Vector2I(worldX, worldZ);
+
+						// Check if this position is influenced by any POIs
+						bool isNearPOI = false;
+						POI.PointOfInterest influencingPOI = null;
+
+						// Find the closest POI that influences this position
+						foreach (var poi in nearbyPOIs)
+						{
+							int dx = poi.Position.X - decorationWorldPos.X;
+							int dz = poi.Position.Y - decorationWorldPos.Y;
+							float distanceSquared = dx * dx + dz * dz;
+
+							// Check if within influence radius
+							if (distanceSquared <= poi.InfluenceRadius * poi.InfluenceRadius)
+							{
+								isNearPOI = true;
+								influencingPOI = poi;
+								break;
+							}
+						}
+
+						// Adjust decoration placement based on POI influence
+						float decorationProbabilityMultiplier = 1.0f;
+						if (isNearPOI && influencingPOI != null)
+						{
+							// Modify decoration probability based on POI type
+							switch (influencingPOI.Type)
+							{
+								case POI.POIType.Village:
+								case POI.POIType.Town:
+									// Reduce natural decorations near settlements
+									decorationProbabilityMultiplier = 0.3f;
+									break;
+
+								case POI.POIType.SpecialTree:
+									// Increase grass and flowers near special trees
+									if (biomeType == BiomeType.ForestLands)
+									{
+										decorationProbabilityMultiplier = 2.0f;
+									}
+									break;
+
+								case POI.POIType.Obelisk:
+								case POI.POIType.Ruin:
+									// Reduce decorations near mysterious structures
+									decorationProbabilityMultiplier = 0.5f;
+									break;
+							}
+						}
 
 						// Check if this position should have a decoration based on clusters
+						// Apply the POI-based probability multiplier
 						DecorationClusters.DecorationPlacement placement;
-						if (DecorationClusters.ShouldPlaceDecoration(worldPos, out placement, random))
+						if (random.NextDouble() < decorationProbabilityMultiplier &&
+							DecorationClusters.ShouldPlaceDecoration(decorationWorldPos, out placement, random))
 						{
 							// Check if the decoration is appropriate for the surface block
 							bool canPlace = false;
@@ -998,6 +1132,67 @@ public partial class WorldGenerator : Node3D
 				if (x >= safeDistance && x < (chunkSize - safeDistance) &&
 					z >= safeDistance && z < (chunkSize - safeDistance))
 				{
+					// Check if this position is influenced by any POIs
+					Vector2I featureWorldPos = new Vector2I(worldX, worldZ);
+					bool isNearPOI = false;
+					POI.PointOfInterest influencingPOI = null;
+
+					// Find the closest POI that influences this position
+					foreach (var poi in nearbyPOIs)
+					{
+						int dx = poi.Position.X - featureWorldPos.X;
+						int dz = poi.Position.Y - featureWorldPos.Y;
+						float distanceSquared = dx * dx + dz * dz;
+
+						// Check if within influence radius
+						if (distanceSquared <= poi.InfluenceRadius * poi.InfluenceRadius)
+						{
+							isNearPOI = true;
+							influencingPOI = poi;
+							break;
+						}
+					}
+
+					// If near a POI, adjust object placement based on POI type
+					if (isNearPOI && influencingPOI != null)
+					{
+						// Modify object placement based on POI type
+						// For example, reduce tree density near settlements, increase rocks near ruins, etc.
+						switch (influencingPOI.Type)
+						{
+							case POI.POIType.Village:
+							case POI.POIType.Town:
+								// Reduce natural features near settlements
+								// Only place objects with a lower probability
+								if (random.NextDouble() > 0.7f)
+								{
+									// Skip object placement 70% of the time near settlements
+									continue;
+								}
+								break;
+
+							case POI.POIType.RockFormation:
+								// Increase rock formations near rock POIs
+								if (random.NextDouble() < 0.1f && CanPlaceFeature(featureMap, x, z, 4, chunkSize))
+								{
+									GenerateRockFormation(chunk, x, z, surfaceHeight, random);
+									MarkFeaturePosition(featureMap, x, z, 4, chunkSize);
+									continue; // Skip regular biome object placement
+								}
+								break;
+
+							case POI.POIType.SpecialTree:
+								// Increase tree density near special tree POIs
+								if (random.NextDouble() < 0.15f && CanPlaceFeature(featureMap, x, z, 6, chunkSize))
+								{
+									GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
+									MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
+									continue; // Skip regular biome object placement
+								}
+								break;
+						}
+					}
+
 					switch (biomeType)
 					{
 						case BiomeType.Desert:
@@ -1116,7 +1311,7 @@ public partial class WorldGenerator : Node3D
 										if (chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Sand)
 										{
 											// Use the decoration system to place seashells
-											Vector2I worldPos = new Vector2I(worldX, worldZ);
+											Vector2I seashellWorldPos = new Vector2I(worldX, worldZ);
 											DecorationClusters.DecorationPlacement seashellPlacement = new DecorationClusters.DecorationPlacement(
 												VoxelType.Seashell,
 												new Vector2(random.Next(-20, 20) / 100.0f, random.Next(-20, 20) / 100.0f),
@@ -1867,6 +2062,113 @@ public partial class WorldGenerator : Node3D
 				// Use wood voxel type for coconuts
 				chunk.SetVoxel(coconutX, coconutY, coconutZ, VoxelType.Wood);
 			}
+		}
+	}
+
+	// Method to add POI-specific structures to a chunk
+	private void AddPOIStructures(VoxelChunk chunk, POI.PointOfInterest poi, Vector2I chunkPos, bool[,] featureMap)
+	{
+		// Calculate POI position relative to chunk
+		int chunkWorldX = chunkPos.X * ChunkSize;
+		int chunkWorldZ = chunkPos.Y * ChunkSize;
+		int poiX = poi.Position.X - chunkWorldX;
+		int poiZ = poi.Position.Y - chunkWorldZ;
+
+		// Find surface height at POI position or at the center of the chunk if POI is outside
+		int surfaceHeight = -1;
+		int sampleX = poiX;
+		int sampleZ = poiZ;
+
+		// If POI is outside this chunk, use the closest point on the chunk boundary
+		if (poiX < 0 || poiX >= chunk.Size || poiZ < 0 || poiZ >= chunk.Size)
+		{
+			// Find the closest point on the chunk boundary to sample height
+			sampleX = Mathf.Clamp(poiX, 0, chunk.Size - 1);
+			sampleZ = Mathf.Clamp(poiZ, 0, chunk.Size - 1);
+
+			// Debug output to help diagnose cross-chunk POI issues
+			GD.Print($"POI at ({poi.Position.X}, {poi.Position.Y}) affects chunk {chunkPos} but is outside it. " +
+				$"Using sample point ({sampleX}, {sampleZ}) for height reference.");
+		}
+
+		// Find the surface height at the sample point
+		for (int y = ChunkHeight - 1; y >= 0; y--)
+		{
+			if (chunk.GetVoxel(sampleX, y, sampleZ) != VoxelType.Air &&
+				chunk.GetVoxel(sampleX, y, sampleZ) != VoxelType.Water)
+			{
+				surfaceHeight = y;
+				break;
+			}
+		}
+
+		// If we still couldn't find a valid surface height, use an estimate
+		if (surfaceHeight < 0)
+		{
+			// Use an estimated surface height based on the water level
+			surfaceHeight = Mathf.FloorToInt(WaterLevel * ChunkHeight) + 2;
+			GD.Print($"Could not find surface height for POI at ({poi.Position.X}, {poi.Position.Y}) in chunk {chunkPos}. " +
+				$"Using estimated height: {surfaceHeight}");
+		}
+
+		// Generate the POI structure
+		GenerateCubePOI(chunk, poi, poiX, poiZ, surfaceHeight, featureMap);
+	}
+
+	// Generate a simple sphere POI
+	private void GenerateCubePOI(VoxelChunk chunk, POI.PointOfInterest poi, int x, int z, int surfaceHeight, bool[,] featureMap)
+	{
+		// Ensure radius fits within the POI's influence radius
+		int maxRadius = poi.InfluenceRadius; // Ensure structure fits well within influence radius
+		int radius = Math.Min(30, maxRadius);
+		VoxelType sphereType = VoxelType.Stone; // You can change this to any other voxel type
+
+		// Calculate chunk coordinates
+		int chunkWorldX = chunk.Position.X * ChunkSize;
+		int chunkWorldZ = chunk.Position.Y * ChunkSize;
+
+		// Calculate the AABB for this sphere
+		int worldCenterY = surfaceHeight + radius; // Center of the sphere
+
+		// Calculate AABB for the sphere
+		int aabbMinX = poi.Position.X - radius;
+		int aabbMaxX = poi.Position.X + radius;
+		int aabbMinY = worldCenterY - radius;
+		int aabbMaxY = worldCenterY + radius;
+		int aabbMinZ = poi.Position.Y - radius;
+		int aabbMaxZ = poi.Position.Y + radius;
+
+		// Store the AABB in the POI system
+		// Now that the method is public, we can call it directly
+		POI.POIVoxelModifier.CalculateAndStoreAABB(
+			poi, aabbMinX, aabbMaxX, aabbMinY, aabbMaxY, aabbMinZ, aabbMaxZ);
+
+		// Iterate through a cube that encompasses the sphere
+		for (int dx = -radius; dx <= radius; dx++)
+		{
+			for (int dy = -radius; dy <= radius; dy++)
+			{
+				for (int dz = -radius; dz <= radius; dz++)
+				{
+					// Calculate world coordinates
+					int worldX = poi.Position.X + dx;
+					int worldY = worldCenterY + dy; // Center the sphere above the surface
+					int worldZ = poi.Position.Y + dz;
+
+					// Convert to chunk-local coordinates
+					int localX = worldX - chunkWorldX;
+					int localZ = worldZ - chunkWorldZ;
+
+					chunk.SetVoxel(localX, worldY, localZ, sphereType);
+					
+				}
+			}
+		}
+
+		// Mark the area as occupied in the feature map
+		if (x >= 0 && x < chunk.Size && z >= 0 && z < chunk.Size)
+		{
+			MarkFeaturePosition(featureMap, x, z, Math.Min(radius, chunk.Size / 2), chunk.Size);
 		}
 	}
 }

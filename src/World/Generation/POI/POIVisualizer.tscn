@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://c8yvxqnvnqnqn"]
+
+[ext_resource type="Script" path="res://src/World/Generation/POI/POIVisualizer.cs" id="1_yjnqn"]
+
+[node name="POIVisualizer" type="Node3D"]
+script = ExtResource("1_yjnqn")

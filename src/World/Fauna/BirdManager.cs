@@ -11,7 +11,6 @@ namespace CubeGen.World.Fauna
     /// </summary>
     public partial class BirdManager : Node3D
     {
-        [Export] public float DespawnDistance { get; set; } = 200.0f;
         [Export] public float UpdateInterval { get; set; } = 5.0f;
         [Export] public PackedScene BirdScene { get; set; }
 
@@ -171,17 +170,35 @@ namespace CubeGen.World.Fauna
 
                 float distanceToPlayer = bird.GlobalPosition.DistanceTo(playerPosition);
 
+                // Calculate despawn distance based on view distance
+                float despawnDistance;
+
+                // Get the view distance from the WorldGenerator
+                if (_worldGenerator != null)
+                {
+                    // Convert view distance (in chunks) to world units
+                    despawnDistance = _worldGenerator.ViewDistance * _worldGenerator.ChunkSize * _worldGenerator.VoxelScale;
+
+                    // Add a small buffer to avoid birds popping in and out at the edge of view
+                    despawnDistance *= 1.1f;
+                }
+                else
+                {
+                    // Fallback if WorldGenerator is not available
+                    despawnDistance = 200.0f;
+                }
+
                 // Only despawn birds if they're either:
                 // 1. Extremely far away (regardless of state)
                 // 2. Perched and beyond the normal despawn distance
                 bool shouldDespawn = false;
 
-                if (distanceToPlayer > DespawnDistance * 1.5f)
+                if (distanceToPlayer > despawnDistance)
                 {
                     // Birds that are extremely far away should always despawn
                     shouldDespawn = true;
                 }
-                else if (distanceToPlayer > DespawnDistance && bird.GetCurrentState() == FaunaState.Perched)
+                else if (distanceToPlayer > despawnDistance && bird.GetCurrentState() == FaunaState.Perched)
                 {
                     // Perched birds can despawn at the normal distance
                     shouldDespawn = true;
@@ -193,7 +210,7 @@ namespace CubeGen.World.Fauna
                     birdsToRemove.Add(bird);
 
                     // Debug output
-                    GD.Print($"Marked bird for despawn at distance {distanceToPlayer:F1}, state: {bird.GetCurrentState()}");
+                    GD.Print($"Marked bird for despawn at distance {distanceToPlayer:F1} (despawn distance: {despawnDistance:F1}), state: {bird.GetCurrentState()}");
                 }
             }
 

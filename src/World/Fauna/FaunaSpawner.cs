@@ -43,8 +43,8 @@ namespace CubeGen.World.Fauna
         private BirdManager _birdManager;
 
         // Constants for fauna spawning
-        private const float BIRD_SPAWN_PROBABILITY = 0.3f; // Base probability for a chunk to have birds
-        private const int MAX_BIRDS_PER_CHUNK = 2; // Maximum number of birds that can spawn in a single chunk
+        private const float BIRD_SPAWN_PROBABILITY = 0.01f; // Base probability for a chunk to have birds
+        private const int MAX_BIRDS_PER_CHUNK = 1; // Maximum number of birds that can spawn in a single chunk
 
         /// <summary>
         /// Initialize the fauna spawner with the world seed

@@ -114,11 +114,6 @@ public partial class World : Node3D
 		_birdManager = new BirdManager();
 		_birdManager.Name = "BirdManager";
 
-		// Set bird manager properties
-		_birdManager.MaxBirds = 15;
-		_birdManager.SpawnHeight = 40.0f;
-		_birdManager.SpawnRadius = 100.0f;
-
 		// Create bird scene reference
 		PackedScene birdScene = ResourceLoader.Load<PackedScene>("res://src/World/Fauna/Bird.tscn");
 		_birdManager.BirdScene = birdScene;

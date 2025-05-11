@@ -17,7 +17,7 @@ namespace CubeGen.World.Fauna
         [Export] public float SpawnHeight { get; set; } = 70.0f; // Increased from 40.0f to 70.0f
         [Export] public float SpawnRadius { get; set; } = 150.0f;
         [Export] public float DespawnDistance { get; set; } = 200.0f;
-        [Export] public float UpdateInterval { get; set; } = 1.0f;
+        [Export] public float UpdateInterval { get; set; } = 5.0f;
         [Export] public PackedScene BirdScene { get; set; }
 
         // Bird collections
@@ -71,9 +71,6 @@ namespace CubeGen.World.Fauna
 
             // Initialize noise for bird distribution
             InitializeNoise();
-
-            // Initial bird spawning
-            SpawnInitialBirds();
         }
 
         public override void _Process(double delta)
@@ -174,88 +171,6 @@ namespace CubeGen.World.Fauna
                 new Color(0.9f, 0.9f, 0.9f), // White
                 new Color(1.0f, 1.0f, 0.8f)  // Off-white
             ));
-        }
-
-        /// <summary>
-        /// Spawn initial birds in the world distributed across different biomes
-        /// </summary>
-        private void SpawnInitialBirds()
-        {
-            // Only spawn initial birds if we have a player reference and world generator
-            if (_player != null && _worldGenerator != null)
-            {
-                // We'll spawn birds in different biomes across the map
-                // This ensures a good initial distribution
-                List<Vector3> birdPositions = new List<Vector3>();
-
-                // Get player position as reference
-                Vector3 playerPosition = _player.GlobalPosition;
-
-                // Define biome types to focus on
-                BiomeType[] preferredBiomes = new BiomeType[]
-                {
-                    BiomeType.ForestLands,   // Forest (highest priority)
-                    BiomeType.Islands,       // Islands
-                    BiomeType.Desert,        // Desert
-                    BiomeType.Tundra         // Tundra
-                };
-
-                // Try to find positions in each preferred biome
-                foreach (BiomeType biomeType in preferredBiomes)
-                {
-                    // Try to find a position in this biome
-                    Vector3 position = FindPositionInBiome(biomeType, playerPosition);
-
-                    // If we found a valid position, add it
-                    if (position != Vector3.Zero)
-                    {
-                        birdPositions.Add(position);
-                        GD.Print($"Found initial bird position in {biomeType} biome at {position}");
-                    }
-                }
-
-                // Also add some completely random positions
-                for (int i = 0; i < 3; i++)
-                {
-                    Vector3 randomPosition = FindPositionUsingNoise(playerPosition);
-                    if (randomPosition != Vector3.Zero)
-                    {
-                        birdPositions.Add(randomPosition);
-                        GD.Print($"Found random initial bird position at {randomPosition}");
-                    }
-                }
-
-                // Spawn birds at the found positions, but limit to MaxBirds
-                int initialBirdCount = Mathf.Min(MaxBirds, birdPositions.Count);
-
-                for (int i = 0; i < initialBirdCount; i++)
-                {
-                    // Create a new bird
-                    Bird bird = SpawnBird();
-
-                    // Position it at one of the found positions
-                    bird.GlobalPosition = birdPositions[i];
-
-                    // Get biome at this position
-                    BiomeType biome = WorldGenerator.GetBiomeType((int)birdPositions[i].X, (int)birdPositions[i].Z);
-
-                    GD.Print($"Spawned initial bird in {biome} biome at {birdPositions[i]}");
-                }
-
-                GD.Print($"Spawned {initialBirdCount} initial birds across different biomes");
-            }
-            else
-            {
-                GD.Print("No player reference or world generator, delaying initial bird spawning");
-            }
-
-            // We'll use a different approach to avoid Timer issues
-            // Instead of using a separate timer, we'll use the existing update timer
-            // and a flag to indicate gradual spawning is in progress
-            _gradualSpawningActive = true;
-            _gradualSpawnTimer = 0.0f;
-
-            GD.Print("Gradual bird spawning with biome-based distribution started");
         }
 
         /// <summary>

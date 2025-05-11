@@ -3,6 +3,8 @@ using System;
 using System.Reflection;
 using CubeGen.World.Common;
 using CubeGen.World.Generation;
+using CubeGen.Player;
+using CubeGen.Player.CharacterParts;
 
 public partial class Player : CharacterBody3D
 {
@@ -35,11 +37,17 @@ public partial class Player : CharacterBody3D
 	private ColorRect _underwaterOverlay; // Translucent overlay for underwater effect
 	private float _currentCameraDistance; // For smoothing camera movement
 
+	// Voxel character
+	private VoxelCharacter _voxelCharacter;
+
 	public override void _Ready()
 	{
 		_head = GetNode<Node3D>("Head");
 		_cameraMount = GetNode<Node3D>("CameraMount");
 		_camera = GetNode<Camera3D>("CameraMount/Camera3D");
+
+		// Create voxel character
+		CreateVoxelCharacter();
 
 		// Let's take a completely different approach - instead of reparenting,
 		// we'll create a SpringArm3D but keep the original camera setup
@@ -92,6 +100,37 @@ public partial class Player : CharacterBody3D
 
 		// Create water indicator UI
 		CreateWaterIndicator();
+	}
+
+	/// <summary>
+	/// Create the voxel character and replace the capsule mesh
+	/// </summary>
+	private void CreateVoxelCharacter()
+	{
+		// Remove the existing capsule mesh
+		var existingMesh = GetNodeOrNull<MeshInstance3D>("MeshInstance3D");
+		if (existingMesh != null)
+		{
+			existingMesh.QueueFree();
+		}
+
+		// Create the voxel character
+		_voxelCharacter = new VoxelCharacter();
+		_voxelCharacter.Name = "VoxelCharacter";
+
+		// Add the character to the player
+		AddChild(_voxelCharacter);
+
+		// Position the character to match the collision shape
+		var collisionShape = GetNode<CollisionShape3D>("CollisionShape3D");
+		if (collisionShape != null)
+		{
+			_voxelCharacter.Position = collisionShape.Position;
+		}
+		else
+		{
+			_voxelCharacter.Position = new Vector3(0, 0.75f, 0);
+		}
 	}
 
 	// Create a UI indicator for when the player is in water
@@ -912,5 +951,18 @@ public partial class Player : CharacterBody3D
 
 		Velocity = velocity;
 		MoveAndSlide();
+
+		// Animate the voxel character if it exists
+		if (_voxelCharacter != null)
+		{
+			// Determine if the player is walking based on horizontal velocity
+			bool isWalking = new Vector2(velocity.X, velocity.Z).Length() > 0.1f;
+
+			// Determine if the player is jumping based on vertical velocity and floor state
+			bool isJumping = !IsOnFloor() && velocity.Y > 0;
+
+			// Update character animation
+			_voxelCharacter.UpdateAnimation(delta, isWalking, isJumping, velocity);
+		}
 	}
 }

@@ -16,6 +16,10 @@ uniform float metallic : hint_range(0.0, 1.0) = 0.0;
 // Vertex color usage
 uniform bool use_vertex_color = true;
 
+// Root position - this is the base position of the entire decoration
+// We'll use this to calculate the distance from the center for each vertex
+uniform vec3 root_position = vec3(0.0, 0.0, 0.0);
+
 // Wind noise function
 float noise(vec2 p) {
     return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
@@ -39,49 +43,76 @@ float smoothNoise(vec2 p) {
 }
 
 // Wind displacement function
-vec3 applyWind(vec3 vertex, vec3 normal, float height_factor) {
+vec3 applyWind(vec3 vertex, vec3 normal, float height_factor, float blade_id) {
     // Only apply wind to vertices above a certain height
     // This keeps the base of grass/flowers stable while the tops sway
     if (height_factor <= 0.1) {
         return vertex;
     }
 
+    // Gradually increase effect from bottom to top
+    // Use a strong power curve to concentrate effect at the very top
+    float adjusted_factor = pow(height_factor, 2.0);
+
     // Calculate wind direction vector
     vec2 wind_vec = vec2(cos(wind_direction), sin(wind_direction));
 
-    // Create wind variation based on position and time
-    float wind_variation = smoothNoise(vertex.xz * 0.1 + wind_time * 0.2);
+    // Create a unique phase offset for each blade based on its ID
+    // This ensures different blades move with different timing
+    float phase_offset = blade_id * 1.5;
 
-    // Add gustiness
-    float gust = mix(1.0, smoothNoise(vertex.xz * 0.05 + wind_time * 0.1), wind_gustiness);
+    // Create a time-based oscillation with phase offset
+    // This creates a simple back-and-forth swaying motion that varies per blade
+    float wind_time_factor = sin(wind_time * 1.5 + phase_offset);
 
-    // Calculate displacement amount based on height
-    float displacement_amount = wind_strength * height_factor * height_factor * gust;
+    // Add gustiness that varies per blade
+    float gust = mix(1.0, smoothNoise(vec2(wind_time * 0.1, blade_id * 10.0)), wind_gustiness);
 
-    // Apply wind displacement - increased amplitude for more visible effect
+    // Calculate displacement amount
+    float displacement_amount = wind_strength * adjusted_factor * gust;
+
+    // Create a simple directional displacement
+    // This will make each grass blade sway back and forth independently
     vec3 displacement = vec3(
-        wind_vec.x * displacement_amount * 1.5 * (0.8 + 0.6 * sin(wind_time * 2.0 + vertex.x * 0.5)),
-        0.0, // No vertical displacement
-        wind_vec.y * displacement_amount * 1.5 * (0.8 + 0.6 * sin(wind_time * 2.0 + vertex.z * 0.5))
+        wind_vec.x * displacement_amount * wind_time_factor,
+        0.0, // No vertical displacement initially
+        wind_vec.y * displacement_amount * wind_time_factor
     );
 
-    // Add more pronounced vertical bobbing
-    displacement.y = sin(wind_time * 3.0 + vertex.x * 0.2 + vertex.z * 0.2) * 0.05 * displacement_amount;
+    // Add a small amount of vertical movement
+    // This creates a slight bobbing effect as the grass sways
+    displacement.y = cos(wind_time * 2.0 + phase_offset) * 0.02 * displacement_amount;
 
     return vertex + displacement;
 }
 
 void vertex() {
-    // Calculate height factor (0 at bottom, 1 at top)
-    // For our test objects, we know they're simple boxes with Y-up orientation
-    // The height factor is simply the normalized Y position within the box
-    // For more complex models, we might need to adjust these bounds
-    float min_y = VERTEX.y - 1.0; // Assume bottom is at -1.0 relative to center
-    float max_y = VERTEX.y + 1.0; // Assume top is at +1.0 relative to center
-    float height_factor = clamp((VERTEX.y - min_y) / (max_y - min_y), 0.0, 1.0);
+    // For grass decorations, we need to identify individual blades
+    // and apply wind to each blade independently
 
-    // Apply wind effect
-    VERTEX = applyWind(VERTEX, NORMAL, height_factor);
+    // Get the vertex position
+    vec3 pos = VERTEX;
+
+    // Calculate height factor based on absolute Y position
+    float y_pos = pos.y;
+    float max_height = 3.0; // Covers most decoration heights
+    float height_factor = clamp(y_pos / max_height, 0.0, 1.0);
+
+    // Identify which blade this vertex belongs to based on its XZ position
+    // We'll use a grid-based approach to group vertices into blades
+    // Looking at the grass model, we can see distinct blades at different XZ positions
+
+    // Round XZ position to the nearest 0.1 to group vertices into blades
+    // This creates a unique ID for each blade based on its position
+    vec2 blade_pos = floor(pos.xz * 10.0) / 10.0;
+
+    // Create a unique ID for each blade
+    // We'll use a simple hash of the XZ position
+    float blade_id = fract(sin(dot(blade_pos, vec2(12.9898, 78.233))) * 43758.5453);
+
+    // Apply wind effect with height factor and blade ID
+    // This ensures each blade moves independently
+    VERTEX = applyWind(VERTEX, NORMAL, height_factor, blade_id);
 
     // Pass vertex color to fragment shader
     if (use_vertex_color) {

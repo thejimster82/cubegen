@@ -27,12 +27,12 @@ namespace CubeGen.Player.CharacterParts
             if (Type == LimbType.Arm)
             {
                 PartName = IsLeft ? "LeftArm" : "RightArm";
-                Size = new Vector3(0.2f, 0.5f, 0.2f); // Thinner arms for stylized look
+                Size = new Vector3(0.2f, 0.5f, 0.2f); // Keep the same overall size
             }
             else
             {
                 PartName = IsLeft ? "LeftLeg" : "RightLeg";
-                Size = new Vector3(0.2f, 0.5f, 0.2f); // Thinner legs for stylized look
+                Size = new Vector3(0.2f, 0.5f, 0.2f); // Keep the same overall size
             }
 
             // Set base color to skin color

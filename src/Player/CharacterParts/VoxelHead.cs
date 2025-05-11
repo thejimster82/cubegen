@@ -18,7 +18,7 @@ namespace CubeGen.Player.CharacterParts
         {
             // Set default properties for head
             PartName = "Head";
-            Size = new Vector3(0.6f, 0.6f, 0.6f); // Slightly larger head for stylized look
+            Size = new Vector3(0.6f, 0.6f, 0.6f); // Keep the same overall size
             BaseColor = new Color(0.9f, 0.75f, 0.65f); // Skin tone
 
             // Call base ready method

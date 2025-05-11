@@ -144,6 +144,22 @@ public partial class Player : CharacterBody3D
 		}
 	}
 
+	/// <summary>
+	/// Recreate the character with the updated voxel size
+	/// </summary>
+	public void RecreateCharacterWithNewVoxelSize()
+	{
+		// Remove the existing voxel character
+		if (_voxelCharacter != null)
+		{
+			_voxelCharacter.QueueFree();
+			_voxelCharacter = null;
+		}
+
+		// Create a new voxel character with the updated voxel size
+		CreateVoxelCharacter();
+	}
+
 	// Create a UI indicator for when the player is in water
 	private void CreateWaterIndicator()
 	{

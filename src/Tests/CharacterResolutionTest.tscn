@@ -1,0 +1,63 @@
+[gd_scene load_steps=4 format=3 uid="uid://c8yvnxvxqnvxv"]
+
+[ext_resource type="Script" path="res://src/Tests/CharacterResolutionTest.cs" id="1_ixnvs"]
+[ext_resource type="PackedScene" uid="uid://bqnvl3xwvkrpx" path="res://src/Player/Player.tscn" id="2_ixnvs"]
+
+[sub_resource type="Environment" id="Environment_ixnvs"]
+background_mode = 1
+background_color = Color(0.529412, 0.807843, 0.921569, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.8, 0.8, 0.8, 1)
+ambient_light_energy = 0.5
+ssao_enabled = true
+fog_enabled = true
+fog_light_color = Color(0.517647, 0.752941, 0.85098, 1)
+fog_density = 0.001
+fog_sky_affect = 0.5
+volumetric_fog_enabled = true
+volumetric_fog_density = 0.01
+
+[node name="CharacterResolutionTest" type="Node3D"]
+script = ExtResource("1_ixnvs")
+
+[node name="Player" parent="." instance=ExtResource("2_ixnvs")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.866025, 0.5, 0, -0.5, 0.866025, 0, 3, 5)
+current = true
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, -0.75, 0.433013, 0, 10, 0)
+light_energy = 1.5
+shadow_enabled = true
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_ixnvs")
+
+[node name="Ground" type="CSGBox3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+size = Vector3(20, 1, 20)
+
+[node name="DoubleResolutionButton" type="Button" parent="."]
+offset_left = 20.0
+offset_top = 20.0
+offset_right = 220.0
+offset_bottom = 70.0
+text = "Double Resolution"
+
+[node name="RegenerateButton" type="Button" parent="."]
+offset_left = 20.0
+offset_top = 80.0
+offset_right = 220.0
+offset_bottom = 130.0
+text = "Regenerate Meshes"
+
+[node name="Instructions" type="Label" parent="."]
+offset_left = 20.0
+offset_top = 140.0
+offset_right = 420.0
+offset_bottom = 240.0
+text = "This scene tests the character resolution.
+Click \"Double Resolution\" to recreate the character with 1/16 voxel size.
+Click \"Regenerate Meshes\" to regenerate the character with current settings."

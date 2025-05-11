@@ -19,7 +19,7 @@ namespace CubeGen.Player.CharacterParts
         {
             // Set default properties for body
             PartName = "Body";
-            Size = new Vector3(0.5f, 0.6f, 0.3f); // Slightly smaller for better proportions
+            Size = new Vector3(0.5f, 0.6f, 0.3f); // Keep the same overall size
             BaseColor = ShirtColor; // Default to shirt color
 
             // Call base ready method

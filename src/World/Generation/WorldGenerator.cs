@@ -34,6 +34,10 @@ public partial class WorldGenerator : Node3D
 		BiomeRegionGenerator.Instance.Initialize(Seed);
 		GD.Print($"BiomeRegionGenerator initialized with seed: {Seed}");
 
+		// Initialize the WorldDataProvider
+		WorldDataProvider.Instance.Initialize(Seed, ChunkSize, ChunkHeight, VoxelScale);
+		GD.Print($"WorldDataProvider initialized with seed: {Seed}");
+
 		// Initialize the FaunaSpawner
 		var birdManager = GetNode<CubeGen.World.Fauna.BirdManager>("/root/World/BirdManager");
 		if (birdManager != null)
@@ -118,116 +122,22 @@ public partial class WorldGenerator : Node3D
 		// Create chunk data
 		VoxelChunk chunk = new VoxelChunk(ChunkSize, ChunkHeight, chunkPos, VoxelScale);
 
-		// Check if this chunk is near any biome boundary
-		// Only calculate and store blend weights if it is
-		float blendDistance = 10f;
-		bool isNearBiomeBoundary = BiomeRegionGenerator.Instance.IsChunkNearBiomeBoundary(
-			chunkPos.X, chunkPos.Y, ChunkSize, blendDistance);
-
-		// OPTIMIZATION: Pre-calculate blend weights on a coarser grid if near boundary
-		// Use a 4x4 grid instead of calculating for every voxel
-		Dictionary<BiomeType, float>[,] blendWeightsGrid = null;
-		int gridSize = 2; // 4x4 grid for the chunk
-
-		if (isNearBiomeBoundary)
-		{
-			blendWeightsGrid = new Dictionary<BiomeType, float>[gridSize, gridSize];
-
-			// Calculate blend weights only at grid points
-			for (int gx = 0; gx < gridSize; gx++)
-			{
-				for (int gz = 0; gz < gridSize; gz++)
-				{
-					// Calculate world coordinates for this grid point
-					int worldX = chunkPos.X * ChunkSize + (gx * ChunkSize / (gridSize - 1));
-					int worldZ = chunkPos.Y * ChunkSize + (gz * ChunkSize / (gridSize - 1));
-
-					// Handle edge case for last grid point
-					if (gx == gridSize - 1) worldX = chunkPos.X * ChunkSize + ChunkSize - 1;
-					if (gz == gridSize - 1) worldZ = chunkPos.Y * ChunkSize + ChunkSize - 1;
-
-					// Calculate blend weights at this grid point
-					blendWeightsGrid[gx, gz] = BiomeRegionGenerator.Instance.CalculateBiomeBlendWeights(worldX, worldZ, blendDistance);
-				}
-			}
-		}
-
-		// Generate terrain for the chunk
-		for (int x = 0; x < ChunkSize; x++)
-		{
-			for (int z = 0; z < ChunkSize; z++)
-			{
-				// Get world coordinates
-				int worldX = chunkPos.X * ChunkSize + x;
-				int worldZ = chunkPos.Y * ChunkSize + z;
-
-				// Get biome type based on noise
-				BiomeType primaryBiome = GetBiomeTypeForChunk(worldX, worldZ);
-
-				// Dictionary to hold biome blend weights
-				Dictionary<BiomeType, float> biomeBlendWeights;
-
-				// Only use interpolated blend weights if the chunk is near a biome boundary
-				if (isNearBiomeBoundary)
-				{
-					// OPTIMIZATION: Interpolate blend weights from the pre-calculated grid
-					biomeBlendWeights = InterpolateBlendWeights(x, z, blendWeightsGrid, gridSize, ChunkSize);
-
-					// Store blend weights in the chunk for later use
-					foreach (var biomeEntry in biomeBlendWeights)
-					{
-						chunk.SetBiomeBlendWeight(x, z, biomeEntry.Key, biomeEntry.Value);
-					}
-				}
-				else
-				{
-					// If not near a boundary, just use the primary biome with weight 1.0
-					biomeBlendWeights = new Dictionary<BiomeType, float> { { primaryBiome, 1.0f } };
-
-					// Store only the primary biome weight
-					chunk.SetBiomeBlendWeight(x, z, primaryBiome, 1.0f);
-				}
-
-				// Generate blended terrain height based on all contributing biomes
-				int terrainHeight = GenerateBlendedTerrainHeight(worldX, worldZ, biomeBlendWeights);
-
-				// Calculate water level height in voxels
-				int waterLevelHeight = Mathf.FloorToInt(WaterLevel * ChunkHeight);
-
-				// Fill voxels from bottom to terrain height
-				for (int y = 0; y < terrainHeight && y < ChunkHeight; y++)
-				{
-					// Use the primary biome for voxel type determination
-					// This keeps the biome colors distinct while still blending heights
-					VoxelType voxelType = DetermineVoxelType(y, terrainHeight, primaryBiome);
-					chunk.SetVoxel(x, y, z, voxelType);
-				}
-
-				// For all biomes, fill water above terrain up to water level
-				// This ensures water is placed correctly regardless of terrain height
-				for (int y = terrainHeight; y <= waterLevelHeight && y < ChunkHeight; y++)
-				{
-					chunk.SetVoxel(x, y, z, VoxelType.Water);
-				}
-			}
-		}
-
-		// Add objects like trees based on biome
-		AddBiomeObjects(chunk, chunkPos, ChunkSize);
+		// Populate the chunk from the world data provider
+		// This is the key change - the chunk now gets all its data from the provider
+		// instead of generating it internally
+		chunk.PopulateFromWorldProvider();
 
 		// Process the chunk for fauna spawning
+		// Note: In a full implementation, fauna would also be handled by the WorldDataProvider
 		CubeGen.World.Fauna.FaunaSpawner.Instance.ProcessChunkForFauna(chunk);
 
-		// First, add the chunk data to the chunk manager
+		// Add the chunk data to the chunk manager
 		// This makes the data available for neighboring chunks' AO calculations
 		_chunkManager.AddChunk(chunk);
 	}
 
 	// Static biome noise for use by other classes
 	private static FastNoiseLite _staticBiomeNoise;
-
-	// Static reference to ChunkManager for use by other classes
-	private static ChunkManager _staticChunkManager;
 
 	// Initialize static noise
 	private static void InitializeStaticNoise(int seed)
@@ -249,31 +159,8 @@ public partial class WorldGenerator : Node3D
 	/// </summary>
 	public static VoxelType GetVoxelTypeAtPosition(int worldX, int worldY, int worldZ)
 	{
-		// If we have a static reference to the ChunkManager, use it
-		if (_staticChunkManager != null)
-		{
-			return _staticChunkManager.GetVoxelType(worldX, worldY, worldZ);
-		}
-
-		// Otherwise, try to find the ChunkManager in the scene
-		SceneTree tree = (SceneTree)Engine.GetMainLoop();
-		Node worldNode = tree.Root.GetNodeOrNull("World");
-		if (worldNode != null)
-		{
-			WorldGenerator worldGen = worldNode.GetNodeOrNull<WorldGenerator>("WorldGenerator");
-			if (worldGen != null)
-			{
-				ChunkManager chunkManager = worldGen.GetNodeOrNull<ChunkManager>("ChunkManager");
-				if (chunkManager != null)
-				{
-					_staticChunkManager = chunkManager;
-					return chunkManager.GetVoxelType(worldX, worldY, worldZ);
-				}
-			}
-		}
-
-		// If we couldn't find the ChunkManager, return Air
-		return VoxelType.Air;
+		// Use the WorldDataProvider as the source of truth
+		return WorldDataProvider.Instance.GetVoxelTypeAt(worldX, worldY, worldZ);
 	}
 
 	// Get biome type for a world position - instance method

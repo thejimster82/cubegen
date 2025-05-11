@@ -24,6 +24,9 @@ public class VoxelChunk
     // Key is a string in the format "x,z", value is a dictionary mapping BiomeType to blend weight (0.0-1.0)
     private Dictionary<string, Dictionary<BiomeType, float>> _biomeBlendWeights = new Dictionary<string, Dictionary<BiomeType, float>>();
 
+    // Flag to track if this chunk has been populated from the world provider
+    private bool _isPopulated = false;
+
     public VoxelChunk(int size, int height, Vector2I position, float scale = 1.0f)
     {
         Size = size;
@@ -45,6 +48,37 @@ public class VoxelChunk
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Populate this chunk with data from the world provider
+    /// </summary>
+    public void PopulateFromWorldProvider()
+    {
+        if (_isPopulated) return; // Don't populate twice
+
+        // Get the world data provider
+        WorldDataProvider provider = WorldDataProvider.Instance;
+
+        // For each voxel in the chunk, query the world provider
+        for (int x = 0; x < Size; x++)
+        {
+            for (int y = 0; y < Height; y++)
+            {
+                for (int z = 0; z < Size; z++)
+                {
+                    // Convert local coordinates to world coordinates
+                    int worldX = Position.X * Size + x;
+                    int worldY = y;
+                    int worldZ = Position.Y * Size + z;
+
+                    // Get the voxel type from the world provider
+                    _voxels[x][y][z] = provider.GetVoxelTypeAt(worldX, worldY, worldZ);
+                }
+            }
+        }
+
+        _isPopulated = true;
     }
 
     public VoxelType GetVoxel(int x, int y, int z)

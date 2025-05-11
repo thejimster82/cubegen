@@ -129,8 +129,8 @@ namespace CubeGen.World.Fauna
             _model.AddChild(leftEye);
             _model.AddChild(rightEye);
 
-            // Rotate the entire model to face the correct direction
-            _model.RotationDegrees = new Vector3(0, 180, 0);
+            // Do NOT rotate the model - this was causing the birds to fly backwards
+            // The model is already oriented correctly with the head at -Z (forward)
         }
 
         private Node3D CreateVoxelCube(Vector3 position, Vector3 size, Color color)
@@ -276,6 +276,9 @@ namespace CubeGen.World.Fauna
                 // Look in the direction of movement
                 // We need to look in the direction we're moving, not at the position itself
                 Vector3 lookTarget = GlobalPosition + direction;
+
+                // Use LookAt with a negative forward direction to match our model orientation
+                // In Godot, -Z is forward by default, which matches our model's orientation
                 LookAt(lookTarget, Vector3.Up);
 
                 // Add a slight bank angle when turning (tilt towards the center of the circle)
@@ -325,6 +328,9 @@ namespace CubeGen.World.Fauna
             {
                 // Look in the direction of movement
                 Vector3 lookTarget = GlobalPosition + actualDirection;
+
+                // Use LookAt with a negative forward direction to match our model orientation
+                // In Godot, -Z is forward by default, which matches our model's orientation
                 LookAt(lookTarget, Vector3.Up);
             }
 

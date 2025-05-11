@@ -1061,25 +1061,17 @@ public partial class Player : CharacterBody3D
 				velocity.Z *= 0.9f;
 			}
 
-			// Allow jumping off the wall
-			if (Input.IsActionJustPressed("ui_accept"))
+			// Stop climbing if the jump key (space) is released
+			if (!Input.IsActionPressed("ui_accept"))
 			{
-				// Jump away from the wall
-				velocity.Y = JumpVelocity;
-				velocity += _climbNormal * JumpVelocity * 0.8f; // Stronger push away from wall
+				// Stop climbing and push slightly away from the wall
+				velocity += _climbNormal * 1.0f; // Small push away from wall
 
 				// Stop climbing
 				_isClimbing = false;
 
 				// Debug output
-				GD.Print("Jumped off wall");
-			}
-
-			// Stop climbing if the climb key is released and the key is required
-			if (!Input.IsActionPressed("climb") && IsOnFloor())
-			{
-				_isClimbing = false;
-				GD.Print("Stopped climbing - key released");
+				GD.Print("Stopped climbing - space released");
 			}
 		}
 		else
@@ -1103,6 +1095,19 @@ public partial class Player : CharacterBody3D
 					// Don't start climbing immediately, but set a flag to check on the next frame
 					// This allows the jump to start before attaching to the wall
 					GD.Print("Jump detected near wall - preparing for climb");
+				}
+			}
+
+			// Check for wall climbing when holding space in mid-air
+			if (Input.IsActionPressed("ui_accept") && !IsOnFloor())
+			{
+				Vector3 wallNormal;
+				if (CheckForClimbableWall(out wallNormal))
+				{
+					// We're holding space near a wall, start climbing
+					_climbNormal = wallNormal;
+					_isClimbing = true;
+					GD.Print("Started climbing in mid-air");
 				}
 			}
 		}
@@ -1284,9 +1289,9 @@ public partial class Player : CharacterBody3D
 		if (foundWall)
 		{
 			// Start climbing if:
-			// 1. The climb key is pressed, OR
+			// 1. The jump key (space) is pressed, OR
 			// 2. We're in the air (jumping or falling) and not on the floor
-			bool shouldClimb = Input.IsActionPressed("climb") ||
+			bool shouldClimb = Input.IsActionPressed("ui_accept") ||
 							   (!IsOnFloor() && Velocity.Y != 0);
 
 			return shouldClimb;

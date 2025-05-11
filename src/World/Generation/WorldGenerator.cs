@@ -324,7 +324,7 @@ public partial class WorldGenerator : Node3D
 
 		// Apply a consistent base height for all biomes
 		float baseHeight = 0.2f;
-		float noiseContribution = 0.25f; // How much the noise affects the final height
+		float noiseContribution = 0.4f; // Increased from 0.25f for greater height variation
 
 		// Define water level height in voxels (used consistently throughout the code)
 		int waterLevelHeight = Mathf.FloorToInt(WaterLevel * ChunkHeight);
@@ -380,14 +380,14 @@ public partial class WorldGenerator : Node3D
 
 				// Gain
 				float gain =
-					(0.5f * dunesBlend) +    // Dunes
-					(0.6f * rockyBlend) +    // Rocky
-					(0.4f * oasisBlend);     // Oasis
+					(0.6f * dunesBlend) +    // Dunes: Increased from 0.5f
+					(0.8f * rockyBlend) +    // Rocky: Increased from 0.6f
+					(0.5f * oasisBlend);     // Oasis: Increased from 0.4f
 				biomeNoise.FractalGain = gain;
 
 				// Blend height adjustments
 				// Rocky areas are higher, oasis areas are lower
-				baseHeight += (0.05f * rockyBlend) - (0.05f * oasisBlend);
+				baseHeight += (0.08f * rockyBlend) - (0.06f * oasisBlend); // Increased difference
 
 				break;
 
@@ -434,14 +434,14 @@ public partial class WorldGenerator : Node3D
 
 				// Gain
 				float tundraGain =
-					(0.3f * snowyBlend) +    // Snowy: Low gain for flatter terrain
-					(0.2f * frozenBlend) +   // Frozen: Lower gain for very flat frozen lakes
-					(0.5f * alpineBlend);    // Alpine: Higher gain for mountainous terrain
+					(0.4f * snowyBlend) +    // Snowy: Increased from 0.3f
+					(0.25f * frozenBlend) +  // Frozen: Increased from 0.2f
+					(0.7f * alpineBlend);    // Alpine: Increased from 0.5f for more dramatic mountains
 				biomeNoise.FractalGain = tundraGain;
 
 				// Blend height adjustments
 				// Frozen areas are lower, alpine areas are higher
-				baseHeight += (0.08f * alpineBlend) - (0.03f * frozenBlend);
+				baseHeight += (0.12f * alpineBlend) - (0.05f * frozenBlend); // Increased difference
 
 				break;
 
@@ -488,14 +488,14 @@ public partial class WorldGenerator : Node3D
 
 				// Gain
 				float islandsGain =
-					(0.4f * beachBlend) +    // Beach: Medium gain
-					(0.55f * jungleBlend) +  // Jungle: Higher gain for varied terrain
-					(0.3f * lagoonBlend);    // Lagoon: Lower gain for smoother terrain
+					(0.5f * beachBlend) +    // Beach: Increased from 0.4f
+					(0.7f * jungleBlend) +   // Jungle: Increased from 0.55f for more varied terrain
+					(0.35f * lagoonBlend);   // Lagoon: Increased from 0.3f
 				biomeNoise.FractalGain = islandsGain;
 
 				// Blend height adjustments
 				// Beaches are slightly lower, jungle is higher, lagoons are much lower
-				baseHeight += (0.04f * jungleBlend) - (0.02f * beachBlend) - (0.06f * lagoonBlend);
+				baseHeight += (0.07f * jungleBlend) - (0.03f * beachBlend) - (0.08f * lagoonBlend); // Increased differences
 
 				break;
 
@@ -548,14 +548,14 @@ public partial class WorldGenerator : Node3D
 
 				// Gain
 				float forestGain =
-					(0.4f * plainsBlend) +    // Plains: Lower gain
-					(0.5f * forestBlend) +    // Forest: Medium gain
-					(0.6f * mountainsBlend);  // Mountains: Higher gain
+					(0.45f * plainsBlend) +   // Plains: Increased from 0.4f
+					(0.6f * forestBlend) +    // Forest: Increased from 0.5f
+					(0.8f * mountainsBlend);  // Mountains: Increased from 0.6f for more dramatic peaks
 				biomeNoise.FractalGain = forestGain;
 
 				// Blend height adjustments
-				// Mountains are higher
-				baseHeight += 0.1f * mountainsBlend;
+				// Mountains are higher, plains slightly lower
+				baseHeight += (0.15f * mountainsBlend) - (0.02f * plainsBlend); // Increased mountain height
 
 				break;
 		}
@@ -579,11 +579,11 @@ public partial class WorldGenerator : Node3D
 				// Scale the noise to create more pronounced islands
 				float scaledNoise = ((heightNoise - islandThreshold) / (1.0f - islandThreshold));
 
-				// Apply a curve to make islands more pronounced
-				scaledNoise = scaledNoise * scaledNoise * 1.5f;
+				// Apply a stronger curve to make islands more pronounced
+				scaledNoise = scaledNoise * scaledNoise * 2.0f; // Increased from 1.5f
 
-				// Limit the maximum height to avoid extremely tall islands
-				scaledNoise = Mathf.Min(scaledNoise, 0.8f);
+				// Increased maximum height for taller island peaks
+				scaledNoise = Mathf.Min(scaledNoise, 1.0f); // Increased from 0.8f
 
 				// Calculate final height
 				heightNoise = baseHeight + scaledNoise * noiseContribution;

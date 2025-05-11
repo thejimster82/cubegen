@@ -18,6 +18,11 @@ public partial class Player : CharacterBody3D
 	[Export] public float Acceleration { get; set; } = 0.25f; // Movement acceleration
 	[Export] public float MaxStepHeight { get; set; } = 1.2f; // Set higher than voxel height to allow climbing walls
 
+	// Climbing properties
+	[Export] public float ClimbingSpeed { get; set; } = 2.1f; // Speed when climbing walls (reduced by 30% from 3.0f)
+	[Export] public float ClimbingAcceleration { get; set; } = 0.2f; // Acceleration when climbing
+	[Export] public float WallDetectionDistance { get; set; } = 1.0f; // Distance to detect walls for climbing
+
 	// Water physics properties
 	[Export] public float WaterDragFactor { get; set; } = 0.7f; // Slows movement in water
 	[Export] public float WaterBuoyancy { get; set; } = 0.8f; // How much the player floats in water
@@ -31,8 +36,13 @@ public partial class Player : CharacterBody3D
 	private float _gravity = ProjectSettings.GetSetting("physics/3d/default_gravity").AsSingle();
 	private float _cameraRotation = 0.0f;
 	private bool _isInWater = false; // Tracks if player is in water
+	private bool _isClimbing = false; // Tracks if player is climbing
+	private Vector3 _climbNormal = Vector3.Zero; // Normal of the wall being climbed
+	private float _climbCooldown = 0.0f; // Cooldown timer after releasing space
 	private Label _waterIndicator; // UI indicator for when player is in water
+	private Label _climbingIndicator; // UI indicator for when player is climbing
 	private ColorRect _waterDebugIndicator; // Visual debug indicator for water detection
+	private ColorRect _climbingDebugIndicator; // Visual debug indicator for climbing
 	private CanvasLayer _underwaterOverlayCanvas; // Canvas layer for underwater effect
 	private ColorRect _underwaterOverlay; // Translucent overlay for underwater effect
 	private float _currentCameraDistance; // For smoothing camera movement
@@ -160,7 +170,7 @@ public partial class Player : CharacterBody3D
 		CreateVoxelCharacter();
 	}
 
-	// Create a UI indicator for when the player is in water
+	// Create UI indicators for player states
 	private void CreateWaterIndicator()
 	{
 		// Create a new Control node for UI
@@ -190,6 +200,27 @@ public partial class Player : CharacterBody3D
 		// Add the label to the UI
 		uiControl.AddChild(_waterIndicator);
 
+		// Create a climbing indicator
+		_climbingIndicator = new Label();
+		_climbingIndicator.Name = "ClimbingIndicator";
+		_climbingIndicator.Text = "CLIMBING";
+		_climbingIndicator.HorizontalAlignment = HorizontalAlignment.Center;
+		_climbingIndicator.VerticalAlignment = VerticalAlignment.Top;
+		_climbingIndicator.Position = new Vector2(0, 100);
+		_climbingIndicator.Size = new Vector2(200, 50);
+		_climbingIndicator.Visible = false; // Hide initially
+
+		// Make the text larger
+		_climbingIndicator.AddThemeFontSizeOverride("font_size", 24);
+
+		// Style the label
+		_climbingIndicator.AddThemeColorOverride("font_color", new Color(1.0f, 0.5f, 0.0f)); // Orange for climbing
+		_climbingIndicator.AddThemeConstantOverride("outline_size", 2);
+		_climbingIndicator.AddThemeColorOverride("font_outline_color", new Color(0, 0, 0));
+
+		// Add the climbing indicator to the UI
+		uiControl.AddChild(_climbingIndicator);
+
 		// Create a visual indicator for debugging water detection
 		_waterDebugIndicator = new ColorRect();
 		_waterDebugIndicator.Name = "WaterDebugIndicator";
@@ -199,6 +230,32 @@ public partial class Player : CharacterBody3D
 
 		// Add the debug indicator to the UI
 		uiControl.AddChild(_waterDebugIndicator);
+
+		// Create a visual indicator for climbing (triangle shape)
+		_climbingDebugIndicator = new ColorRect();
+		_climbingDebugIndicator.Name = "ClimbingDebugIndicator";
+		_climbingDebugIndicator.Size = new Vector2(20, 20);
+		_climbingDebugIndicator.Position = new Vector2(50, 20); // Position it next to the water indicator
+		_climbingDebugIndicator.Color = new Color(0.5f, 0.5f, 0.5f); // Gray when not climbing
+
+		// Add a stylized mountain icon to represent climbing
+		var stylizedIcon = new Polygon2D();
+		stylizedIcon.Name = "ClimbingIcon";
+		stylizedIcon.Color = new Color(0, 0, 0, 0.7f); // Semi-transparent black
+
+		// Create a triangle shape for the mountain icon
+		var points = new Vector2[] {
+			new Vector2(10, 2),   // Top of mountain
+			new Vector2(2, 18),   // Bottom left
+			new Vector2(18, 18)   // Bottom right
+		};
+		stylizedIcon.Polygon = points;
+
+		// Add the icon to the climbing indicator
+		_climbingDebugIndicator.AddChild(stylizedIcon);
+
+		// Add the climbing indicator to the UI
+		uiControl.AddChild(_climbingDebugIndicator);
 
 		// Create a CanvasLayer for the underwater overlay
 		// This ensures it's attached to the camera's view rather than the player
@@ -717,9 +774,21 @@ public partial class Player : CharacterBody3D
 	{
 		Vector3 velocity = Velocity;
 
+		// Update climb cooldown timer
+		if (_climbCooldown > 0)
+		{
+			_climbCooldown -= (float)delta;
+			if (_climbCooldown < 0)
+				_climbCooldown = 0;
+		}
+
 		// Check if player is in water
 		bool wasInWater = _isInWater;
 		_isInWater = CheckIfInWater();
+
+		// Check if player is climbing (only if not in cooldown)
+		bool wasClimbing = _isClimbing;
+		_isClimbing = _climbCooldown <= 0 && CheckForClimbableWall(out _climbNormal);
 
 		// Update water indicator visibility
 		if (_waterIndicator != null)
@@ -727,10 +796,22 @@ public partial class Player : CharacterBody3D
 			_waterIndicator.Visible = _isInWater;
 		}
 
-		// Update debug indicator color
+		// Update climbing indicator visibility
+		if (_climbingIndicator != null)
+		{
+			_climbingIndicator.Visible = _isClimbing;
+		}
+
+		// Update water debug indicator color
 		if (_waterDebugIndicator != null)
 		{
 			_waterDebugIndicator.Color = _isInWater ? new Color(0, 0.7f, 1.0f) : new Color(1, 0, 0);
+		}
+
+		// Update climbing debug indicator color
+		if (_climbingDebugIndicator != null)
+		{
+			_climbingDebugIndicator.Color = _isClimbing ? new Color(1.0f, 0.5f, 0.0f) : new Color(0.5f, 0.5f, 0.5f);
 		}
 
 		// Update underwater overlay visibility
@@ -819,7 +900,20 @@ public partial class Player : CharacterBody3D
 			}
 		}
 
-		// Apply different physics based on water state
+		// Print debug message when climbing state changes
+		if (_isClimbing != wasClimbing)
+		{
+			if (_isClimbing)
+			{
+				GD.Print("Player started climbing");
+			}
+			else
+			{
+				GD.Print("Player stopped climbing");
+			}
+		}
+
+		// Apply different physics based on player state
 		if (_isInWater)
 		{
 			// Find the water surface level
@@ -908,15 +1002,125 @@ public partial class Player : CharacterBody3D
 					$"force={buoyancyForce:F2}, velocity={velocity.Y:F2}");
 			}
 		}
+		else if (_isClimbing)
+		{
+			// Climbing physics - override gravity
+
+			// Get player scale to adjust climbing
+			float playerScale = 1.0f;
+			if (Scale != Vector3.One)
+			{
+				playerScale = Scale.X;
+			}
+
+			// Immediately stop any downward momentum when starting to climb
+			if (velocity.Y < 0)
+			{
+				velocity.Y = 0;
+			}
+
+			// Get vertical input for climbing
+			float verticalInput = Input.GetAxis("ui_down", "ui_up");
+
+			// Get horizontal input for sideways climbing
+			float horizontalInput = Input.GetAxis("ui_left", "ui_right");
+
+			// Apply climbing movement
+			if (Mathf.Abs(verticalInput) > 0.1f)
+			{
+				// Calculate target vertical velocity for climbing
+				float targetVelocityY = verticalInput * ClimbingSpeed * playerScale;
+
+				// Apply climbing acceleration
+				velocity.Y = Mathf.Lerp(velocity.Y, targetVelocityY, ClimbingAcceleration);
+
+				// Debug output
+				if (Engine.GetProcessFrames() % 60 == 0)
+				{
+					GD.Print($"Climbing: input={verticalInput:F2}, velocity={velocity.Y:F2}");
+				}
+			}
+			else
+			{
+				// When not actively climbing, maintain position with slight damping
+				velocity.Y *= 0.9f;
+			}
+
+			// Apply horizontal movement along the wall
+			if (Mathf.Abs(horizontalInput) > 0.1f)
+			{
+				// Get camera's right direction for horizontal wall movement
+				Vector3 wallCameraRight = _camera.GlobalTransform.Basis.X;
+				wallCameraRight.Y = 0;
+				wallCameraRight = wallCameraRight.Normalized();
+
+				// Project the right vector onto the wall plane
+				Vector3 wallRight = wallCameraRight - _climbNormal * wallCameraRight.Dot(_climbNormal);
+				wallRight = wallRight.Normalized();
+
+				// Apply horizontal movement along the wall
+				Vector3 horizontalVelocity = wallRight * horizontalInput * ClimbingSpeed * 0.7f * playerScale;
+				velocity.X = Mathf.Lerp(velocity.X, horizontalVelocity.X, ClimbingAcceleration);
+				velocity.Z = Mathf.Lerp(velocity.Z, horizontalVelocity.Z, ClimbingAcceleration);
+			}
+			else
+			{
+				// Dampen horizontal movement when not actively moving
+				velocity.X *= 0.9f;
+				velocity.Z *= 0.9f;
+			}
+
+			// Stop climbing if the jump key (space) is released
+			if (!Input.IsActionPressed("ui_accept"))
+			{
+				// Stop climbing and let gravity take over
+				// Add a very tiny push to prevent sticking to the wall
+				velocity += _climbNormal * 0.1f; // Minimal push away from wall
+
+				// Stop climbing and set cooldown to prevent immediate re-grab
+				_isClimbing = false;
+				_climbCooldown = 0.3f; // 0.3 seconds cooldown
+
+				// Debug output
+				GD.Print("Stopped climbing - space released, cooldown started");
+			}
+		}
 		else
 		{
-			// Regular gravity when not in water
+			// Regular gravity when not in water or climbing
 			if (!IsOnFloor())
 				velocity.Y -= _gravity * (float)delta;
 
-			// Regular jump when on floor and not in water
+			// Regular jump when on floor and not in water or climbing
 			if (Input.IsActionJustPressed("ui_accept") && IsOnFloor())
+			{
 				velocity.Y = JumpVelocity;
+
+				// Check if we can start climbing immediately after jumping
+				Vector3 wallNormal;
+				if (CheckForClimbableWall(out wallNormal))
+				{
+					// We're jumping near a wall, prepare for wall climbing
+					_climbNormal = wallNormal;
+
+					// Don't start climbing immediately, but set a flag to check on the next frame
+					// This allows the jump to start before attaching to the wall
+					GD.Print("Jump detected near wall - preparing for climb");
+				}
+			}
+
+			// Check for wall climbing when holding space in mid-air
+			if (Input.IsActionPressed("ui_accept") && !IsOnFloor())
+			{
+				Vector3 wallNormal;
+				if (CheckForClimbableWall(out wallNormal))
+				{
+					// We're holding space near a wall, start climbing
+					_climbNormal = wallNormal;
+					_isClimbing = true;
+					GD.Print("Started climbing in mid-air");
+				}
+			}
 		}
 
 		// Get movement input
@@ -988,8 +1192,8 @@ public partial class Player : CharacterBody3D
 			// Determine if the player is jumping based on vertical velocity and floor state
 			bool isJumping = !IsOnFloor() && velocity.Y > 0;
 
-			// Update character animation
-			_voxelCharacter.UpdateAnimation(delta, isWalking, isJumping, velocity);
+			// Update character animation with climbing state
+			_voxelCharacter.UpdateAnimation(delta, isWalking, isJumping, velocity, _isClimbing);
 
 			// Rotate character to face movement direction
 			if (direction != Vector3.Zero)
@@ -1029,5 +1233,78 @@ public partial class Player : CharacterBody3D
 			difference += Mathf.Pi * 2;
 
 		return difference;
+	}
+
+	/// <summary>
+	/// Check if the player can climb a wall
+	/// </summary>
+	private bool CheckForClimbableWall(out Vector3 wallNormal)
+	{
+		wallNormal = Vector3.Zero;
+
+		// Don't allow climbing while in water
+		if (_isInWater)
+			return false;
+
+		// Check for walls in multiple directions around the player
+		bool foundWall = false;
+
+		// Get the player's forward direction based on camera
+		Vector3 forwardDir = -_camera.GlobalTransform.Basis.Z;
+		forwardDir.Y = 0;
+		forwardDir = forwardDir.Normalized();
+
+		// Create a ray to check for walls in front of the player
+		var spaceState = GetWorld3D().DirectSpaceState;
+		var rayOrigin = GlobalPosition + Vector3.Up * 0.5f; // Start ray from middle of player
+
+		// Check in multiple directions (forward, left, right, and slight diagonals)
+		Vector3[] directions = {
+			forwardDir,
+			forwardDir.Rotated(Vector3.Up, Mathf.Pi * 0.25f),
+			forwardDir.Rotated(Vector3.Up, -Mathf.Pi * 0.25f),
+			forwardDir.Rotated(Vector3.Up, Mathf.Pi * 0.5f),
+			forwardDir.Rotated(Vector3.Up, -Mathf.Pi * 0.5f)
+		};
+
+		foreach (var dir in directions)
+		{
+			var rayEnd = rayOrigin + dir * WallDetectionDistance;
+
+			// Create the ray query parameters
+			var query = PhysicsRayQueryParameters3D.Create(rayOrigin, rayEnd);
+			query.CollideWithAreas = false;
+			query.CollideWithBodies = true;
+
+			// Cast the ray
+			var result = spaceState.IntersectRay(query);
+
+			// Check if we hit something
+			if (result.Count > 0 && result.ContainsKey("normal"))
+			{
+				// Get the normal of the wall
+				Vector3 normal = (Vector3)result["normal"];
+
+				// Only climb if the wall is steep enough (close to vertical)
+				float wallAngle = Mathf.Abs(normal.Dot(Vector3.Up));
+				if (wallAngle < 0.3f) // Wall is close to vertical
+				{
+					wallNormal = normal;
+					foundWall = true;
+					break;
+				}
+			}
+		}
+
+		// If we found a wall, check if we should start climbing
+		if (foundWall)
+		{
+			// ONLY start climbing if the jump key (space) is pressed
+			bool shouldClimb = Input.IsActionPressed("ui_accept");
+
+			return shouldClimb;
+		}
+
+		return false;
 	}
 }

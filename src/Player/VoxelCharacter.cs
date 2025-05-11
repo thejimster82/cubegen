@@ -22,8 +22,11 @@ namespace CubeGen.Player
 		// Animation properties
 		private float _walkCycle = 0.0f;
 		private float _walkSpeed = 5.0f;
+		private float _climbCycle = 0.0f;
+		private float _climbSpeed = 3.0f;
 		private bool _isWalking = false;
 		private bool _isJumping = false;
+		private bool _isClimbing = false;
 
 		// Customization properties
 		[Export] public Color SkinColor { get; set; } = new Color(1.0f, 0.8f, 0.6f); // Skin color for hands
@@ -171,11 +174,12 @@ namespace CubeGen.Player
 		/// <summary>
 		/// Update character animation
 		/// </summary>
-		public void UpdateAnimation(double delta, bool isWalking, bool isJumping, Vector3 velocity)
+		public void UpdateAnimation(double delta, bool isWalking, bool isJumping, Vector3 velocity, bool isClimbing = false)
 		{
 			// Update animation state
-			_isWalking = isWalking;
-			_isJumping = isJumping;
+			_isWalking = isWalking && !isClimbing; // Don't walk while climbing
+			_isJumping = isJumping && !isClimbing; // Don't jump while climbing
+			_isClimbing = isClimbing;
 
 			// Update walk cycle if walking
 			if (_isWalking)
@@ -188,15 +192,41 @@ namespace CubeGen.Player
 					_walkCycle -= Mathf.Pi * 2;
 				}
 			}
-			else
+			else if (!_isClimbing)
 			{
-				// Reset walk cycle when not walking
+				// Reset walk cycle when not walking or climbing
 				_walkCycle = 0;
 			}
 
-			// Apply animations
-			AnimateWalking();
-			AnimateJumping();
+			// Update climb cycle if climbing
+			if (_isClimbing)
+			{
+				// Use vertical velocity for climb speed
+				float climbSpeed = Mathf.Abs(velocity.Y) > 0.1f ? Mathf.Abs(velocity.Y) : 0.1f;
+				_climbCycle += (float)delta * _climbSpeed * climbSpeed;
+
+				// Keep climb cycle between 0 and 2π
+				if (_climbCycle > Mathf.Pi * 2)
+				{
+					_climbCycle -= Mathf.Pi * 2;
+				}
+			}
+			else
+			{
+				// Reset climb cycle when not climbing
+				_climbCycle = 0;
+			}
+
+			// Apply animations based on state
+			if (_isClimbing)
+			{
+				AnimateClimbing();
+			}
+			else
+			{
+				AnimateWalking();
+				AnimateJumping();
+			}
 		}
 
 		/// <summary>
@@ -254,6 +284,38 @@ namespace CubeGen.Player
 				_leftArm.Rotation = new Vector3(-0.4f, 0, 0);
 				_rightArm.Rotation = new Vector3(-0.4f, 0, 0);
 			}
+		}
+
+		/// <summary>
+		/// Animate climbing motion
+		/// </summary>
+		private void AnimateClimbing()
+		{
+			// Alternate arm and leg movements for climbing
+			float leftArmAngle = Mathf.Sin(_climbCycle) * 0.7f;
+			float rightArmAngle = Mathf.Sin(_climbCycle + Mathf.Pi) * 0.7f;
+			float leftLegAngle = Mathf.Sin(_climbCycle + Mathf.Pi) * 0.5f;
+			float rightLegAngle = Mathf.Sin(_climbCycle) * 0.5f;
+
+			// Position arms forward for climbing
+			_leftArm.Rotation = new Vector3(leftArmAngle, 0, -0.3f);
+			_rightArm.Rotation = new Vector3(rightArmAngle, 0, 0.3f);
+
+			// Position legs for climbing
+			_leftLeg.Rotation = new Vector3(leftLegAngle, 0, -0.1f);
+			_rightLeg.Rotation = new Vector3(rightLegAngle, 0, 0.1f);
+
+			// Slight body movement
+			float bodyOffset = Mathf.Sin(_climbCycle * 2) * 0.03f;
+			_body.Position = new Vector3(0, bodyOffset, -0.1f);
+
+			// Adjust head to look up slightly
+			_head.Position = new Vector3(0, 0.35f + bodyOffset, -0.05f);
+			_head.Rotation = new Vector3(-0.2f, 0, 0);
+
+			// Adjust arm positions
+			_leftArm.Position = new Vector3(-0.32f, 0.1f + bodyOffset, 0);
+			_rightArm.Position = new Vector3(0.32f, 0.1f + bodyOffset, 0);
 		}
 
 		/// <summary>

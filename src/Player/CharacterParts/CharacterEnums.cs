@@ -13,6 +13,7 @@ namespace CubeGen.Player.CharacterParts
         Long,
         Mohawk,
         Bald,
-        Blonde  // New blonde hairstyle like in the reference image
+        Blonde,  // Blonde hairstyle
+        PixelStyle  // New pixel character style with orange hair and white face pattern
     }
 }

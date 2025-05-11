@@ -17,8 +17,10 @@ namespace CubeGen.Player.CharacterParts
 
         [Export] public LimbType Type { get; set; } = LimbType.Arm;
         [Export] public bool IsLeft { get; set; } = true;
-        [Export] public Color ClothingColor { get; set; } = new Color(0.3f, 0.3f, 0.7f);
-        [Export] public Color SkinColor { get; set; } = new Color(0.9f, 0.75f, 0.65f);
+        [Export] public Color ClothingColor { get; set; } = new Color(1.0f, 0.5f, 0.0f); // Orange for arms
+        [Export] public Color PantsColor { get; set; } = new Color(0.4f, 0.3f, 0.6f); // Purple for legs
+        [Export] public Color ShoeColor { get; set; } = new Color(0.0f, 0.0f, 0.0f); // Black shoes
+        [Export] public Color SkinColor { get; set; } = new Color(1.0f, 0.8f, 0.6f); // Skin color for hands
         [Export] public bool HasClothing { get; set; } = true;
 
         public override void _Ready()
@@ -27,16 +29,15 @@ namespace CubeGen.Player.CharacterParts
             if (Type == LimbType.Arm)
             {
                 PartName = IsLeft ? "LeftArm" : "RightArm";
-                Size = new Vector3(0.2f, 0.5f, 0.2f); // Keep the same overall size
+                Size = new Vector3(0.15f, 0.3f, 0.15f); // Thinner, shorter arms for pixel character
+                BaseColor = ClothingColor; // Arms use the clothing color (orange)
             }
             else
             {
                 PartName = IsLeft ? "LeftLeg" : "RightLeg";
-                Size = new Vector3(0.2f, 0.5f, 0.2f); // Keep the same overall size
+                Size = new Vector3(0.15f, 0.3f, 0.15f); // Thinner, shorter legs for pixel character
+                BaseColor = PantsColor; // Legs use the pants color (purple)
             }
-
-            // Set base color to skin color
-            BaseColor = SkinColor;
 
             // Call base ready method
             base._Ready();
@@ -123,29 +124,31 @@ namespace CubeGen.Player.CharacterParts
         }
 
         /// <summary>
-        /// Create a more stylized limb shape
+        /// Create a blocky limb shape for the pixel character
         /// </summary>
         private void CreateStylizedLimbShape(int sizeX, int sizeY, int sizeZ)
         {
-            // Make the limb slightly thinner in the middle for a more stylized look
-            int midY = sizeY / 2;
-            int thinAmount = Mathf.Max(1, sizeX / 4);
+            // For the pixel character, we want completely blocky limbs
+            // Only round the extreme corners to maintain the blocky look
+            int cornerThreshold = Mathf.Max(1, sizeX / 10);
 
-            // Make the middle section slightly thinner
-            for (int y = midY - sizeY / 6; y < midY + sizeY / 6; y++)
+            // Round only the extreme corners by setting corner voxels to air
+            for (int x = 0; x < sizeX; x++)
             {
-                if (y >= 0 && y < sizeY)
+                for (int y = 0; y < sizeY; y++)
                 {
-                    // Thin the edges
-                    for (int x = 0; x < thinAmount; x++)
+                    for (int z = 0; z < sizeZ; z++)
                     {
-                        for (int z = 0; z < sizeZ; z++)
+                        // Calculate distance from corners
+                        int distX = Mathf.Min(x, sizeX - 1 - x);
+                        int distY = Mathf.Min(y, sizeY - 1 - y);
+                        int distZ = Mathf.Min(z, sizeZ - 1 - z);
+
+                        // If this is an extreme corner voxel, set to air
+                        if (distX == 0 && distY == 0 && distZ == 0)
                         {
-                            // Only thin the edges
-                            if (x == 0 || x == sizeX - 1 || z == 0 || z == sizeZ - 1)
-                            {
-                                SetVoxel(x, y, z, VoxelType.Air);
-                            }
+                            // Only remove the very corner voxels
+                            SetVoxel(x, y, z, VoxelType.Air);
                         }
                     }
                 }
@@ -162,7 +165,7 @@ namespace CubeGen.Player.CharacterParts
                 return;
 
             // Hand position at the bottom of the arm
-            int handY = 0;
+            // Position is implicit (always at the bottom)
             int handHeight = sizeY / 6;
 
             // Make the hand slightly wider than the arm
@@ -194,7 +197,7 @@ namespace CubeGen.Player.CharacterParts
         }
 
         /// <summary>
-        /// Add a stylized blocky foot/boot to the leg
+        /// Add a black blocky shoe to the leg like in the pixel character
         /// </summary>
         private void AddStylizedFoot(int sizeX, int sizeY, int sizeZ)
         {
@@ -203,17 +206,17 @@ namespace CubeGen.Player.CharacterParts
                 return;
 
             // Foot position at the bottom of the leg
-            int footY = 0;
-            int footHeight = sizeY / 6;
+            // Position is implicit (always at the bottom)
+            int footHeight = sizeY / 5; // Slightly taller black shoes
 
             // Make the foot slightly longer than the leg
             int footWidth = sizeX;
-            int footDepth = sizeZ + 2;
+            int footDepth = sizeZ + 1; // Extend forward slightly
 
             // Calculate offset to center the foot
-            int offsetZ = -1; // Extend forward
+            int offsetZ = 0; // No need to extend too much for pixel character
 
-            // Create a blocky foot
+            // Create a blocky black shoe
             for (int y = 0; y < footHeight; y++)
             {
                 for (int x = 0; x < footWidth; x++)
@@ -227,15 +230,16 @@ namespace CubeGen.Player.CharacterParts
                         if (posZ < 0 || posZ >= sizeZ)
                             continue;
 
-                        // Set foot voxel (using Stone type, will be colored appropriately)
-                        SetVoxel(x, y, posZ, VoxelType.Stone);
+                        // Set foot voxel using a different type to mark it as a shoe
+                        // We'll use Bedrock as a marker for shoes
+                        SetVoxel(x, y, posZ, VoxelType.Bedrock);
                     }
                 }
             }
         }
 
         /// <summary>
-        /// Override to add custom colors for clothing and skin
+        /// Override to add custom colors for clothing, skin, and shoes
         /// </summary>
         protected override void AddFace(int x, int y, int z, int face, System.Collections.Generic.List<Vector3> vertices,
             System.Collections.Generic.List<Vector3> normals, System.Collections.Generic.List<Color> colors,
@@ -244,13 +248,42 @@ namespace CubeGen.Player.CharacterParts
             // Get voxel type
             VoxelType voxelType = GetVoxel(x, y, z);
 
-            // Determine color based on voxel type
-            Color color = SkinColor; // Default to skin color
+            // Determine color based on voxel type and limb type
+            Color color;
 
-            if (voxelType == VoxelType.Leaves)
+            if (voxelType == VoxelType.Bedrock)
             {
-                // This is clothing
-                color = ClothingColor;
+                // This is a shoe - use black shoe color
+                color = ShoeColor;
+            }
+            else if (voxelType == VoxelType.Leaves)
+            {
+                // This is clothing - use appropriate color based on limb type
+                if (Type == LimbType.Arm)
+                {
+                    color = ClothingColor; // Orange for arms
+                }
+                else
+                {
+                    color = PantsColor; // Purple for legs
+                }
+            }
+            else if (voxelType == VoxelType.Stone)
+            {
+                // This is skin (hands)
+                color = SkinColor;
+            }
+            else
+            {
+                // Default color based on limb type
+                if (Type == LimbType.Arm)
+                {
+                    color = ClothingColor; // Orange for arms
+                }
+                else
+                {
+                    color = PantsColor; // Purple for legs
+                }
             }
 
             // Store original color

@@ -9,17 +9,18 @@ namespace CubeGen.Player.CharacterParts
     /// </summary>
     public partial class VoxelHead : VoxelBodyPart
     {
-        [Export] public Color EyeColor { get; set; } = new Color(0.2f, 0.2f, 0.8f);
-        [Export] public Color HairColor { get; set; } = new Color(0.6f, 0.4f, 0.2f);
+        [Export] public Color EyeColor { get; set; } = new Color(0.0f, 0.0f, 0.0f); // Black eyes like in the image
+        [Export] public Color HairColor { get; set; } = new Color(1.0f, 0.5f, 0.0f); // Orange hair like in the image
+        [Export] public Color FaceColor { get; set; } = new Color(1.0f, 1.0f, 0.8f); // Cream/white face color
         [Export] public bool HasHair { get; set; } = true;
-        [Export] public HairStyle HairStyle { get; set; } = HairStyle.Short;
+        [Export] public HairStyle HairStyle { get; set; } = HairStyle.PixelStyle; // New style for the pixel character
 
         public override void _Ready()
         {
             // Set default properties for head
             PartName = "Head";
-            Size = new Vector3(0.6f, 0.6f, 0.6f); // Keep the same overall size
-            BaseColor = new Color(0.9f, 0.75f, 0.65f); // Skin tone
+            Size = new Vector3(0.45f, 0.45f, 0.45f); // Reduced head size by 25%
+            BaseColor = FaceColor; // Use the face color for the base
 
             // Call base ready method
             base._Ready();
@@ -38,43 +39,34 @@ namespace CubeGen.Player.CharacterParts
             // Create a more stylized head shape by rounding corners
             RoundHeadCorners(sizeX, sizeY, sizeZ);
 
-            // Add stylized rectangular eyes (blue like in the reference)
+            // Add pixel-style square eyes (black like in the image)
             int eyeY = sizeY / 2;
             int eyeZ = sizeZ - 1; // Front of head
 
-            // Eye dimensions
-            int eyeWidth = Mathf.Max(1, sizeX / 8);
-            int eyeHeight = Mathf.Max(1, sizeY / 6);
+            // Eye dimensions - make them square and small like in the pixel image
+            int eyeSize = Mathf.Max(1, sizeX / 10);
 
-            // Left eye (rectangular blue eye)
+            // Left eye (square black eye)
             int leftEyeX = sizeX / 3;
-            for (int x = leftEyeX; x < leftEyeX + eyeWidth; x++)
+            for (int x = leftEyeX; x < leftEyeX + eyeSize; x++)
             {
-                for (int y = eyeY; y < eyeY + eyeHeight; y++)
+                for (int y = eyeY; y < eyeY + eyeSize; y++)
                 {
                     SetVoxel(x, y, eyeZ, VoxelType.Air);
                 }
             }
 
-            // Right eye (rectangular blue eye)
+            // Right eye (square black eye)
             int rightEyeX = (2 * sizeX) / 3;
-            for (int x = rightEyeX; x < rightEyeX + eyeWidth; x++)
+            for (int x = rightEyeX; x < rightEyeX + eyeSize; x++)
             {
-                for (int y = eyeY; y < eyeY + eyeHeight; y++)
+                for (int y = eyeY; y < eyeY + eyeSize; y++)
                 {
                     SetVoxel(x, y, eyeZ, VoxelType.Air);
                 }
             }
 
-            // Add a simple mouth
-            int mouthY = sizeY / 3;
-            int mouthWidth = sizeX / 4;
-            int mouthX = sizeX / 2 - mouthWidth / 2;
-
-            for (int x = mouthX; x < mouthX + mouthWidth; x++)
-            {
-                SetVoxel(x, mouthY, eyeZ, VoxelType.Air);
-            }
+            // The pixel character doesn't appear to have a visible mouth, so we'll skip adding one
 
             // Add hair if enabled
             if (HasHair && HairStyle != HairStyle.Bald)
@@ -84,14 +76,15 @@ namespace CubeGen.Player.CharacterParts
         }
 
         /// <summary>
-        /// Round the corners of the head for a more stylized look
+        /// Shape the head to be more blocky like in the pixel image
         /// </summary>
         private void RoundHeadCorners(int sizeX, int sizeY, int sizeZ)
         {
-            // Calculate corner rounding threshold
-            int cornerThreshold = Mathf.Max(1, sizeX / 6);
+            // For the pixel character, we want a more blocky head with minimal rounding
+            // Only round the extreme corners to maintain the blocky look
+            int cornerThreshold = Mathf.Max(1, sizeX / 10);
 
-            // Round the corners by setting corner voxels to air
+            // Round only the extreme corners by setting corner voxels to air
             for (int x = 0; x < sizeX; x++)
             {
                 for (int y = 0; y < sizeY; y++)
@@ -103,12 +96,12 @@ namespace CubeGen.Player.CharacterParts
                         int distY = Mathf.Min(y, sizeY - 1 - y);
                         int distZ = Mathf.Min(z, sizeZ - 1 - z);
 
-                        // If this is a corner voxel, set to air
+                        // If this is an extreme corner voxel, set to air
                         if (distX < cornerThreshold && distY < cornerThreshold && distZ < cornerThreshold)
                         {
                             // Calculate a simple distance metric
                             int distSum = distX + distY + distZ;
-                            if (distSum < cornerThreshold)
+                            if (distSum < cornerThreshold / 2) // Much smaller threshold for more blockiness
                             {
                                 SetVoxel(x, y, z, VoxelType.Air);
                             }
@@ -257,55 +250,86 @@ namespace CubeGen.Player.CharacterParts
                     }
                     break;
 
-                // Add a new blonde hair style like in the reference image
-                case HairStyle.Blonde:
-                    // Create a stylized blonde hairstyle similar to the reference
+                // Add a new pixel style hair like in the image
+                case HairStyle.PixelStyle:
+                    // Create a blocky orange hair style with white face pattern like in the image
 
-                    // Top hair layer
+                    // Create the main orange hair block covering most of the head
                     for (int x = 0; x < sizeX; x++)
                     {
-                        for (int z = 0; z < sizeZ; z++)
+                        for (int y = 0; y < sizeY; y++)
                         {
-                            // Skip corners for a rounded look
-                            int distX = Mathf.Min(x, sizeX - 1 - x);
-                            int distZ = Mathf.Min(z, sizeZ - 1 - z);
-
-                            if (distX + distZ > 1) // Skip extreme corners
+                            for (int z = 0; z < sizeZ; z++)
                             {
-                                // Set hair voxel
-                                SetVoxel(x, hairY, z, VoxelType.Leaves);
+                                // Skip the face area (front of the head)
+                                if (z == sizeZ - 1)
+                                {
+                                    continue;
+                                }
+
+                                // Set all non-face voxels to hair
+                                if (GetVoxel(x, y, z) != VoxelType.Air)
+                                {
+                                    SetVoxel(x, y, z, VoxelType.Leaves);
+                                }
                             }
                         }
                     }
 
-                    // Add volume on top
-                    for (int x = 1; x < sizeX - 1; x++)
+                    // Create the white face pattern on the front
+                    // The face is a T-shaped white area as seen in the image
+                    int faceZ = sizeZ - 1;
+
+                    // Define the T-shape pattern for the face
+                    // Vertical part of T
+                    int centerX = sizeX / 2;
+                    int tWidth = Mathf.Max(2, sizeX / 4);
+                    int tStart = centerX - tWidth / 2;
+
+                    // Draw the vertical part of the T
+                    for (int x = tStart; x < tStart + tWidth; x++)
                     {
-                        for (int z = 1; z < sizeZ - 1; z++)
+                        for (int y = 0; y < sizeY - 1; y++)
                         {
-                            SetVoxel(x, hairY + 1, z, VoxelType.Leaves);
+                            // Make sure this voxel is not air (part of the head)
+                            if (GetVoxel(x, y, faceZ) != VoxelType.Air)
+                            {
+                                // This is part of the face - keep it as the base color (white/cream)
+                                // We'll use Stone type to distinguish it from hair
+                                SetVoxel(x, y, faceZ, VoxelType.Stone);
+                            }
                         }
                     }
 
-                    // Add side hair tufts (like in the reference)
-                    for (int y = hairY; y >= hairY - 2; y--)
-                    {
-                        // Left side hair tuft
-                        SetVoxel(0, y, sizeZ / 2, VoxelType.Leaves);
-                        SetVoxel(0, y, sizeZ / 2 + 1, VoxelType.Leaves);
-                        SetVoxel(0, y, sizeZ / 2 - 1, VoxelType.Leaves);
+                    // Horizontal part of T (across the eyes)
+                    int eyeLevel = sizeY / 2;
+                    int tHeight = Mathf.Max(2, sizeY / 4);
 
-                        // Right side hair tuft
-                        SetVoxel(sizeX - 1, y, sizeZ / 2, VoxelType.Leaves);
-                        SetVoxel(sizeX - 1, y, sizeZ / 2 + 1, VoxelType.Leaves);
-                        SetVoxel(sizeX - 1, y, sizeZ / 2 - 1, VoxelType.Leaves);
+                    for (int x = 0; x < sizeX; x++)
+                    {
+                        for (int y = eyeLevel - tHeight/2; y < eyeLevel + tHeight/2; y++)
+                        {
+                            // Make sure this voxel is not air (part of the head)
+                            if (GetVoxel(x, y, faceZ) != VoxelType.Air)
+                            {
+                                // This is part of the face - keep it as the base color (white/cream)
+                                SetVoxel(x, y, faceZ, VoxelType.Stone);
+                            }
+                        }
                     }
+
+                    // Add a small tuft of hair on top
+                    for (int x = sizeX/4; x < 3*sizeX/4; x++)
+                    {
+                        SetVoxel(x, hairY + 1, sizeZ/2, VoxelType.Leaves);
+                    }
+
                     break;
             }
         }
 
         /// <summary>
-        /// Override to add custom colors for eyes and hair
+        /// Override to add custom colors for eyes, hair, and face pattern
         /// </summary>
         protected override void AddFace(int x, int y, int z, int face, System.Collections.Generic.List<Vector3> vertices,
             System.Collections.Generic.List<Vector3> normals, System.Collections.Generic.List<Color> colors,
@@ -333,6 +357,17 @@ namespace CubeGen.Player.CharacterParts
             else if (voxelType == VoxelType.Leaves)
             {
                 // This is hair - use hair color
+                color = HairColor;
+            }
+            else if (voxelType == VoxelType.Stone && z == sizeZ - 1)
+            {
+                // This is the face pattern - use face color
+                color = FaceColor;
+            }
+            else if (z == sizeZ - 1)
+            {
+                // This is the front of the head but not part of the face pattern
+                // Use hair color for non-face parts on the front
                 color = HairColor;
             }
 

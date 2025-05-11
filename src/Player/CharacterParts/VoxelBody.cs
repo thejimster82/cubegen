@@ -9,17 +9,17 @@ namespace CubeGen.Player.CharacterParts
     /// </summary>
     public partial class VoxelBody : VoxelBodyPart
     {
-        [Export] public Color ShirtColor { get; set; } = new Color(0.2f, 0.4f, 0.8f);
-        [Export] public Color PantsColor { get; set; } = new Color(0.3f, 0.3f, 0.7f);
+        [Export] public Color ShirtColor { get; set; } = new Color(1.0f, 0.5f, 0.0f); // Orange shirt like in the image
+        [Export] public Color PantsColor { get; set; } = new Color(0.4f, 0.3f, 0.6f); // Purple pants like in the image
         [Export] public bool HasShirt { get; set; } = true;
-        [Export] public bool HasBelt { get; set; } = true;
+        [Export] public bool HasBelt { get; set; } = false; // No visible belt in the pixel character
         [Export] public Color BeltColor { get; set; } = new Color(0.6f, 0.4f, 0.2f);
 
         public override void _Ready()
         {
             // Set default properties for body
             PartName = "Body";
-            Size = new Vector3(0.5f, 0.6f, 0.3f); // Keep the same overall size
+            Size = new Vector3(0.5f, 0.4f, 0.3f); // Shorter body for pixel character proportions
             BaseColor = ShirtColor; // Default to shirt color
 
             // Call base ready method
@@ -79,14 +79,15 @@ namespace CubeGen.Player.CharacterParts
         }
 
         /// <summary>
-        /// Create a more stylized body shape by rounding corners and adding details
+        /// Create a blocky body shape for the pixel character
         /// </summary>
         private void CreateStylizedBodyShape(int sizeX, int sizeY, int sizeZ)
         {
-            // Round the corners for a more stylized look
-            int cornerThreshold = Mathf.Max(1, sizeX / 6);
+            // For the pixel character, we want a more blocky body with minimal rounding
+            // Only round the extreme corners to maintain the blocky look
+            int cornerThreshold = Mathf.Max(1, sizeX / 10);
 
-            // Round the corners by setting corner voxels to air
+            // Round only the extreme corners by setting corner voxels to air
             for (int x = 0; x < sizeX; x++)
             {
                 for (int y = 0; y < sizeY; y++)
@@ -98,12 +99,12 @@ namespace CubeGen.Player.CharacterParts
                         int distY = Mathf.Min(y, sizeY - 1 - y);
                         int distZ = Mathf.Min(z, sizeZ - 1 - z);
 
-                        // If this is a corner voxel, set to air
+                        // If this is an extreme corner voxel, set to air
                         if (distX < cornerThreshold && distY < cornerThreshold && distZ < cornerThreshold)
                         {
                             // Calculate a simple distance metric
                             int distSum = distX + distY + distZ;
-                            if (distSum < cornerThreshold)
+                            if (distSum < cornerThreshold / 2) // Much smaller threshold for more blockiness
                             {
                                 SetVoxel(x, y, z, VoxelType.Air);
                             }
@@ -112,22 +113,7 @@ namespace CubeGen.Player.CharacterParts
                 }
             }
 
-            // Create a slight taper at the waist (middle of the body)
-            int waistY = sizeY / 2;
-            int taperAmount = Mathf.Max(1, sizeX / 8);
-
-            // Taper the sides at the waist
-            for (int x = 0; x < taperAmount; x++)
-            {
-                for (int z = 0; z < sizeZ; z++)
-                {
-                    // Left side taper
-                    SetVoxel(x, waistY, z, VoxelType.Air);
-
-                    // Right side taper
-                    SetVoxel(sizeX - 1 - x, waistY, z, VoxelType.Air);
-                }
-            }
+            // No taper at the waist for the pixel character - we want a straight blocky body
         }
 
         /// <summary>

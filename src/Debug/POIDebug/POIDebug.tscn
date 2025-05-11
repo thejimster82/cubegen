@@ -1,0 +1,66 @@
+[gd_scene load_steps=7 format=3 uid="uid://c7yvxw0vf4yea"]
+
+[ext_resource type="Script" uid="uid://c1ehx02y5a46v" path="res://src/Debug/POIDebug/POIDebug.cs" id="1_debug"]
+[ext_resource type="Script" uid="uid://cjlr7mfi4phey" path="res://src/World/Generation/WorldGenerator.cs" id="2_debug"]
+[ext_resource type="Script" uid="uid://f86vp5v3wafj" path="res://src/World/Chunks/ChunkManager.cs" id="3_debug"]
+[ext_resource type="PackedScene" uid="uid://dxnqpj5l2ykbw" path="res://src/World/ChunkMesh.tscn" id="4_debug"]
+[ext_resource type="Environment" uid="uid://b4e3ckxsxo8gq" path="res://src/World/Environment/WorldEnvironment.tres" id="5_debug"]
+[ext_resource type="PackedScene" uid="uid://bqnxvnxvxvxvx" path="res://src/World/POI/POIDebugVisualizer.tscn" id="6_debug"]
+
+[node name="POIDebug" type="Node3D"]
+script = ExtResource("1_debug")
+ViewDistance = 30
+
+[node name="WorldGenerator" type="Node3D" parent="."]
+script = ExtResource("2_debug")
+WorldSize = Vector2i(32, 32)
+VoxelScale = 0.75
+
+[node name="ChunkManager" type="Node3D" parent="WorldGenerator"]
+script = ExtResource("3_debug")
+ChunkMeshScene = ExtResource("4_debug")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, -0.75, 0.433013, 0, 10, 0)
+light_color = Color(1, 0.956863, 0.839216, 1)
+light_energy = 0.8
+light_angular_distance = 0.5
+shadow_enabled = true
+shadow_normal_bias = 3.0
+shadow_blur = 6.0
+directional_shadow_blend_splits = true
+directional_shadow_max_distance = 200.0
+directional_shadow_pancake_size = 40.0
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = ExtResource("5_debug")
+
+[node name="POIDebugVisualizer" parent="." instance=ExtResource("6_debug")]
+MarkerHeight = 150.0
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.866025, 0.5, 0, -0.5, 0.866025, 0, 100, 100)
+current = true
+far = 1000.0
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="InfoLabel" type="Label" parent="CanvasLayer"]
+offset_left = 20.0
+offset_top = 20.0
+offset_right = 500.0
+offset_bottom = 200.0
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 1)
+theme_override_constants/shadow_offset_x = 2
+theme_override_constants/shadow_offset_y = 2
+theme_override_font_sizes/font_size = 16
+text = "Position: (0, 0)
+Biome: Unknown
+No POI
+
+Controls:
+WASD: Move
+Q/E: Up/Down
+Arrows: Rotate
+Shift: Speed up
+P: Toggle POI markers"

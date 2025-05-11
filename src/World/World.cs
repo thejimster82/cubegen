@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using CubeGen.World.Common;
 using CubeGen.World.Generation;
+using CubeGen.World.POI;
 
 public partial class World : Node3D
 {
@@ -30,6 +31,7 @@ public partial class World : Node3D
 	private Label _biomeLabel;
 	private Label _controlsLabel;
 	private bool _isMapMode = false;
+	private POIDebugVisualizer _poiVisualizer;
 
 	// Store camera rotation to preserve it during movement and zooming
 	private Basis _mapCameraRotation;
@@ -48,6 +50,9 @@ public partial class World : Node3D
 
 		// Get cloud generator
 		_cloudGenerator = GetNode<CloudGenerator>("CloudGenerator");
+
+		// Get POI visualizer
+		_poiVisualizer = GetNode<POIDebugVisualizer>("POIDebugVisualizer");
 
 		// Set seed
 		if (Seed == 0)
@@ -87,6 +92,12 @@ public partial class World : Node3D
 		if (@event is InputEventKey keyEvent && keyEvent.Pressed && Input.IsActionJustPressed("toggle_map"))
 		{
 			ToggleMapMode();
+		}
+
+		// Toggle POI markers when P is pressed
+		if (@event is InputEventKey keyEvent2 && keyEvent2.Pressed && keyEvent2.Keycode == Key.P)
+		{
+			TogglePOIMarkers();
 		}
 
 		// Handle map input when in map mode
@@ -541,6 +552,22 @@ public partial class World : Node3D
 		_player.Position = spawnPosition;
 
 		GD.Print("Player spawned at position: " + spawnPosition);
+	}
+
+	/// <summary>
+	/// Toggle visibility of POI markers
+	/// </summary>
+	private void TogglePOIMarkers()
+	{
+		if (_poiVisualizer != null)
+		{
+			_poiVisualizer.ToggleMarkers();
+			GD.Print("POI markers toggled");
+		}
+		else
+		{
+			GD.Print("POI visualizer not found!");
+		}
 	}
 
 	private void OnChunkRequested(Vector2I chunkPosition)

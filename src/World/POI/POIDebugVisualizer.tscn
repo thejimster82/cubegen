@@ -1,0 +1,9 @@
+[gd_scene load_steps=2 format=3 uid="uid://bqnxvnxvxvxvx"]
+
+[ext_resource type="Script" path="res://src/World/POI/POIDebugVisualizer.cs" id="1_aaaaa"]
+
+[node name="POIDebugVisualizer" type="Node3D"]
+script = ExtResource("1_aaaaa")
+ShowPOIMarkers = true
+MarkerHeight = 100.0
+UpdateInterval = 1.0

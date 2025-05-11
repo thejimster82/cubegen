@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using CubeGen.World.Common;
+using CubeGen.World.POI;
 
 namespace CubeGen.World.Generation
 {
@@ -33,6 +34,10 @@ public partial class WorldGenerator : Node3D
 		ViewDistance = viewDistance;
 		BiomeRegionGenerator.Instance.Initialize(Seed);
 		GD.Print($"BiomeRegionGenerator initialized with seed: {Seed}");
+
+		// Initialize the POI generator
+		POIGenerator.Instance.Initialize(Seed);
+		GD.Print($"POIGenerator initialized with seed: {Seed}");
 
 		InitializeNoise();
 		_chunkManager = GetNode<ChunkManager>("ChunkManager");
@@ -199,6 +204,9 @@ public partial class WorldGenerator : Node3D
 				}
 			}
 		}
+
+		// Generate POIs for this chunk
+		GeneratePOIsForChunk(chunk, chunkPos, ChunkSize);
 
 		// Add objects like trees based on biome
 		AddBiomeObjects(chunk, chunkPos, ChunkSize);
@@ -889,6 +897,50 @@ public partial class WorldGenerator : Node3D
 			return VoxelType.Stone;
 
 		return VoxelType.Dirt;
+	}
+
+	/// <summary>
+	/// Generates POIs for a chunk
+	/// </summary>
+	private void GeneratePOIsForChunk(VoxelChunk chunk, Vector2I chunkPos, int chunkSize)
+	{
+		// Get world coordinates for this chunk
+		int chunkWorldX = chunkPos.X * chunkSize;
+		int chunkWorldZ = chunkPos.Y * chunkSize;
+
+		// Check for POIs in this chunk
+		List<PointOfInterest> poisInChunk = new List<PointOfInterest>();
+
+		// First, check if any existing POIs intersect this chunk
+		poisInChunk.AddRange(POIGenerator.Instance.GetPOIsForChunk(chunkPos, chunkSize));
+
+		// Then, check if we should generate new POIs in this chunk
+		// We'll check a few sample points within the chunk
+		int samplePoints = 4; // Check 4 points within the chunk
+		for (int i = 0; i < samplePoints; i++)
+		{
+			for (int j = 0; j < samplePoints; j++)
+			{
+				// Calculate world position for this sample point
+				int worldX = chunkWorldX + (i * chunkSize / samplePoints) + (chunkSize / (2 * samplePoints));
+				int worldZ = chunkWorldZ + (j * chunkSize / samplePoints) + (chunkSize / (2 * samplePoints));
+
+				// Try to generate a POI at this position
+				PointOfInterest poi = POIGenerator.Instance.GetOrGeneratePOI(worldX, worldZ);
+
+				// If a POI was generated and it's not already in our list, add it
+				if (poi != null && !poisInChunk.Contains(poi))
+				{
+					poisInChunk.Add(poi);
+				}
+			}
+		}
+
+		// Generate structures for each POI that intersects this chunk
+		foreach (var poi in poisInChunk)
+		{
+			POIStructureGenerator.GeneratePOIStructure(poi, chunk, chunkSize, ChunkHeight);
+		}
 	}
 
 	private void AddBiomeObjects(VoxelChunk chunk, Vector2I chunkPos, int chunkSize)

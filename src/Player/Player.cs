@@ -19,9 +19,9 @@ public partial class Player : CharacterBody3D
 	[Export] public float MaxStepHeight { get; set; } = 1.2f; // Set higher than voxel height to allow climbing walls
 
 	// Climbing properties
-	[Export] public float ClimbingSpeed { get; set; } = 3.0f; // Speed when climbing walls (increased from 2.0f)
-	[Export] public float ClimbingAcceleration { get; set; } = 0.2f; // Acceleration when climbing (increased from 0.15f)
-	[Export] public float WallDetectionDistance { get; set; } = 1.0f; // Distance to detect walls for climbing (increased from 0.6f)
+	[Export] public float ClimbingSpeed { get; set; } = 2.1f; // Speed when climbing walls (reduced by 30% from 3.0f)
+	[Export] public float ClimbingAcceleration { get; set; } = 0.2f; // Acceleration when climbing
+	[Export] public float WallDetectionDistance { get; set; } = 1.0f; // Distance to detect walls for climbing
 
 	// Water physics properties
 	[Export] public float WaterDragFactor { get; set; } = 0.7f; // Slows movement in water

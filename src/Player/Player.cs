@@ -38,6 +38,7 @@ public partial class Player : CharacterBody3D
 	private bool _isInWater = false; // Tracks if player is in water
 	private bool _isClimbing = false; // Tracks if player is climbing
 	private Vector3 _climbNormal = Vector3.Zero; // Normal of the wall being climbed
+	private float _climbCooldown = 0.0f; // Cooldown timer after releasing space
 	private Label _waterIndicator; // UI indicator for when player is in water
 	private Label _climbingIndicator; // UI indicator for when player is climbing
 	private ColorRect _waterDebugIndicator; // Visual debug indicator for water detection
@@ -773,13 +774,21 @@ public partial class Player : CharacterBody3D
 	{
 		Vector3 velocity = Velocity;
 
+		// Update climb cooldown timer
+		if (_climbCooldown > 0)
+		{
+			_climbCooldown -= (float)delta;
+			if (_climbCooldown < 0)
+				_climbCooldown = 0;
+		}
+
 		// Check if player is in water
 		bool wasInWater = _isInWater;
 		_isInWater = CheckIfInWater();
 
-		// Check if player is climbing
+		// Check if player is climbing (only if not in cooldown)
 		bool wasClimbing = _isClimbing;
-		_isClimbing = CheckForClimbableWall(out _climbNormal);
+		_isClimbing = _climbCooldown <= 0 && CheckForClimbableWall(out _climbNormal);
 
 		// Update water indicator visibility
 		if (_waterIndicator != null)
@@ -1064,14 +1073,16 @@ public partial class Player : CharacterBody3D
 			// Stop climbing if the jump key (space) is released
 			if (!Input.IsActionPressed("ui_accept"))
 			{
-				// Stop climbing and push slightly away from the wall
-				velocity += _climbNormal * 1.0f; // Small push away from wall
+				// Stop climbing and let gravity take over
+				// Add a very tiny push to prevent sticking to the wall
+				velocity += _climbNormal * 0.1f; // Minimal push away from wall
 
-				// Stop climbing
+				// Stop climbing and set cooldown to prevent immediate re-grab
 				_isClimbing = false;
+				_climbCooldown = 0.3f; // 0.3 seconds cooldown
 
 				// Debug output
-				GD.Print("Stopped climbing - space released");
+				GD.Print("Stopped climbing - space released, cooldown started");
 			}
 		}
 		else
@@ -1288,11 +1299,8 @@ public partial class Player : CharacterBody3D
 		// If we found a wall, check if we should start climbing
 		if (foundWall)
 		{
-			// Start climbing if:
-			// 1. The jump key (space) is pressed, OR
-			// 2. We're in the air (jumping or falling) and not on the floor
-			bool shouldClimb = Input.IsActionPressed("ui_accept") ||
-							   (!IsOnFloor() && Velocity.Y != 0);
+			// ONLY start climbing if the jump key (space) is pressed
+			bool shouldClimb = Input.IsActionPressed("ui_accept");
 
 			return shouldClimb;
 		}

@@ -53,15 +53,15 @@ public partial class ChunkManager : Node3D
 	// Method to get voxel type across chunk boundaries
 	public VoxelType GetVoxelType(int worldX, int worldY, int worldZ)
 	{
-		// Use the WorldDataProvider as the source of truth
-		return CubeGen.World.Generation.WorldDataProvider.Instance.GetVoxelTypeAt(worldX, worldY, worldZ);
+		// Use the VoxelStore as the source of truth
+		return CubeGen.World.Common.VoxelStore.Instance.GetVoxelType(worldX, worldY, worldZ);
 	}
 
 	// Method to get voxel data across chunk boundaries
 	public bool IsVoxelSolid(int worldX, int worldY, int worldZ)
 	{
-		// Get the voxel type from the WorldDataProvider
-		VoxelType voxelType = CubeGen.World.Generation.WorldDataProvider.Instance.GetVoxelTypeAt(worldX, worldY, worldZ);
+		// Get the voxel type from the VoxelStore
+		VoxelType voxelType = CubeGen.World.Common.VoxelStore.Instance.GetVoxelType(worldX, worldY, worldZ);
 
 		// Special case: don't consider decoration types as solid for visibility calculations
 		if (VoxelProperties.IsDecoration(voxelType))
@@ -76,8 +76,8 @@ public partial class ChunkManager : Node3D
 	// Method to check if a voxel is occluding for ambient occlusion calculations
 	public bool IsVoxelOccluding(int worldX, int worldY, int worldZ)
 	{
-		// Get the voxel type from the WorldDataProvider
-		VoxelType voxelType = CubeGen.World.Generation.WorldDataProvider.Instance.GetVoxelTypeAt(worldX, worldY, worldZ);
+		// Get the voxel type from the VoxelStore
+		VoxelType voxelType = CubeGen.World.Common.VoxelStore.Instance.GetVoxelType(worldX, worldY, worldZ);
 
 		// Use the VoxelProperties.IsOccluding method to determine if this voxel occludes light
 		return VoxelProperties.IsOccluding(voxelType);

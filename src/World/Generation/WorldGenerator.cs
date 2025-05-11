@@ -119,16 +119,26 @@ public partial class WorldGenerator : Node3D
 	{
 		if (_chunkManager == null) return;
 
+		// Check if the chunk has already been generated in the VoxelStore
+		if (CubeGen.World.Common.VoxelStore.Instance.IsChunkGenerated(chunkPos))
+		{
+			// If it's already generated, just create a chunk object and populate it
+			VoxelChunk existingChunk = new VoxelChunk(ChunkSize, ChunkHeight, chunkPos, VoxelScale);
+			existingChunk.PopulateFromWorldProvider();
+
+			// Add the chunk data to the chunk manager
+			_chunkManager.AddChunk(existingChunk);
+			return;
+		}
+
 		// Create chunk data
 		VoxelChunk chunk = new VoxelChunk(ChunkSize, ChunkHeight, chunkPos, VoxelScale);
 
-		// Populate the chunk from the world data provider
-		// This is the key change - the chunk now gets all its data from the provider
-		// instead of generating it internally
+		// Populate the chunk from the voxel store
+		// The voxel store will generate voxels on demand using the WorldDataProvider
 		chunk.PopulateFromWorldProvider();
 
 		// Process the chunk for fauna spawning
-		// Note: In a full implementation, fauna would also be handled by the WorldDataProvider
 		CubeGen.World.Fauna.FaunaSpawner.Instance.ProcessChunkForFauna(chunk);
 
 		// Add the chunk data to the chunk manager

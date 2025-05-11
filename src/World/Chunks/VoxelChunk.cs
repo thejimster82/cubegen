@@ -51,16 +51,16 @@ public class VoxelChunk
     }
 
     /// <summary>
-    /// Populate this chunk with data from the world provider
+    /// Populate this chunk with data from the voxel store
     /// </summary>
     public void PopulateFromWorldProvider()
     {
         if (_isPopulated) return; // Don't populate twice
 
-        // Get the world data provider
-        WorldDataProvider provider = WorldDataProvider.Instance;
+        // Get the voxel store
+        VoxelStore voxelStore = VoxelStore.Instance;
 
-        // For each voxel in the chunk, query the world provider
+        // For each voxel in the chunk, query the voxel store
         for (int x = 0; x < Size; x++)
         {
             for (int y = 0; y < Height; y++)
@@ -72,11 +72,20 @@ public class VoxelChunk
                     int worldY = y;
                     int worldZ = Position.Y * Size + z;
 
-                    // Get the voxel type from the world provider
-                    _voxels[x][y][z] = provider.GetVoxelTypeAt(worldX, worldY, worldZ);
+                    // Get the voxel type from the voxel store
+                    _voxels[x][y][z] = voxelStore.GetVoxelType(worldX, worldY, worldZ);
+
+                    // Check for decoration placement information
+                    if (voxelStore.TryGetDecorationPlacement(worldX, worldY, worldZ, out var placement))
+                    {
+                        SetDecorationPlacement(x, y, z, placement);
+                    }
                 }
             }
         }
+
+        // Mark the chunk as generated in the voxel store
+        voxelStore.MarkChunkAsGenerated(Position);
 
         _isPopulated = true;
     }

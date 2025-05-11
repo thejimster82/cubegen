@@ -52,6 +52,9 @@ namespace CubeGen.World.Generation
             // Initialize noise generators
             InitializeNoiseGenerators();
 
+            // Initialize the voxel store with a reference to this provider
+            VoxelStore.Instance.Initialize(this);
+
             GD.Print($"WorldDataProvider initialized with seed {_seed}");
         }
 
@@ -80,6 +83,15 @@ namespace CubeGen.World.Generation
         /// Get the voxel type at any world coordinate
         /// </summary>
         public VoxelType GetVoxelTypeAt(int worldX, int worldY, int worldZ)
+        {
+            // Use the VoxelStore as the single source of truth
+            return VoxelStore.Instance.GetVoxelType(worldX, worldY, worldZ);
+        }
+
+        /// <summary>
+        /// Generate the voxel type at any world coordinate (called by VoxelStore)
+        /// </summary>
+        public VoxelType GenerateVoxelTypeAt(int worldX, int worldY, int worldZ)
         {
             // First check if this position is part of a feature (tree, etc.)
             VoxelType featureVoxel = GetFeatureVoxelAt(worldX, worldY, worldZ);

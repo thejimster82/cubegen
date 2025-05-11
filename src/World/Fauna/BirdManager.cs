@@ -13,10 +13,10 @@ namespace CubeGen.World.Fauna
     /// </summary>
     public partial class BirdManager : Node3D
     {
-        [Export] public int MaxBirds { get; set; } = 20;
+        [Export] public int MaxBirds { get; set; } = 8; // Reduced from 20 to 8
         [Export] public float SpawnHeight { get; set; } = 40.0f;
-        [Export] public float SpawnRadius { get; set; } = 100.0f;
-        [Export] public float DespawnDistance { get; set; } = 150.0f;
+        [Export] public float SpawnRadius { get; set; } = 150.0f; // Increased from 100.0f to 150.0f
+        [Export] public float DespawnDistance { get; set; } = 200.0f; // Increased from 150.0f to 200.0f
         [Export] public float UpdateInterval { get; set; } = 1.0f;
         [Export] public PackedScene BirdScene { get; set; }
 
@@ -68,6 +68,31 @@ namespace CubeGen.World.Fauna
         {
             // Update timer
             _updateTimer += (float)delta;
+
+            // Handle gradual spawning if active
+            if (_gradualSpawningActive)
+            {
+                _gradualSpawnTimer += (float)delta;
+
+                // Check if it's time to spawn another bird
+                if (_gradualSpawnTimer >= GRADUAL_SPAWN_INTERVAL)
+                {
+                    _gradualSpawnTimer = 0.0f;
+
+                    // If we haven't reached the target number of birds, spawn another one
+                    if (_activeBirds.Count < MaxBirds)
+                    {
+                        SpawnBird();
+                        GD.Print($"Gradually spawned bird. Active birds: {_activeBirds.Count}/{MaxBirds}");
+                    }
+                    else
+                    {
+                        // If we've reached the target, stop gradual spawning
+                        _gradualSpawningActive = false;
+                        GD.Print("Gradual bird spawning complete");
+                    }
+                }
+            }
 
             // Perform periodic updates
             if (_updateTimer >= UpdateInterval)
@@ -130,48 +155,40 @@ namespace CubeGen.World.Fauna
         /// </summary>
         private void SpawnInitialBirds()
         {
-            // Spawn just a few birds to start (to avoid sudden appearance)
-            int initialBirdCount = Mathf.Min(5, MaxBirds / 4);
+            // Spawn just a couple of birds to start (to avoid sudden appearance)
+            int initialBirdCount = Mathf.Min(2, MaxBirds / 6); // Reduced from 5 to 2
 
-            for (int i = 0; i < initialBirdCount; i++)
+            // Only spawn initial birds if we have a player reference
+            if (_player != null)
             {
-                SpawnBird();
-            }
+                for (int i = 0; i < initialBirdCount; i++)
+                {
+                    SpawnBird();
+                }
 
-            GD.Print($"Spawned {initialBirdCount} initial birds");
-
-            // Create a timer to gradually spawn more birds
-            Timer spawnTimer = new Timer();
-            spawnTimer.WaitTime = 2.0f; // Spawn birds every 2 seconds
-            spawnTimer.Timeout += OnSpawnTimerTimeout;
-            spawnTimer.OneShot = false;
-            AddChild(spawnTimer);
-            spawnTimer.Start();
-        }
-
-        /// <summary>
-        /// Called when the spawn timer times out
-        /// </summary>
-        private void OnSpawnTimerTimeout()
-        {
-            // If we haven't reached the target number of birds, spawn another one
-            if (_activeBirds.Count < MaxBirds)
-            {
-                SpawnBird();
-                GD.Print($"Gradually spawned bird. Active birds: {_activeBirds.Count}/{MaxBirds}");
+                GD.Print($"Spawned {initialBirdCount} initial birds");
             }
             else
             {
-                // If we've reached the target, stop the timer
-                Timer spawnTimer = GetNode<Timer>("Timer");
-                if (spawnTimer != null)
-                {
-                    spawnTimer.Stop();
-                    spawnTimer.QueueFree();
-                    GD.Print("Gradual bird spawning complete");
-                }
+                GD.Print("No player reference, delaying initial bird spawning");
+                initialBirdCount = 0;
             }
+
+            // We'll use a different approach to avoid Timer issues
+            // Instead of using a separate timer, we'll use the existing update timer
+            // and a flag to indicate gradual spawning is in progress
+            _gradualSpawningActive = true;
+            _gradualSpawnTimer = 0.0f;
+
+            GD.Print("Gradual bird spawning started");
         }
+
+        // Flag to track if gradual spawning is active
+        private bool _gradualSpawningActive = false;
+        // Timer for gradual spawning
+        private float _gradualSpawnTimer = 0.0f;
+        // Interval between gradual spawns
+        private const float GRADUAL_SPAWN_INTERVAL = 4.0f; // Increased from 2.0f to 4.0f
 
         /// <summary>
         /// Update bird population based on player position
@@ -183,10 +200,19 @@ namespace CubeGen.World.Fauna
 
             Vector3 playerPosition = _player.GlobalPosition;
 
+            // Store the current active birds in a temporary list to avoid modification issues
+            List<Bird> currentBirds = new List<Bird>(_activeBirds);
+
+            // Track birds to despawn
+            List<Bird> birdsToRemove = new List<Bird>();
+
             // Check for birds that are too far away
-            for (int i = _activeBirds.Count - 1; i >= 0; i--)
+            foreach (Bird bird in currentBirds)
             {
-                Bird bird = _activeBirds[i];
+                // Skip birds that are already marked for removal
+                if (birdsToRemove.Contains(bird))
+                    continue;
+
                 float distanceToPlayer = bird.GlobalPosition.DistanceTo(playerPosition);
 
                 // Only despawn birds if they're either:
@@ -207,18 +233,26 @@ namespace CubeGen.World.Fauna
 
                 if (shouldDespawn)
                 {
-                    // Despawn bird
-                    DespawnBird(bird);
-                    _activeBirds.RemoveAt(i);
+                    // Mark bird for despawning
+                    birdsToRemove.Add(bird);
 
                     // Debug output
-                    GD.Print($"Despawned bird at distance {distanceToPlayer:F1}, state: {bird.GetCurrentState()}");
+                    GD.Print($"Marked bird for despawn at distance {distanceToPlayer:F1}, state: {bird.GetCurrentState()}");
                 }
+            }
+
+            // Now safely remove and despawn the birds
+            foreach (Bird bird in birdsToRemove)
+            {
+                // Despawn bird
+                DespawnBird(bird);
+                _activeBirds.Remove(bird);
             }
 
             // Spawn new birds if needed, but do it gradually
             // Only spawn one bird per update to avoid sudden appearance of many birds
-            if (_activeBirds.Count < MaxBirds && _random.NextDouble() < 0.3f)
+            // Reduced probability to make spawning even more gradual
+            if (_activeBirds.Count < MaxBirds && _random.NextDouble() < 0.2f)
             {
                 SpawnBird();
 
@@ -234,40 +268,34 @@ namespace CubeGen.World.Fauna
         {
             Bird bird;
 
-            // Try to reuse an inactive bird
-            if (!_inactiveBirds.TryTake(out bird))
+            // Always create a new bird instead of reusing
+            // This ensures each bird has a clean state
+            if (BirdScene != null)
             {
-                // Create a new bird if none are available
-                if (BirdScene != null)
-                {
-                    bird = BirdScene.Instantiate<Bird>();
-                }
-                else
-                {
-                    // Create bird directly if no scene is provided
-                    bird = new Bird();
-                }
-
-                // Set bird properties
-                ConfigureBird(bird);
-
-                // Add to scene
-                AddChild(bird);
+                bird = BirdScene.Instantiate<Bird>();
             }
             else
             {
-                // Reconfigure existing bird
-                ConfigureBird(bird);
-
-                // Make visible again
-                bird.Visible = true;
+                // Create bird directly if no scene is provided
+                bird = new Bird();
             }
+
+            // Set bird properties
+            ConfigureBird(bird);
 
             // Position the bird
             PositionBird(bird);
 
+            // Add the bird to the scene tree
+            AddChild(bird);
+
+            // Ensure the bird is visible
+            bird.Visible = true;
+
             // Add to active birds
             _activeBirds.Add(bird);
+
+            GD.Print("Created and added new bird to scene tree");
 
             return bird;
         }
@@ -338,9 +366,9 @@ namespace CubeGen.World.Fauna
             float angle = (float)_random.NextDouble() * Mathf.Pi * 2;
 
             // Random distance from player (within spawn radius, but not too close)
-            // Use a minimum distance to prevent birds from spawning too close to the player
-            float minDistance = SpawnRadius * 0.4f;
-            float maxDistance = SpawnRadius * 0.8f;
+            // Use a much larger minimum distance to prevent birds from spawning too close to the player
+            float minDistance = SpawnRadius * 0.7f;  // Increased from 0.4f to 0.7f
+            float maxDistance = SpawnRadius * 0.95f; // Increased from 0.8f to 0.95f
             float distance = minDistance + (float)_random.NextDouble() * (maxDistance - minDistance);
 
             // Calculate position
@@ -368,11 +396,25 @@ namespace CubeGen.World.Fauna
         /// </summary>
         private void DespawnBird(Bird bird)
         {
-            // Hide the bird
-            bird.Visible = false;
+            // Make sure the bird is properly removed from the scene
+            if (bird.IsInsideTree())
+            {
+                // Remove the bird from its parent
+                bird.GetParent()?.RemoveChild(bird);
 
-            // Add to inactive birds
-            _inactiveBirds.Add(bird);
+                // Debug output
+                GD.Print("Bird removed from scene tree");
+            }
+
+            // Completely free the bird to avoid any issues with reuse
+            // This is more reliable than trying to reuse birds
+            bird.QueueFree();
+
+            // We no longer add to inactive birds pool
+            // This avoids issues with reusing birds that might have state problems
+            // _inactiveBirds.Add(bird);
+
+            GD.Print("Bird properly despawned and queued for deletion");
         }
 
         /// <summary>

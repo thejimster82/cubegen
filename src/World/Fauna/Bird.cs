@@ -47,12 +47,40 @@ namespace CubeGen.World.Fauna
             FaunaName = "Bird";
             MovementSpeed = FlyingSpeed;
 
-            // Initialize flight pattern
+            // Initialize flight pattern with a unique random seed
+            _random = new Random(GetInstanceId().GetHashCode() + (int)(GlobalPosition.X * 1000) + (int)(GlobalPosition.Z * 1000));
             _circleCenter = GlobalPosition;
             _circleHeight = GlobalPosition.Y;
 
+            // Initialize circle radius with some randomness
+            _circleRadius = 5.0f + (float)_random.NextDouble() * 15.0f;
+
+            // Initialize circle angle with some randomness to prevent birds from flying in sync
+            _circleAngle = (float)_random.NextDouble() * Mathf.Pi * 2;
+
             // Start in flying state
             ChangeState(FaunaState.Moving);
+
+            // Debug output
+            GD.Print($"Bird initialized at {GlobalPosition}, circle center: {_circleCenter}, height: {_circleHeight}");
+        }
+
+        public override void _PhysicsProcess(double delta)
+        {
+            // This ensures the bird movement is processed every physics frame
+            // This is crucial for consistent movement
+            if (_currentState == FaunaState.Moving)
+            {
+                // Process movement in physics process for more consistent motion
+                if (_hasLandingTarget)
+                {
+                    MoveTowardsLanding(delta);
+                }
+                else
+                {
+                    FlyInCircularPattern(delta);
+                }
+            }
         }
 
         protected override void CreateModel()
@@ -159,21 +187,32 @@ namespace CubeGen.World.Fauna
 
         protected override void ProcessMovingState(double delta)
         {
-            // Check if we have a landing target
-            if (_hasLandingTarget)
-            {
-                // Move towards landing position
-                MoveTowardsLanding(delta);
-            }
-            else
-            {
-                // Fly in a circular pattern
-                FlyInCircularPattern(delta);
+            // We now handle the actual movement in _PhysicsProcess for more consistent motion
+            // Here we just handle state changes and occasional actions
 
-                // Occasionally look for landing spots
-                if (_stateTimer > 5.0f && _random.NextDouble() < 0.02f)
+            // Occasionally look for landing spots
+            if (_stateTimer > 5.0f && _random.NextDouble() < 0.01f)
+            {
+                LookForLandingSpot();
+            }
+
+            // Occasionally change flight parameters for more varied movement
+            if (_random.NextDouble() < 0.005f)
+            {
+                // Change radius - more variation for interesting patterns
+                _circleRadius = 5.0f + (float)_random.NextDouble() * 20.0f;
+
+                // Change height - keep within a reasonable range
+                _circleHeight = FlyingHeight + (float)_random.NextDouble() * 15.0f - 7.5f;
+
+                // Occasionally change the circle center for more varied flight paths
+                if (_random.NextDouble() < 0.2f)
                 {
-                    LookForLandingSpot();
+                    // Shift the circle center slightly
+                    float centerShiftX = (float)_random.NextDouble() * 10.0f - 5.0f;
+                    float centerShiftZ = (float)_random.NextDouble() * 10.0f - 5.0f;
+                    _circleCenter.X += centerShiftX;
+                    _circleCenter.Z += centerShiftZ;
                 }
             }
         }
@@ -263,25 +302,8 @@ namespace CubeGen.World.Fauna
             // Move to new position
             GlobalPosition = newPosition;
 
-            // Occasionally change circle parameters
-            if (_random.NextDouble() < 0.005f)
-            {
-                // Change radius - more variation for interesting patterns
-                _circleRadius = 5.0f + (float)_random.NextDouble() * 20.0f;
-
-                // Change height - keep within a reasonable range
-                _circleHeight = FlyingHeight + (float)_random.NextDouble() * 15.0f - 7.5f;
-
-                // Occasionally change the circle center for more varied flight paths
-                if (_random.NextDouble() < 0.2f)
-                {
-                    // Shift the circle center slightly
-                    float centerShiftX = (float)_random.NextDouble() * 10.0f - 5.0f;
-                    float centerShiftZ = (float)_random.NextDouble() * 10.0f - 5.0f;
-                    _circleCenter.X += centerShiftX;
-                    _circleCenter.Z += centerShiftZ;
-                }
-            }
+            // We now handle parameter changes in ProcessMovingState
+            // This ensures the movement is consistent and not interrupted
         }
 
         private void MoveTowardsLanding(double delta)

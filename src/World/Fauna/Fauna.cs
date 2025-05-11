@@ -45,6 +45,9 @@ namespace CubeGen.World.Fauna
 
             // Process current state
             ProcessState(delta);
+
+            // Ensure the fauna is always visible
+            Visible = true;
         }
 
         /// <summary>

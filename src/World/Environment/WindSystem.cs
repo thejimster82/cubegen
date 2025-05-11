@@ -72,7 +72,7 @@ namespace CubeGen.World.Environment
             WindStrength = Mathf.Clamp(
                 baseStrength + (_windNoise.GetNoise1D(_windTime * 0.2f + 100) * 0.2f),
                 0.1f,
-                1.0f
+                0.2f
             );
 
             // Update all wind-affected materials

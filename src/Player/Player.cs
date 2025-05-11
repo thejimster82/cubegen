@@ -3,6 +3,8 @@ using System;
 using System.Reflection;
 using CubeGen.World.Common;
 using CubeGen.World.Generation;
+using CubeGen.Player;
+using CubeGen.Player.CharacterParts;
 
 public partial class Player : CharacterBody3D
 {
@@ -35,11 +37,17 @@ public partial class Player : CharacterBody3D
 	private ColorRect _underwaterOverlay; // Translucent overlay for underwater effect
 	private float _currentCameraDistance; // For smoothing camera movement
 
+	// Voxel character
+	private VoxelCharacter _voxelCharacter;
+
 	public override void _Ready()
 	{
 		_head = GetNode<Node3D>("Head");
 		_cameraMount = GetNode<Node3D>("CameraMount");
 		_camera = GetNode<Camera3D>("CameraMount/Camera3D");
+
+		// Create voxel character
+		CreateVoxelCharacter();
 
 		// Let's take a completely different approach - instead of reparenting,
 		// we'll create a SpringArm3D but keep the original camera setup
@@ -92,6 +100,64 @@ public partial class Player : CharacterBody3D
 
 		// Create water indicator UI
 		CreateWaterIndicator();
+	}
+
+	/// <summary>
+	/// Create the voxel character and replace the capsule mesh
+	/// </summary>
+	private void CreateVoxelCharacter()
+	{
+		// Remove the existing capsule mesh
+		var existingMesh = GetNodeOrNull<MeshInstance3D>("MeshInstance3D");
+		if (existingMesh != null)
+		{
+			existingMesh.QueueFree();
+		}
+
+		// Create the voxel character
+		_voxelCharacter = new VoxelCharacter();
+		_voxelCharacter.Name = "VoxelCharacter";
+
+		// Add the character to the player
+		AddChild(_voxelCharacter);
+
+		// Position the character to match the collision shape
+		var collisionShape = GetNode<CollisionShape3D>("CollisionShape3D");
+		if (collisionShape != null)
+		{
+			_voxelCharacter.Position = collisionShape.Position;
+		}
+		else
+		{
+			_voxelCharacter.Position = new Vector3(0, 0.75f, 0);
+		}
+	}
+
+	/// <summary>
+	/// Regenerate all character meshes to fix face culling issues
+	/// </summary>
+	public void RegenerateCharacterMeshes()
+	{
+		if (_voxelCharacter != null)
+		{
+			_voxelCharacter.RegenerateAllMeshes();
+		}
+	}
+
+	/// <summary>
+	/// Recreate the character with the updated voxel size
+	/// </summary>
+	public void RecreateCharacterWithNewVoxelSize()
+	{
+		// Remove the existing voxel character
+		if (_voxelCharacter != null)
+		{
+			_voxelCharacter.QueueFree();
+			_voxelCharacter = null;
+		}
+
+		// Create a new voxel character with the updated voxel size
+		CreateVoxelCharacter();
 	}
 
 	// Create a UI indicator for when the player is in water
@@ -912,5 +978,56 @@ public partial class Player : CharacterBody3D
 
 		Velocity = velocity;
 		MoveAndSlide();
+
+		// Animate the voxel character if it exists
+		if (_voxelCharacter != null)
+		{
+			// Determine if the player is walking based on horizontal velocity
+			bool isWalking = new Vector2(velocity.X, velocity.Z).Length() > 0.1f;
+
+			// Determine if the player is jumping based on vertical velocity and floor state
+			bool isJumping = !IsOnFloor() && velocity.Y > 0;
+
+			// Update character animation
+			_voxelCharacter.UpdateAnimation(delta, isWalking, isJumping, velocity);
+
+			// Rotate character to face movement direction
+			if (direction != Vector3.Zero)
+			{
+				// Calculate target rotation based on movement direction
+				float targetRotation = Mathf.Atan2(direction.X, direction.Z);
+
+				// Smoothly rotate the character towards the target rotation
+				float currentRotation = _voxelCharacter.Rotation.Y;
+
+				// Calculate the shortest angle difference (handles wrapping around)
+				float rotationDifference = CalculateShortestAngleDifference(currentRotation, targetRotation);
+
+				// Apply smooth rotation with speed based on delta time
+				float rotationSpeed = 10.0f * (float)delta;
+				float newRotation = currentRotation + Mathf.Clamp(rotationDifference, -rotationSpeed, rotationSpeed);
+
+				// Apply rotation to character
+				_voxelCharacter.Rotation = new Vector3(0, newRotation, 0);
+			}
+		}
+	}
+
+	/// <summary>
+	/// Calculate the shortest angle difference between two angles in radians
+	/// </summary>
+	private float CalculateShortestAngleDifference(float current, float target)
+	{
+		// Normalize angles to be between -PI and PI
+		float difference = target - current;
+
+		// Wrap around to find the shortest path
+		while (difference > Mathf.Pi)
+			difference -= Mathf.Pi * 2;
+
+		while (difference < -Mathf.Pi)
+			difference += Mathf.Pi * 2;
+
+		return difference;
 	}
 }

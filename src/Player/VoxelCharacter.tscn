@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://dgkubyw2nwcx0"]
+
+[ext_resource type="Script" uid="uid://dglsqr3oukias" path="res://src/Player/VoxelCharacter.cs" id="1_yvnqm"]
+
+[node name="VoxelCharacter" type="Node3D"]
+script = ExtResource("1_yvnqm")

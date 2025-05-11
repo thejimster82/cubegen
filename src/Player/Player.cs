@@ -963,6 +963,44 @@ public partial class Player : CharacterBody3D
 
 			// Update character animation
 			_voxelCharacter.UpdateAnimation(delta, isWalking, isJumping, velocity);
+
+			// Rotate character to face movement direction
+			if (direction != Vector3.Zero)
+			{
+				// Calculate target rotation based on movement direction
+				float targetRotation = Mathf.Atan2(direction.X, direction.Z);
+
+				// Smoothly rotate the character towards the target rotation
+				float currentRotation = _voxelCharacter.Rotation.Y;
+
+				// Calculate the shortest angle difference (handles wrapping around)
+				float rotationDifference = CalculateShortestAngleDifference(currentRotation, targetRotation);
+
+				// Apply smooth rotation with speed based on delta time
+				float rotationSpeed = 10.0f * (float)delta;
+				float newRotation = currentRotation + Mathf.Clamp(rotationDifference, -rotationSpeed, rotationSpeed);
+
+				// Apply rotation to character
+				_voxelCharacter.Rotation = new Vector3(0, newRotation, 0);
+			}
 		}
+	}
+
+	/// <summary>
+	/// Calculate the shortest angle difference between two angles in radians
+	/// </summary>
+	private float CalculateShortestAngleDifference(float current, float target)
+	{
+		// Normalize angles to be between -PI and PI
+		float difference = target - current;
+
+		// Wrap around to find the shortest path
+		while (difference > Mathf.Pi)
+			difference -= Mathf.Pi * 2;
+
+		while (difference < -Mathf.Pi)
+			difference += Mathf.Pi * 2;
+
+		return difference;
 	}
 }

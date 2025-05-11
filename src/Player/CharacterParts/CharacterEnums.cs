@@ -12,6 +12,7 @@ namespace CubeGen.Player.CharacterParts
         Short,
         Long,
         Mohawk,
-        Bald
+        Bald,
+        Blonde  // New blonde hairstyle like in the reference image
     }
 }

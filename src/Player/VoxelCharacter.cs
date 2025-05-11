@@ -27,10 +27,10 @@ namespace CubeGen.Player
 
         // Customization properties
         [Export] public Color SkinColor { get; set; } = new Color(0.9f, 0.75f, 0.65f);
-        [Export] public Color HairColor { get; set; } = new Color(0.6f, 0.4f, 0.2f);
-        [Export] public Color ShirtColor { get; set; } = new Color(0.2f, 0.4f, 0.8f);
-        [Export] public Color PantsColor { get; set; } = new Color(0.3f, 0.3f, 0.7f);
-        [Export] public HairStyle HairStyle { get; set; } = HairStyle.Short;
+        [Export] public Color HairColor { get; set; } = new Color(0.9f, 0.8f, 0.2f); // Blonde hair color like in reference
+        [Export] public Color ShirtColor { get; set; } = new Color(0.4f, 0.3f, 0.6f); // Purple shirt like in reference
+        [Export] public Color PantsColor { get; set; } = new Color(0.3f, 0.3f, 0.3f); // Dark pants like in reference
+        [Export] public HairStyle HairStyle { get; set; } = HairStyle.Blonde; // Use the new blonde hairstyle
 
         // Collision shape for the character
         private CollisionShape3D _collisionShape;
@@ -113,19 +113,21 @@ namespace CubeGen.Player
         /// </summary>
         private void PositionBodyParts()
         {
-            // Position head on top of body
-            _head.Position = new Vector3(0, 0.65f, 0);
+            // Position head on top of body with a slight gap for neck
+            _head.Position = new Vector3(0, 0.55f, 0);
 
             // Body is at the center
             _body.Position = new Vector3(0, 0, 0);
 
             // Position arms on sides of body
-            _leftArm.Position = new Vector3(-0.4f, 0.1f, 0);
-            _rightArm.Position = new Vector3(0.4f, 0.1f, 0);
+            // Move arms slightly lower and further out for a more stylized look
+            _leftArm.Position = new Vector3(-0.35f, 0.05f, 0);
+            _rightArm.Position = new Vector3(0.35f, 0.05f, 0);
 
             // Position legs below body
-            _leftLeg.Position = new Vector3(-0.2f, -0.7f, 0);
-            _rightLeg.Position = new Vector3(0.2f, -0.7f, 0);
+            // Spread legs slightly further apart for stability
+            _leftLeg.Position = new Vector3(-0.15f, -0.55f, 0);
+            _rightLeg.Position = new Vector3(0.15f, -0.55f, 0);
         }
 
         /// <summary>
@@ -198,24 +200,24 @@ namespace CubeGen.Player
         {
             if (_isWalking)
             {
-                // Animate legs
-                float legAngle = Mathf.Sin(_walkCycle) * 0.5f;
+                // Animate legs with more exaggerated motion for stylized look
+                float legAngle = Mathf.Sin(_walkCycle) * 0.6f;
                 _leftLeg.Rotation = new Vector3(legAngle, 0, 0);
                 _rightLeg.Rotation = new Vector3(-legAngle, 0, 0);
 
-                // Animate arms (opposite of legs)
-                float armAngle = Mathf.Sin(_walkCycle) * 0.3f;
+                // Animate arms (opposite of legs) with more exaggerated motion
+                float armAngle = Mathf.Sin(_walkCycle) * 0.4f;
                 _leftArm.Rotation = new Vector3(-armAngle, 0, 0);
                 _rightArm.Rotation = new Vector3(armAngle, 0, 0);
 
-                // Slight body bob
-                float bodyBob = Mathf.Abs(Mathf.Sin(_walkCycle)) * 0.05f;
+                // More pronounced body bob for stylized look
+                float bodyBob = Mathf.Abs(Mathf.Sin(_walkCycle)) * 0.07f;
                 _body.Position = new Vector3(0, bodyBob, 0);
 
                 // Adjust head and other parts to follow body
-                _head.Position = new Vector3(0, 0.65f + bodyBob, 0);
-                _leftArm.Position = new Vector3(-0.4f, 0.1f + bodyBob, 0);
-                _rightArm.Position = new Vector3(0.4f, 0.1f + bodyBob, 0);
+                _head.Position = new Vector3(0, 0.55f + bodyBob, 0);
+                _leftArm.Position = new Vector3(-0.35f, 0.05f + bodyBob, 0);
+                _rightArm.Position = new Vector3(0.35f, 0.05f + bodyBob, 0);
             }
             else
             {
@@ -225,9 +227,9 @@ namespace CubeGen.Player
                 _leftArm.Rotation = Vector3.Zero;
                 _rightArm.Rotation = Vector3.Zero;
                 _body.Position = new Vector3(0, 0, 0);
-                _head.Position = new Vector3(0, 0.65f, 0);
-                _leftArm.Position = new Vector3(-0.4f, 0.1f, 0);
-                _rightArm.Position = new Vector3(0.4f, 0.1f, 0);
+                _head.Position = new Vector3(0, 0.55f, 0);
+                _leftArm.Position = new Vector3(-0.35f, 0.05f, 0);
+                _rightArm.Position = new Vector3(0.35f, 0.05f, 0);
             }
         }
 
@@ -238,13 +240,23 @@ namespace CubeGen.Player
         {
             if (_isJumping)
             {
-                // Bend legs slightly
-                _leftLeg.Rotation = new Vector3(-0.2f, 0, 0);
-                _rightLeg.Rotation = new Vector3(-0.2f, 0, 0);
+                // Bend legs more for a stylized jump pose
+                _leftLeg.Rotation = new Vector3(-0.3f, 0, 0);
+                _rightLeg.Rotation = new Vector3(-0.3f, 0, 0);
 
-                // Raise arms
-                _leftArm.Rotation = new Vector3(-0.4f, 0, 0);
-                _rightArm.Rotation = new Vector3(-0.4f, 0, 0);
+                // Raise arms higher for a more exaggerated pose
+                _leftArm.Rotation = new Vector3(-0.6f, 0, 0);
+                _rightArm.Rotation = new Vector3(-0.6f, 0, 0);
+
+                // Slight forward tilt of the body for dynamic pose
+                _body.Rotation = new Vector3(0.1f, 0, 0);
+                _head.Rotation = new Vector3(0.1f, 0, 0);
+            }
+            else if (!_isWalking)
+            {
+                // Reset rotations when not jumping or walking
+                _body.Rotation = Vector3.Zero;
+                _head.Rotation = Vector3.Zero;
             }
         }
 

@@ -26,7 +26,7 @@ namespace CubeGen.Player.CharacterParts
         protected VoxelType[,,] _voxels;
 
         // Default voxel size (can be overridden)
-        protected float _voxelSize = 0.25f; // 1/4 size voxels for more detail
+        protected float _voxelSize = 0.125f; // 1/8 size voxels for more detail
 
         public override void _Ready()
         {

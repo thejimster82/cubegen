@@ -34,6 +34,10 @@ public partial class WorldGenerator : Node3D
 		BiomeRegionGenerator.Instance.Initialize(Seed);
 		GD.Print($"BiomeRegionGenerator initialized with seed: {Seed}");
 
+		// Reset the BiomeObjectManager to clear any out-of-bounds voxels from previous worlds
+		BiomeObjectManager.Reset();
+		GD.Print("BiomeObjectManager reset");
+
 		// Initialize the FaunaSpawner
 		var birdManager = GetNode<CubeGen.World.Fauna.BirdManager>("/root/World/BirdManager");
 		if (birdManager != null)
@@ -120,9 +124,16 @@ public partial class WorldGenerator : Node3D
 
 		// Blend biomes for this chunk
 		BlendChunkBiomes(chunk, chunkPos, ChunkSize);
-		
+
+		// Apply any out-of-bounds voxels from biome objects that were generated in other chunks
+		bool hasOutOfBoundsVoxels = BiomeObjectManager.ApplyOutOfBoundsVoxels(chunk);
+
 		// Add objects like trees based on biome
-		AddBiomeObjects(chunk, chunkPos, ChunkSize);
+		// Only generate new objects if there are no out-of-bounds voxels for this chunk
+		// This prevents duplicate objects at chunk boundaries
+		if (!hasOutOfBoundsVoxels) {
+			AddBiomeObjects(chunk, chunkPos, ChunkSize);
+		}
 
 		// Process the chunk for fauna spawning
 		CubeGen.World.Fauna.FaunaSpawner.Instance.ProcessChunkForFauna(chunk);
@@ -130,6 +141,9 @@ public partial class WorldGenerator : Node3D
 		// First, add the chunk data to the chunk manager
 		// This makes the data available for neighboring chunks' AO calculations
 		_chunkManager.AddChunk(chunk);
+
+		// Clean up out-of-bounds voxels for this chunk since they're no longer needed
+		BiomeObjectManager.CleanupOutOfBoundsVoxels(chunkPos);
 	}
 
 	private void BlendChunkBiomes(VoxelChunk chunk, Vector2I chunkPos, int chunkSize)
@@ -992,8 +1006,7 @@ public partial class WorldGenerator : Node3D
 						Vector2I worldPos = new Vector2I(worldX, worldZ);
 
 						// Check if this position should have a decoration based on clusters
-						DecorationClusters.DecorationPlacement placement;
-						if (DecorationClusters.ShouldPlaceDecoration(worldPos, out placement, random))
+						if (DecorationClusters.ShouldPlaceDecoration(worldPos, out var placement, random))
 						{
 							// Check if the decoration is appropriate for the surface block
 							bool canPlace = false;
@@ -1047,12 +1060,9 @@ public partial class WorldGenerator : Node3D
 					}
 				}
 
-				// Add biome-specific features with appropriate probability
-				// Check position is safely away from chunk boundaries
-				int safeDistance = 0; // Reduced safe distance to allow more features
-				if (x >= safeDistance && x < (chunkSize - safeDistance) &&
-					z >= safeDistance && z < (chunkSize - safeDistance))
-				{
+					// Add biome-specific features with appropriate probability
+					// We no longer need to check for safe distance from chunk boundaries
+					// since our cross-chunk object system handles out-of-bounds voxels
 					switch (biomeType)
 					{
 						case BiomeType.Desert:
@@ -1274,11 +1284,11 @@ public partial class WorldGenerator : Node3D
 									break;
 							}
 							break;
+							
 					}
 				}
 			}
 		}
-	}
 
 	// Helper method to check if a feature can be placed at a position
 	private bool CanPlaceFeature(bool[,] featureMap, int x, int z, int radius, int chunkSize)
@@ -1338,6 +1348,11 @@ public partial class WorldGenerator : Node3D
 		int trunkShiftX = random.Next(-6, 6);
 		int trunkShiftZ = random.Next(-6, 6);
 
+		// Calculate world coordinates for the anchor point
+		int worldX = chunk.Position.X * chunk.Size + x;
+		int worldY = surfaceHeight;
+		int worldZ = chunk.Position.Y * chunk.Size + z;
+
 		// Generate trunk with more detail
 		// Make the trunk thicker at the base (2x2 for first few blocks)
 		for (int y = 1; y <= Math.Min(10, trunkHeight); y++)
@@ -1348,11 +1363,30 @@ public partial class WorldGenerator : Node3D
 				{
 					int nx = x + dx;
 					int nz = z + dz;
+					int ny = surfaceHeight + y;
 
-					// We already checked chunk boundaries in AddBiomeObjects, so this should be safe
-					if (random.NextDouble() > 0.2f && surfaceHeight + y < chunk.Height)
+					// Calculate world coordinates for this voxel
+					int voxelWorldX = chunk.Position.X * chunk.Size + nx;
+					int voxelWorldY = ny;
+					int voxelWorldZ = chunk.Position.Y * chunk.Size + nz;
+
+					// Check if this voxel is within the current chunk's bounds
+					if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size && ny < chunk.Height)
 					{
-						chunk.SetVoxel(nx, surfaceHeight + y, nz, VoxelType.Wood);
+						// Place the voxel in the current chunk
+						if (random.NextDouble() > 0.2f)
+						{
+							chunk.SetVoxel(nx, ny, nz, VoxelType.Wood);
+						}
+					}
+					else
+					{
+						// Record this voxel as an out-of-bounds voxel for another chunk
+						if (random.NextDouble() > 0.2f)
+						{
+							BiomeObjectManager.RecordOutOfBoundsVoxel(voxelWorldX, voxelWorldY, voxelWorldZ,
+								VoxelType.Wood, chunk.Position, chunk.Size);
+						}
 					}
 				}
 			}
@@ -1363,22 +1397,36 @@ public partial class WorldGenerator : Node3D
 		float zFloat = z;
 		for (int y = 4; y <= trunkHeight; y++)
 		{
-			xFloat += (float)trunkShiftX / (float)trunkHeight;
-			zFloat += (float)trunkShiftZ / (float)trunkHeight;
-			x = (int)xFloat;
-			z = (int)zFloat;
+			xFloat += trunkShiftX / (float)trunkHeight;
+			zFloat += trunkShiftZ / (float)trunkHeight;
+			int nx = (int)xFloat;
+			int nz = (int)zFloat;
+			int ny = surfaceHeight + y;
+
 			// Create a 2x2 trunk base if there's room in the chunk
 			for (int dx = 0; dx <= trunkThickness; dx++)
 			{
 				for (int dz = 0; dz <= trunkThickness; dz++)
 				{
-					int nx = x + dx;
-					int nz = z + dz;
+					int trunkX = nx + dx;
+					int trunkZ = nz + dz;
 
-					// We already checked chunk boundaries in AddBiomeObjects, so this should be safe
-					if (surfaceHeight + y < chunk.Height)
+					// Calculate world coordinates for this voxel
+					int voxelWorldX = chunk.Position.X * chunk.Size + trunkX;
+					int voxelWorldY = ny;
+					int voxelWorldZ = chunk.Position.Y * chunk.Size + trunkZ;
+
+					// Check if this voxel is within the current chunk's bounds
+					if (trunkX >= 0 && trunkX < chunk.Size && trunkZ >= 0 && trunkZ < chunk.Size && ny < chunk.Height)
 					{
-						chunk.SetVoxel(nx, surfaceHeight + y, nz, VoxelType.Wood);
+						// Place the voxel in the current chunk
+						chunk.SetVoxel(trunkX, ny, trunkZ, VoxelType.Wood);
+					}
+					else
+					{
+						// Record this voxel as an out-of-bounds voxel for another chunk
+						BiomeObjectManager.RecordOutOfBoundsVoxel(voxelWorldX, voxelWorldY, voxelWorldZ,
+							VoxelType.Wood, chunk.Position, chunk.Size);
 					}
 				}
 			}
@@ -1386,6 +1434,8 @@ public partial class WorldGenerator : Node3D
 
 		// Generate leaf canopy (spherical/rounded shape)
 		int leafStartHeight = surfaceHeight + trunkHeight - leafHeight / 2;
+		int finalX = (int)xFloat;
+		int finalZ = (int)zFloat;
 
 		// Create a more balanced, symmetrical leaf structure
 		for (int y = 0; y < leafHeight; y++)
@@ -1412,22 +1462,30 @@ public partial class WorldGenerator : Node3D
 
 					if (distance <= effectiveRadius)
 					{
-						int nx = x + dx;
-						int nz = z + dz;
+						int nx = finalX + dx;
+						int nz = finalZ + dz;
 						int ny = leafStartHeight + y;
 
-						// We already checked chunk boundaries in AddBiomeObjects, so this should be safe
-						if (ny < chunk.Height)
+						// Calculate world coordinates for this voxel
+						int voxelWorldX = chunk.Position.X * chunk.Size + nx;
+						int voxelWorldY = ny;
+						int voxelWorldZ = chunk.Position.Y * chunk.Size + nz;
+
+						// Check if this voxel is within the current chunk's bounds
+						if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size && ny < chunk.Height)
 						{
 							// Don't overwrite the trunk
 							if (chunk.GetVoxel(nx, ny, nz) != VoxelType.Wood)
 							{
-								// Add some randomness to make leaves less uniform
-								// But ensure the tree still looks full and balanced
-								// if (distance > effectiveRadius - 0.8f && random.NextDouble() < 0.3f)
-
 								chunk.SetVoxel(nx, ny, nz, VoxelType.Leaves);
 							}
+						}
+						else
+						{
+							// Record this voxel as an out-of-bounds voxel for another chunk
+							// We don't need to check for trunk here since it will be handled by the target chunk
+							BiomeObjectManager.RecordOutOfBoundsVoxel(voxelWorldX, voxelWorldY, voxelWorldZ,
+								VoxelType.Leaves, chunk.Position, chunk.Size);
 						}
 					}
 				}
@@ -1818,6 +1876,11 @@ public partial class WorldGenerator : Node3D
 		int frondLength = random.Next(6, 10);  // Length of palm fronds
 		int frondCount = random.Next(5, 8);    // Number of fronds
 
+		// Calculate world coordinates for the anchor point
+		int worldX = chunk.Position.X * chunk.Size + x;
+		int worldY = surfaceHeight;
+		int worldZ = chunk.Position.Y * chunk.Size + z;
+
 		// Trunk bend parameters
 		int bendDirection = random.Next(0, 4); // 0=+x, 1=-x, 2=+z, 3=-z
 		float bendAmount = 0.2f + (float)random.NextDouble() * 0.3f; // 0.2 to 0.5
@@ -1842,17 +1905,30 @@ public partial class WorldGenerator : Node3D
 
 			int nx = x + (int)xOffset;
 			int nz = z + (int)zOffset;
+			int ny = surfaceHeight + y;
 
-			// Check chunk boundaries
-			if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size && surfaceHeight + y < chunk.Height)
+			// Calculate world coordinates for this voxel
+			int voxelWorldX = chunk.Position.X * chunk.Size + nx;
+			int voxelWorldY = ny;
+			int voxelWorldZ = chunk.Position.Y * chunk.Size + nz;
+
+			// Check if this voxel is within the current chunk's bounds
+			if (nx >= 0 && nx < chunk.Size && nz >= 0 && nz < chunk.Size && ny < chunk.Height)
 			{
-				chunk.SetVoxel(nx, surfaceHeight + y, nz, VoxelType.Wood);
+				// Place the voxel in the current chunk
+				chunk.SetVoxel(nx, ny, nz, VoxelType.Wood);
+			}
+			else
+			{
+				// Record this voxel as an out-of-bounds voxel for another chunk
+				BiomeObjectManager.RecordOutOfBoundsVoxel(voxelWorldX, voxelWorldY, voxelWorldZ,
+					VoxelType.Wood, chunk.Position, chunk.Size);
 			}
 		}
 
 		// Calculate top of trunk position
-		int topX = x + (int)(xOffset);
-		int topZ = z + (int)(zOffset);
+		int topX = x + (int)xOffset;
+		int topZ = z + (int)zOffset;
 		int topY = surfaceHeight + trunkHeight;
 
 		// Generate palm fronds (leaves)
@@ -1874,33 +1950,74 @@ public partial class WorldGenerator : Node3D
 				float heightOffset = -0.5f * j * j / frondLength + j * 0.5f;
 				int frondY = topY + (int)heightOffset;
 
-				// Check chunk boundaries
-				if (frondX >= 0 && frondX < chunk.Size && frondZ >= 0 && frondZ < chunk.Size &&
-					frondY >= 0 && frondY < chunk.Height)
+				// Calculate world coordinates for this voxel
+				int voxelWorldX = chunk.Position.X * chunk.Size + frondX;
+				int voxelWorldY = frondY;
+				int voxelWorldZ = chunk.Position.Y * chunk.Size + frondZ;
+
+				// Check if this voxel is within the current chunk's bounds
+				if (frondX >= 0 && frondX < chunk.Size && frondZ >= 0 && frondZ < chunk.Size && frondY >= 0 && frondY < chunk.Height)
 				{
 					// Add leaves
 					chunk.SetVoxel(frondX, frondY, frondZ, VoxelType.Leaves);
+				}
+				else
+				{
+					// Record this voxel as an out-of-bounds voxel for another chunk
+					BiomeObjectManager.RecordOutOfBoundsVoxel(voxelWorldX, voxelWorldY, voxelWorldZ,
+						VoxelType.Leaves, chunk.Position, chunk.Size);
+				}
 
-					// Add some width to the frond
-					if (j > 1 && j < frondLength - 1)
+				// Add some width to the frond
+				if (j > 1 && j < frondLength - 1)
+				{
+					// Add leaves to sides of the frond
+					int sideX1 = frondX + (int)dirZ;
+					int sideZ1 = frondZ - (int)dirX;
+					int sideX2 = frondX - (int)dirZ;
+					int sideZ2 = frondZ + (int)dirX;
+
+					// Only add side leaves with some probability
+					if (random.NextDouble() < 0.7f)
 					{
-						// Add leaves to sides of the frond
-						int sideX1 = frondX + (int)(dirZ);
-						int sideZ1 = frondZ - (int)(dirX);
-						int sideX2 = frondX - (int)(dirZ);
-						int sideZ2 = frondZ + (int)(dirX);
+						// Calculate world coordinates for side leaf 1
+						int side1WorldX = chunk.Position.X * chunk.Size + sideX1;
+						int side1WorldY = frondY;
+						int side1WorldZ = chunk.Position.Y * chunk.Size + sideZ1;
 
-						// Check chunk boundaries for side leaves
-						if (sideX1 >= 0 && sideX1 < chunk.Size && sideZ1 >= 0 && sideZ1 < chunk.Size &&
-							frondY >= 0 && frondY < chunk.Height && random.NextDouble() < 0.7f)
+						// Check if this voxel is within the current chunk's bounds
+						if (sideX1 >= 0 && sideX1 < chunk.Size && sideZ1 >= 0 && sideZ1 < chunk.Size && frondY >= 0 && frondY < chunk.Height)
 						{
+							// Add leaves
 							chunk.SetVoxel(sideX1, frondY, sideZ1, VoxelType.Leaves);
 						}
-
-						if (sideX2 >= 0 && sideX2 < chunk.Size && sideZ2 >= 0 && sideZ2 < chunk.Size &&
-							frondY >= 0 && frondY < chunk.Height && random.NextDouble() < 0.7f)
+						else
 						{
+							// Record this voxel as an out-of-bounds voxel for another chunk
+							BiomeObjectManager.RecordOutOfBoundsVoxel(side1WorldX, side1WorldY, side1WorldZ,
+								VoxelType.Leaves, chunk.Position, chunk.Size);
+						}
+					}
+
+					// Only add side leaves with some probability
+					if (random.NextDouble() < 0.7f)
+					{
+						// Calculate world coordinates for side leaf 2
+						int side2WorldX = chunk.Position.X * chunk.Size + sideX2;
+						int side2WorldY = frondY;
+						int side2WorldZ = chunk.Position.Y * chunk.Size + sideZ2;
+
+						// Check if this voxel is within the current chunk's bounds
+						if (sideX2 >= 0 && sideX2 < chunk.Size && sideZ2 >= 0 && sideZ2 < chunk.Size && frondY >= 0 && frondY < chunk.Height)
+						{
+							// Add leaves
 							chunk.SetVoxel(sideX2, frondY, sideZ2, VoxelType.Leaves);
+						}
+						else
+						{
+							// Record this voxel as an out-of-bounds voxel for another chunk
+							BiomeObjectManager.RecordOutOfBoundsVoxel(side2WorldX, side2WorldY, side2WorldZ,
+								VoxelType.Leaves, chunk.Position, chunk.Size);
 						}
 					}
 				}
@@ -1915,12 +2032,22 @@ public partial class WorldGenerator : Node3D
 			int coconutZ = topZ + random.Next(-1, 2);
 			int coconutY = topY - random.Next(0, 2);
 
-			// Check chunk boundaries
-			if (coconutX >= 0 && coconutX < chunk.Size && coconutZ >= 0 && coconutZ < chunk.Size &&
-				coconutY >= 0 && coconutY < chunk.Height)
+			// Calculate world coordinates for this coconut
+			int coconutWorldX = chunk.Position.X * chunk.Size + coconutX;
+			int coconutWorldY = coconutY;
+			int coconutWorldZ = chunk.Position.Y * chunk.Size + coconutZ;
+
+			// Check if this voxel is within the current chunk's bounds
+			if (coconutX >= 0 && coconutX < chunk.Size && coconutZ >= 0 && coconutZ < chunk.Size && coconutY >= 0 && coconutY < chunk.Height)
 			{
 				// Use wood voxel type for coconuts
 				chunk.SetVoxel(coconutX, coconutY, coconutZ, VoxelType.Wood);
+			}
+			else
+			{
+				// Record this voxel as an out-of-bounds voxel for another chunk
+				BiomeObjectManager.RecordOutOfBoundsVoxel(coconutWorldX, coconutWorldY, coconutWorldZ,
+					VoxelType.Wood, chunk.Position, chunk.Size);
 			}
 		}
 	}

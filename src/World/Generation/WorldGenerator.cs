@@ -118,6 +118,22 @@ public partial class WorldGenerator : Node3D
 		// Create chunk data
 		VoxelChunk chunk = new VoxelChunk(ChunkSize, ChunkHeight, chunkPos, VoxelScale);
 
+		// Blend biomes for this chunk
+		BlendChunkBiomes(chunk, chunkPos, ChunkSize);
+		
+		// Add objects like trees based on biome
+		AddBiomeObjects(chunk, chunkPos, ChunkSize);
+
+		// Process the chunk for fauna spawning
+		CubeGen.World.Fauna.FaunaSpawner.Instance.ProcessChunkForFauna(chunk);
+
+		// First, add the chunk data to the chunk manager
+		// This makes the data available for neighboring chunks' AO calculations
+		_chunkManager.AddChunk(chunk);
+	}
+
+	private void BlendChunkBiomes(VoxelChunk chunk, Vector2I chunkPos, int chunkSize)
+	{
 		// Check if this chunk is near any biome boundary
 		// Only calculate and store blend weights if it is
 		float blendDistance = 10f;
@@ -128,29 +144,28 @@ public partial class WorldGenerator : Node3D
 		// Use a 4x4 grid instead of calculating for every voxel
 		Dictionary<BiomeType, float>[,] blendWeightsGrid = null;
 		int gridSize = 2; // 4x4 grid for the chunk
-
 		if (isNearBiomeBoundary)
-		{
-			blendWeightsGrid = new Dictionary<BiomeType, float>[gridSize, gridSize];
-
-			// Calculate blend weights only at grid points
-			for (int gx = 0; gx < gridSize; gx++)
 			{
-				for (int gz = 0; gz < gridSize; gz++)
+				blendWeightsGrid = new Dictionary<BiomeType, float>[gridSize, gridSize];
+
+				// Calculate blend weights only at grid points
+				for (int gx = 0; gx < gridSize; gx++)
 				{
-					// Calculate world coordinates for this grid point
-					int worldX = chunkPos.X * ChunkSize + (gx * ChunkSize / (gridSize - 1));
-					int worldZ = chunkPos.Y * ChunkSize + (gz * ChunkSize / (gridSize - 1));
+					for (int gz = 0; gz < gridSize; gz++)
+					{
+						// Calculate world coordinates for this grid point
+						int worldX = chunkPos.X * ChunkSize + (gx * ChunkSize / (gridSize - 1));
+						int worldZ = chunkPos.Y * ChunkSize + (gz * ChunkSize / (gridSize - 1));
 
-					// Handle edge case for last grid point
-					if (gx == gridSize - 1) worldX = chunkPos.X * ChunkSize + ChunkSize - 1;
-					if (gz == gridSize - 1) worldZ = chunkPos.Y * ChunkSize + ChunkSize - 1;
+						// Handle edge case for last grid point
+						if (gx == gridSize - 1) worldX = chunkPos.X * ChunkSize + ChunkSize - 1;
+						if (gz == gridSize - 1) worldZ = chunkPos.Y * ChunkSize + ChunkSize - 1;
 
-					// Calculate blend weights at this grid point
-					blendWeightsGrid[gx, gz] = BiomeRegionGenerator.Instance.CalculateBiomeBlendWeights(worldX, worldZ, blendDistance);
+						// Calculate blend weights at this grid point
+						blendWeightsGrid[gx, gz] = BiomeRegionGenerator.Instance.CalculateBiomeBlendWeights(worldX, worldZ, blendDistance);
+					}
 				}
 			}
-		}
 
 		// Generate terrain for the chunk
 		for (int x = 0; x < ChunkSize; x++)
@@ -211,20 +226,10 @@ public partial class WorldGenerator : Node3D
 				}
 			}
 		}
-
-		// Add objects like trees based on biome
-		AddBiomeObjects(chunk, chunkPos, ChunkSize);
-
-		// Process the chunk for fauna spawning
-		CubeGen.World.Fauna.FaunaSpawner.Instance.ProcessChunkForFauna(chunk);
-
-		// First, add the chunk data to the chunk manager
-		// This makes the data available for neighboring chunks' AO calculations
-		_chunkManager.AddChunk(chunk);
 	}
 
 	// Static biome noise for use by other classes
-	private static FastNoiseLite _staticBiomeNoise;
+		private static FastNoiseLite _staticBiomeNoise;
 
 	// Static reference to ChunkManager for use by other classes
 	private static ChunkManager _staticChunkManager;
@@ -1044,7 +1049,7 @@ public partial class WorldGenerator : Node3D
 
 				// Add biome-specific features with appropriate probability
 				// Check position is safely away from chunk boundaries
-				int safeDistance = 4; // Reduced safe distance to allow more features
+				int safeDistance = 0; // Reduced safe distance to allow more features
 				if (x >= safeDistance && x < (chunkSize - safeDistance) &&
 					z >= safeDistance && z < (chunkSize - safeDistance))
 				{
@@ -1207,7 +1212,7 @@ public partial class WorldGenerator : Node3D
 									// Add occasional lone trees
 									else if (random.NextDouble() < 0.006)
 									{
-										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 6, chunkSize))
+										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 12, chunkSize))
 										{
 											GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
 											MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
@@ -1220,7 +1225,7 @@ public partial class WorldGenerator : Node3D
 									// Add trees with higher density
 									if (random.NextDouble() < 0.02)
 									{
-										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 6, chunkSize))
+										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 12, chunkSize))
 										{
 											GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
 											MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
@@ -1260,7 +1265,7 @@ public partial class WorldGenerator : Node3D
 									// Add occasional trees even in mountainous areas
 									else if (random.NextDouble() < 0.005)
 									{
-										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 6, chunkSize))
+										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 12, chunkSize))
 										{
 											GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
 											MarkFeaturePosition(featureMap, x, z, 6, chunkSize);

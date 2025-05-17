@@ -1047,234 +1047,227 @@ public partial class WorldGenerator : Node3D
 					}
 				}
 
-				// Add biome-specific features with appropriate probability
-				// Check position is safely away from chunk boundaries
-				int safeDistance = 0; // Reduced safe distance to allow more features
-				if (x >= safeDistance && x < (chunkSize - safeDistance) &&
-					z >= safeDistance && z < (chunkSize - safeDistance))
+				switch (biomeType)
 				{
-					switch (biomeType)
-					{
-						case BiomeType.Desert:
-							// Add cacti in Desert biome
-							if (random.NextDouble() < 0.008) // Adjusted to a more reasonable value
+					case BiomeType.Desert:
+						// Add cacti in Desert biome
+						if (random.NextDouble() < 0.008) // Adjusted to a more reasonable value
+						{
+							if (surfaceHeight >= 0)
 							{
-								if (surfaceHeight >= 0)
+								// Check if we can place a cactus here (no overlap with other features)
+								// Cacti need a medium radius (4) to prevent overlap
+								if (CanPlaceFeature(featureMap, x, z, 4, chunkSize))
 								{
-									// Check if we can place a cactus here (no overlap with other features)
-									// Cacti need a medium radius (4) to prevent overlap
-									if (CanPlaceFeature(featureMap, x, z, 4, chunkSize))
-									{
-										// More lenient check - allow cacti on any solid surface in desert biome
-										GenerateCactus(chunk, x, z, surfaceHeight, random);
+									// More lenient check - allow cacti on any solid surface in desert biome
+									GenerateCactus(chunk, x, z, surfaceHeight, random);
 
-										// Mark the area as occupied
-										MarkFeaturePosition(featureMap, x, z, 4, chunkSize);
-									}
+									// Mark the area as occupied
+									MarkFeaturePosition(featureMap, x, z, 4, chunkSize);
 								}
 							}
-							// Add rock formations in Desert biome
-							else if (random.NextDouble() < 0.006) // Adjusted to a more reasonable value
+						}
+						// Add rock formations in Desert biome
+						else if (random.NextDouble() < 0.006) // Adjusted to a more reasonable value
+						{
+							if (surfaceHeight >= 0)
 							{
-								if (surfaceHeight >= 0)
+								// Check if we can place a rock formation here (no overlap with other features)
+								// Rock formations need a medium radius (5) to prevent overlap
+								if (CanPlaceFeature(featureMap, x, z, 5, chunkSize))
 								{
-									// Check if we can place a rock formation here (no overlap with other features)
-									// Rock formations need a medium radius (5) to prevent overlap
-									if (CanPlaceFeature(featureMap, x, z, 5, chunkSize))
+									// More lenient check - allow rock formations on any solid surface in desert biome
+									GenerateRockFormation(chunk, x, z, surfaceHeight, random);
+
+									// Mark the area as occupied
+									MarkFeaturePosition(featureMap, x, z, 5, chunkSize);
+								}
+							}
+						}
+						break;
+
+					case BiomeType.Tundra:
+						// Add ice formations in Tundra biome
+						if (random.NextDouble() < 0.008) // Adjusted to a more reasonable value
+						{
+							if (surfaceHeight >= 0)
+							{
+								// Check if we can place an ice formation here (no overlap with other features)
+								// Ice formations need a medium radius (4) to prevent overlap
+								if (CanPlaceFeature(featureMap, x, z, 4, chunkSize))
+								{
+									// More lenient check - allow ice formations on any solid surface in tundra biome
+									GenerateIceFormation(chunk, x, z, surfaceHeight, random);
+
+									// Mark the area as occupied
+									MarkFeaturePosition(featureMap, x, z, 4, chunkSize);
+								}
+							}
+						}
+						// Add snow-covered trees in Tundra biome
+						else if (random.NextDouble() < 0.006) // Adjusted to a more reasonable value
+						{
+							if (surfaceHeight >= 0)
+							{
+								// Check if we can place a snow tree here (no overlap with other features)
+								// Snow trees need a larger radius (6) to prevent overlap
+								if (CanPlaceFeature(featureMap, x, z, 6, chunkSize))
+								{
+									// More lenient check - allow snow trees on any solid surface in tundra biome
+									GenerateSnowTree(chunk, x, z, surfaceHeight, random);
+
+									// Mark the area as occupied
+									MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
+								}
+							}
+						}
+						break;
+
+
+
+					case BiomeType.Islands:
+						// Add palm trees on islands
+						if (random.NextDouble() < 0.02) // Increased chance for palm trees (2%)
+						{
+							if (surfaceHeight >= 0)
+							{
+								// Check if we can place a palm tree here (no overlap with other features)
+								// Palm trees need a larger radius (5) to prevent overlap
+								if (CanPlaceFeature(featureMap, x, z, 5, chunkSize))
+								{
+									// Calculate water level height in voxels
+									int waterLevelHeight = Mathf.FloorToInt(WaterLevel * ChunkHeight);
+
+									// Place palm trees on sand (beach areas) or on grass near the beach
+									VoxelType surfaceType = chunk.GetVoxel(x, surfaceHeight, z);
+
+									if (surfaceType == VoxelType.Sand ||
+										(surfaceType == VoxelType.Grass && surfaceHeight <= waterLevelHeight + 8))
 									{
-										// More lenient check - allow rock formations on any solid surface in desert biome
-										GenerateRockFormation(chunk, x, z, surfaceHeight, random);
+										GeneratePalmTree(chunk, x, z, surfaceHeight, random);
 
 										// Mark the area as occupied
 										MarkFeaturePosition(featureMap, x, z, 5, chunkSize);
 									}
 								}
 							}
-							break;
-
-						case BiomeType.Tundra:
-							// Add ice formations in Tundra biome
-							if (random.NextDouble() < 0.008) // Adjusted to a more reasonable value
+						}
+						// Add seashells on beaches
+						else if (random.NextDouble() < 0.03) // Higher chance for seashells
+						{
+							if (surfaceHeight >= 0)
 							{
-								if (surfaceHeight >= 0)
+								// Check if we can place a seashell here (no overlap with other features)
+								// Seashells need a small radius (2) to prevent overlap
+								if (CanPlaceFeature(featureMap, x, z, 2, chunkSize))
 								{
-									// Check if we can place an ice formation here (no overlap with other features)
-									// Ice formations need a medium radius (4) to prevent overlap
-									if (CanPlaceFeature(featureMap, x, z, 4, chunkSize))
+									// Only place seashells on sand
+									if (chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Sand)
 									{
-										// More lenient check - allow ice formations on any solid surface in tundra biome
-										GenerateIceFormation(chunk, x, z, surfaceHeight, random);
+										// Use the decoration system to place seashells
+										Vector2I worldPos = new Vector2I(worldX, worldZ);
+										DecorationClusters.DecorationPlacement seashellPlacement = new DecorationClusters.DecorationPlacement(
+											VoxelType.Seashell,
+											new Vector2(random.Next(-20, 20) / 100.0f, random.Next(-20, 20) / 100.0f),
+											random.Next(0, 360),
+											0.8f + (float)random.NextDouble() * 0.4f
+										);
+
+										// Place the seashell
+										chunk.SetVoxel(x, surfaceHeight + 1, z, VoxelType.Seashell);
+										chunk.SetDecorationPlacement(x, surfaceHeight + 1, z, seashellPlacement);
 
 										// Mark the area as occupied
-										MarkFeaturePosition(featureMap, x, z, 4, chunkSize);
+										MarkFeaturePosition(featureMap, x, z, 2, chunkSize);
 									}
 								}
 							}
-							// Add snow-covered trees in Tundra biome
-							else if (random.NextDouble() < 0.006) // Adjusted to a more reasonable value
-							{
-								if (surfaceHeight >= 0)
-								{
-									// Check if we can place a snow tree here (no overlap with other features)
-									// Snow trees need a larger radius (6) to prevent overlap
-									if (CanPlaceFeature(featureMap, x, z, 6, chunkSize))
-									{
-										// More lenient check - allow snow trees on any solid surface in tundra biome
-										GenerateSnowTree(chunk, x, z, surfaceHeight, random);
+						}
+						break;
 
-										// Mark the area as occupied
+					case BiomeType.ForestLands:
+						// Get the sub-biome type for this position
+						BiomeSubRegions.ForestLandsSubRegion subBiome = BiomeSubRegions.GetForestLandsSubRegion(worldX, worldZ);
+
+						// Add features based on sub-biome type
+						switch (subBiome)
+						{
+							case BiomeSubRegions.ForestLandsSubRegion.Plains:
+								// PLAINS SUB-BIOME
+								// Add small bushes
+								if (random.NextDouble() < 0.015)
+								{
+									if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 3, chunkSize))
+									{
+										GenerateBush(chunk, x, z, surfaceHeight, random);
+										MarkFeaturePosition(featureMap, x, z, 3, chunkSize);
+									}
+								}
+								// Add occasional lone trees
+								else if (random.NextDouble() < 0.006)
+								{
+									if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 12, chunkSize))
+									{
+										GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
 										MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
 									}
 								}
-							}
-							break;
+								break;
 
-
-
-						case BiomeType.Islands:
-							// Add palm trees on islands
-							if (random.NextDouble() < 0.02) // Increased chance for palm trees (2%)
-							{
-								if (surfaceHeight >= 0)
+							case BiomeSubRegions.ForestLandsSubRegion.Forest:
+								// FOREST SUB-BIOME
+								// Add trees with higher density
+								if (random.NextDouble() < 0.02)
 								{
-									// Check if we can place a palm tree here (no overlap with other features)
-									// Palm trees need a larger radius (5) to prevent overlap
-									if (CanPlaceFeature(featureMap, x, z, 5, chunkSize))
+									if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 12, chunkSize))
 									{
-										// Calculate water level height in voxels
-										int waterLevelHeight = Mathf.FloorToInt(WaterLevel * ChunkHeight);
-
-										// Place palm trees on sand (beach areas) or on grass near the beach
-										VoxelType surfaceType = chunk.GetVoxel(x, surfaceHeight, z);
-
-										if (surfaceType == VoxelType.Sand ||
-											(surfaceType == VoxelType.Grass && surfaceHeight <= waterLevelHeight + 8))
-										{
-											GeneratePalmTree(chunk, x, z, surfaceHeight, random);
-
-											// Mark the area as occupied
-											MarkFeaturePosition(featureMap, x, z, 5, chunkSize);
-										}
+										GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
+										MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
 									}
 								}
-							}
-							// Add seashells on beaches
-							else if (random.NextDouble() < 0.03) // Higher chance for seashells
-							{
-								if (surfaceHeight >= 0)
+								// Add bushes between trees
+								else if (random.NextDouble() < 0.012)
 								{
-									// Check if we can place a seashell here (no overlap with other features)
-									// Seashells need a small radius (2) to prevent overlap
-									if (CanPlaceFeature(featureMap, x, z, 2, chunkSize))
+									if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 3, chunkSize))
 									{
-										// Only place seashells on sand
-										if (chunk.GetVoxel(x, surfaceHeight, z) == VoxelType.Sand)
-										{
-											// Use the decoration system to place seashells
-											Vector2I worldPos = new Vector2I(worldX, worldZ);
-											DecorationClusters.DecorationPlacement seashellPlacement = new DecorationClusters.DecorationPlacement(
-												VoxelType.Seashell,
-												new Vector2(random.Next(-20, 20) / 100.0f, random.Next(-20, 20) / 100.0f),
-												random.Next(0, 360),
-												0.8f + (float)random.NextDouble() * 0.4f
-											);
-
-											// Place the seashell
-											chunk.SetVoxel(x, surfaceHeight + 1, z, VoxelType.Seashell);
-											chunk.SetDecorationPlacement(x, surfaceHeight + 1, z, seashellPlacement);
-
-											// Mark the area as occupied
-											MarkFeaturePosition(featureMap, x, z, 2, chunkSize);
-										}
+										GenerateBush(chunk, x, z, surfaceHeight, random);
+										MarkFeaturePosition(featureMap, x, z, 3, chunkSize);
 									}
 								}
-							}
-							break;
+								break;
 
-						case BiomeType.ForestLands:
-							// Get the sub-biome type for this position
-							BiomeSubRegions.ForestLandsSubRegion subBiome = BiomeSubRegions.GetForestLandsSubRegion(worldX, worldZ);
-
-							// Add features based on sub-biome type
-							switch (subBiome)
-							{
-								case BiomeSubRegions.ForestLandsSubRegion.Plains:
-									// PLAINS SUB-BIOME
-									// Add small bushes
-									if (random.NextDouble() < 0.015)
+							case BiomeSubRegions.ForestLandsSubRegion.Mountains:
+								// MOUNTAINS SUB-BIOME
+								// Add rock spires
+								if (random.NextDouble() < 0.01)
+								{
+									if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 5, chunkSize))
 									{
-										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 3, chunkSize))
-										{
-											GenerateBush(chunk, x, z, surfaceHeight, random);
-											MarkFeaturePosition(featureMap, x, z, 3, chunkSize);
-										}
+										GenerateRockSpire(chunk, x, z, surfaceHeight, random);
+										MarkFeaturePosition(featureMap, x, z, 5, chunkSize);
 									}
-									// Add occasional lone trees
-									else if (random.NextDouble() < 0.006)
+								}
+								// Add boulders
+								else if (random.NextDouble() < 0.015)
+								{
+									if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 4, chunkSize))
 									{
-										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 12, chunkSize))
-										{
-											GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
-											MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
-										}
+										GenerateBoulder(chunk, x, z, surfaceHeight, random);
+										MarkFeaturePosition(featureMap, x, z, 4, chunkSize);
 									}
-									break;
-
-								case BiomeSubRegions.ForestLandsSubRegion.Forest:
-									// FOREST SUB-BIOME
-									// Add trees with higher density
-									if (random.NextDouble() < 0.02)
+								}
+								// Add occasional trees even in mountainous areas
+								else if (random.NextDouble() < 0.005)
+								{
+									if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 12, chunkSize))
 									{
-										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 12, chunkSize))
-										{
-											GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
-											MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
-										}
+										GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
+										MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
 									}
-									// Add bushes between trees
-									else if (random.NextDouble() < 0.012)
-									{
-										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 3, chunkSize))
-										{
-											GenerateBush(chunk, x, z, surfaceHeight, random);
-											MarkFeaturePosition(featureMap, x, z, 3, chunkSize);
-										}
-									}
-									break;
-
-								case BiomeSubRegions.ForestLandsSubRegion.Mountains:
-									// MOUNTAINS SUB-BIOME
-									// Add rock spires
-									if (random.NextDouble() < 0.01)
-									{
-										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 5, chunkSize))
-										{
-											GenerateRockSpire(chunk, x, z, surfaceHeight, random);
-											MarkFeaturePosition(featureMap, x, z, 5, chunkSize);
-										}
-									}
-									// Add boulders
-									else if (random.NextDouble() < 0.015)
-									{
-										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 4, chunkSize))
-										{
-											GenerateBoulder(chunk, x, z, surfaceHeight, random);
-											MarkFeaturePosition(featureMap, x, z, 4, chunkSize);
-										}
-									}
-									// Add occasional trees even in mountainous areas
-									else if (random.NextDouble() < 0.005)
-									{
-										if (surfaceHeight >= 0 && CanPlaceFeature(featureMap, x, z, 12, chunkSize))
-										{
-											GenerateDetailedTree(chunk, x, z, surfaceHeight, random);
-											MarkFeaturePosition(featureMap, x, z, 6, chunkSize);
-										}
-									}
-									break;
-							}
-							break;
-					}
+								}
+								break;
+						}
+						break;
 				}
 			}
 		}

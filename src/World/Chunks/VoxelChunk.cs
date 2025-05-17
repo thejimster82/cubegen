@@ -20,6 +20,22 @@ public class VoxelChunk
     // Key is a string in the format "x,y,z", value is the voxel type
     private Dictionary<string, VoxelType> _outOfBoundsVoxels = new();
 
+    // Get all out-of-bounds voxel positions
+    public IEnumerable<(int x, int y, int z)> GetOutOfBoundsVoxelPositions()
+    {
+        foreach (var key in _outOfBoundsVoxels.Keys)
+        {
+            string[] parts = key.Split(',');
+            if (parts.Length == 3 &&
+                int.TryParse(parts[0], out int x) &&
+                int.TryParse(parts[1], out int y) &&
+                int.TryParse(parts[2], out int z))
+            {
+                yield return (x, y, z);
+            }
+        }
+    }
+
     // Dictionary to store decoration placement information
     // Key is a string in the format "x,y,z", value is the placement data
     private Dictionary<string, DecorationClusters.DecorationPlacement> _decorationPlacements = new();

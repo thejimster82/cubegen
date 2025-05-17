@@ -358,6 +358,64 @@ public class ChunkMeshGenerator
             }
         }
 
+        // Process out-of-bounds voxels
+        foreach (var (x, y, z) in chunk.GetOutOfBoundsVoxelPositions())
+        {
+            // Skip if already processed (shouldn't happen for out-of-bounds voxels, but just in case)
+            if (processedVoxels.Contains((x, y, z)))
+                continue;
+
+            VoxelType voxelType = chunk.GetVoxel(x, y, z);
+
+            // Skip air voxels
+            if (voxelType == VoxelType.Air)
+                continue;
+
+            // Skip if this voxel is completely surrounded by solid voxels
+            if (IsVoxelSurrounded(chunk, x, y, z))
+                continue;
+
+            // Get biome type for this position
+            int worldX = chunk.Position.X * chunk.Size + x;
+            int worldZ = chunk.Position.Y * chunk.Size + z;
+            BiomeType biomeType = CubeGen.World.Generation.WorldGenerator.GetBiomeType(worldX, worldZ);
+
+            // Initialize dictionaries if needed
+            if (!meshDataByBiomeAndType.ContainsKey(biomeType))
+            {
+                meshDataByBiomeAndType[biomeType] = new Dictionary<VoxelType, List<MeshData>>();
+            }
+
+            if (!meshDataByBiomeAndType[biomeType].ContainsKey(voxelType))
+            {
+                meshDataByBiomeAndType[biomeType][voxelType] = new List<MeshData>();
+            }
+
+            // Create mesh data for this voxel
+            MeshData meshData = new MeshData();
+
+            // Special handling for decoration types
+            bool isDecoration = VoxelProperties.IsDecoration(voxelType);
+
+            // Check each face and add to mesh data
+            if (isDecoration)
+            {
+                // For decoration types, we'll create a cross-shaped mesh instead of a cube
+                AddDecorationFaces(chunk, x, y, z, voxelType, meshData);
+            }
+            else
+            {
+                // Regular voxel faces for non-decoration types
+                AddVoxelFaces(chunk, x, y, z, voxelType, meshData);
+            }
+
+            // Add mesh data to the appropriate list if it has any vertices
+            if (meshData.Vertices.Count > 0)
+            {
+                meshDataByBiomeAndType[biomeType][voxelType].Add(meshData);
+            }
+        }
+
         // Create a new ArrayMesh
         ArrayMesh mesh = new ArrayMesh();
 

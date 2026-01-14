@@ -2,6 +2,8 @@
 
 This is a procedurally generated 3D voxel RPG inspired by Cubeworld, built using C# inside of Godot 4.4. The game features a fully procedurally generated world including:
 
+<img width="1728" height="1054" alt="image" src="https://github.com/user-attachments/assets/63d6299b-ef7c-436b-9765-375bf00ee3a3" />
+
 - Terrain generation using noise algorithms
 - Different biome types (Forest, Plains, Desert, Mountains, Tundra)
 - Placement of objects in the world such as trees and foliage

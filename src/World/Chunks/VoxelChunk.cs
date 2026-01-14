@@ -3,10 +3,15 @@ using System;
 using System.Collections.Generic;
 using CubeGen.World.Common;
 using CubeGen.World.Generation;
+using System.Collections.Concurrent;
 
 /// <summary>
 /// Represents a chunk of voxels in the world
 /// </summary>
+public static class GlobalVoxelChunk
+{
+    public static ConcurrentDictionary<string, bool> GlobalVoxelPositionsDict = new ConcurrentDictionary<string, bool>();
+}
 public class VoxelChunk
 {
     public Vector2I Position { get; private set; }
@@ -92,15 +97,28 @@ public class VoxelChunk
 
     public void SetVoxel(int x, int y, int z, VoxelType type)
     {
-        if (IsInBounds(x, y, z))
+        // Calculate world coordinates for the global dictionary
+        int worldX = Position.X * Size + x;
+        int worldY = y;
+        int worldZ = Position.Y * Size + z;
+
+        // Create a consistent key for the global dictionary
+        string globalKey = GetVoxelKey(worldX, worldY, worldZ);
+
+        // Use TryUpdate to atomically check and update the dictionary
+        if (!GlobalVoxelChunk.GlobalVoxelPositionsDict.ContainsKey(globalKey))
         {
-            _voxels[x][y][z] = type;
-        }
-        else
-        {
-            // Store out-of-bounds voxel in the dictionary
-            string key = GetVoxelKey(x, y, z);
-            _outOfBoundsVoxels[key] = type;
+            if (IsInBounds(x, y, z))
+            {
+                _voxels[x][y][z] = type;
+            }
+            else
+            {
+                // Store out-of-bounds voxel in the dictionary
+                string localKey = GetVoxelKey(x, y, z);
+                _outOfBoundsVoxels[localKey] = type;
+            }
+            GlobalVoxelChunk.GlobalVoxelPositionsDict.TryAdd(globalKey, true);
         }
     }
 
